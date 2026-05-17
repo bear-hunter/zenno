@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:zenno/config/router/routes.dart';
 import 'package:zenno/config/theme/app_colors.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
@@ -261,6 +263,18 @@ class _SessionTile extends StatelessWidget {
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colors.onSurfaceVariant,
                   fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+            if (session.linkedCanvasId != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () =>
+                      context.push(Routes.canvasPath(session.linkedCanvasId!)),
+                  icon: const Icon(Icons.draw_outlined),
+                  label: const Text('Open canvas'),
                 ),
               ),
             ],

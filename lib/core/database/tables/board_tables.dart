@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:zenno/core/database/tables/canvas_tables.dart';
 
 /// Which feature a Kanban board belongs to.
 enum BoardType { revision, goalCycle }
@@ -83,4 +84,34 @@ class GoalCardDetails extends Table {
 
   @override
   Set<Column> get primaryKey => {cardId};
+}
+
+/// Soft ownership link between a study-system card and a normal library canvas.
+///
+/// Detaching deletes only this row. Deleting either the card or the canvas
+/// cascades the attachment so stale rows never survive.
+@TableIndex(
+  name: 'idx_card_canvas_attachments_card_position',
+  columns: {#cardId, #position},
+)
+@TableIndex(name: 'idx_card_canvas_attachments_canvas_id', columns: {#canvasId})
+class CardCanvasAttachments extends Table {
+  TextColumn get id => text()();
+  TextColumn get cardId =>
+      text().references(BoardCards, #id, onDelete: KeyAction.cascade)();
+  TextColumn get canvasId =>
+      text().references(Canvases, #id, onDelete: KeyAction.cascade)();
+  TextColumn get label => text()();
+
+  /// Fractional ordering position within the card's canvas list.
+  RealColumn get position => real()();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {cardId, canvasId},
+  ];
 }

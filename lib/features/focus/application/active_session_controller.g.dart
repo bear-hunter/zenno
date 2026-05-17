@@ -133,7 +133,7 @@ final class ActiveSessionControllerProvider
 }
 
 String _$activeSessionControllerHash() =>
-    r'6533a75911cf2ff106ae23fd35ec5df9066dafef';
+    r'3dd2539ea6b53b19f46d4501ce8619ee12912a92';
 
 /// Owns the [TimerEngine] for the one in-progress focus session and persists
 /// that session's lifecycle.

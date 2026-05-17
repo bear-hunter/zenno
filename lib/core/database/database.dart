@@ -33,6 +33,7 @@ part 'database.g.dart';
     BoardCards,
     RevisionCardDetails,
     GoalCardDetails,
+    CardCanvasAttachments,
     // Reflection group.
     ReflectionTemplates,
     ReflectionEntries,
@@ -48,7 +49,7 @@ class ZennoDatabase extends _$ZennoDatabase {
     : super(executor ?? openZennoConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /// Persist `DateTime` columns as ISO-8601 TEXT (sortable, debuggable, and
   /// export-friendly) rather than Unix timestamp integers.
@@ -69,6 +70,9 @@ class ZennoDatabase extends _$ZennoDatabase {
         await m.addColumn(focusSessions, focusSessions.runtimeCarriedPhaseSecs);
         await m.addColumn(focusSessions, focusSessions.runtimePhaseTargetSecs);
         await m.addColumn(focusSessions, focusSessions.runtimeBankedFocusSecs);
+      }
+      if (from < 3) {
+        await m.createTable(cardCanvasAttachments);
       }
     },
     beforeOpen: (details) async {

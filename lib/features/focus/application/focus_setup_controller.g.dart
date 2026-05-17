@@ -63,7 +63,7 @@ final class FocusSetupControllerProvider
 }
 
 String _$focusSetupControllerHash() =>
-    r'3f4e8fd72117f9b5c3a357e93a08976717926c9d';
+    r'f0481cfa48e3690787d2609bf98a359969531441';
 
 /// Owns the Focus Setup screen's draft state and assembles a
 /// [FocusSessionConfig] from it.
