@@ -53,8 +53,7 @@ class FocusHistoryPage extends ConsumerWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: AppSpacing.sm),
-                    for (final detail in sessions)
-                      _SessionTile(detail: detail),
+                    for (final detail in sessions) _SessionTile(detail: detail),
                   ],
                 ),
               ),
@@ -198,8 +197,9 @@ class _SessionTile extends StatelessWidget {
     final title = session.goalText.trim().isEmpty
         ? 'Focus session'
         : session.goalText.trim();
-    final kindLabel =
-        session.timerKind == TimerKind.pomodoro ? 'Pomodoro' : 'Flowmodoro';
+    final kindLabel = session.timerKind == TimerKind.pomodoro
+        ? 'Pomodoro'
+        : 'Flowmodoro';
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -254,8 +254,7 @@ class _SessionTile extends StatelessWidget {
                 ),
               ],
             ),
-            if (session.notes != null &&
-                session.notes!.trim().isNotEmpty) ...[
+            if (session.notes != null && session.notes!.trim().isNotEmpty) ...[
               const SizedBox(height: AppSpacing.md),
               Text(
                 session.notes!.trim(),

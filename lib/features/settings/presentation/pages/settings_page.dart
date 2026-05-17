@@ -47,9 +47,7 @@ class _SettingsBody extends ConsumerWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: AppSpacing.contentMaxWidth,
-        ),
+        constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
           children: [
@@ -139,8 +137,7 @@ class _SettingsBody extends ConsumerWidget {
                 'Stops the display sleeping while a Focus timer runs.',
               ),
               value: model.keepScreenOnInFocus,
-              onChanged: (value) =>
-                  repo.setKeepScreenOnInFocus(value: value),
+              onChanged: (value) => repo.setKeepScreenOnInFocus(value: value),
             ),
 
             const _SectionDivider(),
@@ -161,10 +158,7 @@ class _SettingsBody extends ConsumerWidget {
                     value: LibrarySort.created,
                     label: Text('Created'),
                   ),
-                  ButtonSegment(
-                    value: LibrarySort.title,
-                    label: Text('Title'),
-                  ),
+                  ButtonSegment(value: LibrarySort.title, label: Text('Title')),
                 ],
                 selected: {model.librarySort},
                 onSelectionChanged: (selection) =>
@@ -184,8 +178,7 @@ class _SettingsBody extends ConsumerWidget {
   }
 
   /// Formats a break ratio as a rounded percentage (e.g. `0.2` → `20%`).
-  static String _ratioLabel(double ratio) =>
-      '${(ratio * 100).round()}%';
+  static String _ratioLabel(double ratio) => '${(ratio * 100).round()}%';
 }
 
 /// A small caps-styled header introducing a settings section.
@@ -264,10 +257,7 @@ class _SettingTile extends StatelessWidget {
             ),
           ],
           const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: trailing,
-          ),
+          Align(alignment: Alignment.centerLeft, child: trailing),
         ],
       ),
     );
@@ -310,9 +300,7 @@ class _StepperTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Text(title, style: theme.textTheme.titleMedium),
-          ),
+          Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
           IconButton.outlined(
             onPressed: canDecrease
                 ? () => onChanged((shown - step).clamp(min, max))
@@ -379,9 +367,7 @@ class _SliderTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(title, style: theme.textTheme.titleMedium),
-              ),
+              Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
               Text(
                 valueLabel,
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -459,11 +445,7 @@ class _SettingsMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 56,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(icon, size: 56, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: AppSpacing.lg),
             Text(title, style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),

@@ -60,8 +60,11 @@ class MasteryFlagChip extends StatelessWidget {
           SizedBox(width: dense ? AppSpacing.xs : AppSpacing.sm),
           Text(
             masteryFlagLabel(flag),
-            style: (dense ? theme.textTheme.labelSmall : theme.textTheme.labelMedium)
-                ?.copyWith(color: theme.colorScheme.onSurface),
+            style:
+                (dense
+                        ? theme.textTheme.labelSmall
+                        : theme.textTheme.labelMedium)
+                    ?.copyWith(color: theme.colorScheme.onSurface),
           ),
         ],
       ),

@@ -58,10 +58,7 @@ class CanvasBookmarksMenu extends StatelessWidget {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.place_outlined),
-                  title: Text(
-                    bookmark.name,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  title: Text(bookmark.name, overflow: TextOverflow.ellipsis),
                   trailing: IconButton(
                     icon: const Icon(Icons.close, size: 18),
                     tooltip: 'Remove',

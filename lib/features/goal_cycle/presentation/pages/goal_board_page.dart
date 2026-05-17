@@ -34,9 +34,7 @@ class GoalBoardPage extends ConsumerWidget {
         actions: [
           TextButton.icon(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TemplatesPage(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const TemplatesPage()),
             ),
             icon: const Icon(Icons.dashboard_customize_outlined),
             label: const Text('Templates'),
@@ -120,11 +118,7 @@ class _BoardError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 56,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 56, color: theme.colorScheme.error),
             const SizedBox(height: AppSpacing.md),
             Text(
               'Could not load the board',

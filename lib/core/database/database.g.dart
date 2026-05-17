@@ -5022,6 +5022,72 @@ class $FocusSessionsTable extends FocusSessions
         type: DriftSqlType.int,
         requiredDuringInsert: true,
       ).withConverter<FocusSessionStatus>($FocusSessionsTable.$converterstatus);
+  static const VerificationMeta _runtimeStatusMeta = const VerificationMeta(
+    'runtimeStatus',
+  );
+  @override
+  late final GeneratedColumn<int> runtimeStatus = GeneratedColumn<int>(
+    'runtime_status',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _runtimePhaseMeta = const VerificationMeta(
+    'runtimePhase',
+  );
+  @override
+  late final GeneratedColumn<int> runtimePhase = GeneratedColumn<int>(
+    'runtime_phase',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _runtimePhaseStartedAtMeta =
+      const VerificationMeta('runtimePhaseStartedAt');
+  @override
+  late final GeneratedColumn<DateTime> runtimePhaseStartedAt =
+      GeneratedColumn<DateTime>(
+        'runtime_phase_started_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _runtimeCarriedPhaseSecsMeta =
+      const VerificationMeta('runtimeCarriedPhaseSecs');
+  @override
+  late final GeneratedColumn<int> runtimeCarriedPhaseSecs =
+      GeneratedColumn<int>(
+        'runtime_carried_phase_secs',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      );
+  static const VerificationMeta _runtimePhaseTargetSecsMeta =
+      const VerificationMeta('runtimePhaseTargetSecs');
+  @override
+  late final GeneratedColumn<int> runtimePhaseTargetSecs = GeneratedColumn<int>(
+    'runtime_phase_target_secs',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _runtimeBankedFocusSecsMeta =
+      const VerificationMeta('runtimeBankedFocusSecs');
+  @override
+  late final GeneratedColumn<int> runtimeBankedFocusSecs = GeneratedColumn<int>(
+    'runtime_banked_focus_secs',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _linkedCanvasIdMeta = const VerificationMeta(
     'linkedCanvasId',
   );
@@ -5061,6 +5127,12 @@ class $FocusSessionsTable extends FocusSessions
     flowBreakRatio,
     cyclesCompleted,
     status,
+    runtimeStatus,
+    runtimePhase,
+    runtimePhaseStartedAt,
+    runtimeCarriedPhaseSecs,
+    runtimePhaseTargetSecs,
+    runtimeBankedFocusSecs,
     linkedCanvasId,
     notes,
   ];
@@ -5173,6 +5245,60 @@ class $FocusSessionsTable extends FocusSessions
         ),
       );
     }
+    if (data.containsKey('runtime_status')) {
+      context.handle(
+        _runtimeStatusMeta,
+        runtimeStatus.isAcceptableOrUnknown(
+          data['runtime_status']!,
+          _runtimeStatusMeta,
+        ),
+      );
+    }
+    if (data.containsKey('runtime_phase')) {
+      context.handle(
+        _runtimePhaseMeta,
+        runtimePhase.isAcceptableOrUnknown(
+          data['runtime_phase']!,
+          _runtimePhaseMeta,
+        ),
+      );
+    }
+    if (data.containsKey('runtime_phase_started_at')) {
+      context.handle(
+        _runtimePhaseStartedAtMeta,
+        runtimePhaseStartedAt.isAcceptableOrUnknown(
+          data['runtime_phase_started_at']!,
+          _runtimePhaseStartedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('runtime_carried_phase_secs')) {
+      context.handle(
+        _runtimeCarriedPhaseSecsMeta,
+        runtimeCarriedPhaseSecs.isAcceptableOrUnknown(
+          data['runtime_carried_phase_secs']!,
+          _runtimeCarriedPhaseSecsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('runtime_phase_target_secs')) {
+      context.handle(
+        _runtimePhaseTargetSecsMeta,
+        runtimePhaseTargetSecs.isAcceptableOrUnknown(
+          data['runtime_phase_target_secs']!,
+          _runtimePhaseTargetSecsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('runtime_banked_focus_secs')) {
+      context.handle(
+        _runtimeBankedFocusSecsMeta,
+        runtimeBankedFocusSecs.isAcceptableOrUnknown(
+          data['runtime_banked_focus_secs']!,
+          _runtimeBankedFocusSecsMeta,
+        ),
+      );
+    }
     if (data.containsKey('linked_canvas_id')) {
       context.handle(
         _linkedCanvasIdMeta,
@@ -5257,6 +5383,30 @@ class $FocusSessionsTable extends FocusSessions
           data['${effectivePrefix}status'],
         )!,
       ),
+      runtimeStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}runtime_status'],
+      ),
+      runtimePhase: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}runtime_phase'],
+      ),
+      runtimePhaseStartedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}runtime_phase_started_at'],
+      ),
+      runtimeCarriedPhaseSecs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}runtime_carried_phase_secs'],
+      )!,
+      runtimePhaseTargetSecs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}runtime_phase_target_secs'],
+      ),
+      runtimeBankedFocusSecs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}runtime_banked_focus_secs'],
+      )!,
       linkedCanvasId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}linked_canvas_id'],
@@ -5298,6 +5448,14 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
   final double? flowBreakRatio;
   final int cyclesCompleted;
   final FocusSessionStatus status;
+
+  /// Restorable runtime status from the live timer engine.
+  final int? runtimeStatus;
+  final int? runtimePhase;
+  final DateTime? runtimePhaseStartedAt;
+  final int runtimeCarriedPhaseSecs;
+  final int? runtimePhaseTargetSecs;
+  final int runtimeBankedFocusSecs;
   final String? linkedCanvasId;
   final String? notes;
   const FocusSession({
@@ -5315,6 +5473,12 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
     this.flowBreakRatio,
     required this.cyclesCompleted,
     required this.status,
+    this.runtimeStatus,
+    this.runtimePhase,
+    this.runtimePhaseStartedAt,
+    required this.runtimeCarriedPhaseSecs,
+    this.runtimePhaseTargetSecs,
+    required this.runtimeBankedFocusSecs,
     this.linkedCanvasId,
     this.notes,
   });
@@ -5353,6 +5517,22 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
         $FocusSessionsTable.$converterstatus.toSql(status),
       );
     }
+    if (!nullToAbsent || runtimeStatus != null) {
+      map['runtime_status'] = Variable<int>(runtimeStatus);
+    }
+    if (!nullToAbsent || runtimePhase != null) {
+      map['runtime_phase'] = Variable<int>(runtimePhase);
+    }
+    if (!nullToAbsent || runtimePhaseStartedAt != null) {
+      map['runtime_phase_started_at'] = Variable<DateTime>(
+        runtimePhaseStartedAt,
+      );
+    }
+    map['runtime_carried_phase_secs'] = Variable<int>(runtimeCarriedPhaseSecs);
+    if (!nullToAbsent || runtimePhaseTargetSecs != null) {
+      map['runtime_phase_target_secs'] = Variable<int>(runtimePhaseTargetSecs);
+    }
+    map['runtime_banked_focus_secs'] = Variable<int>(runtimeBankedFocusSecs);
     if (!nullToAbsent || linkedCanvasId != null) {
       map['linked_canvas_id'] = Variable<String>(linkedCanvasId);
     }
@@ -5388,6 +5568,20 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
           : Value(flowBreakRatio),
       cyclesCompleted: Value(cyclesCompleted),
       status: Value(status),
+      runtimeStatus: runtimeStatus == null && nullToAbsent
+          ? const Value.absent()
+          : Value(runtimeStatus),
+      runtimePhase: runtimePhase == null && nullToAbsent
+          ? const Value.absent()
+          : Value(runtimePhase),
+      runtimePhaseStartedAt: runtimePhaseStartedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(runtimePhaseStartedAt),
+      runtimeCarriedPhaseSecs: Value(runtimeCarriedPhaseSecs),
+      runtimePhaseTargetSecs: runtimePhaseTargetSecs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(runtimePhaseTargetSecs),
+      runtimeBankedFocusSecs: Value(runtimeBankedFocusSecs),
       linkedCanvasId: linkedCanvasId == null && nullToAbsent
           ? const Value.absent()
           : Value(linkedCanvasId),
@@ -5423,6 +5617,20 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
       status: $FocusSessionsTable.$converterstatus.fromJson(
         serializer.fromJson<int>(json['status']),
       ),
+      runtimeStatus: serializer.fromJson<int?>(json['runtimeStatus']),
+      runtimePhase: serializer.fromJson<int?>(json['runtimePhase']),
+      runtimePhaseStartedAt: serializer.fromJson<DateTime?>(
+        json['runtimePhaseStartedAt'],
+      ),
+      runtimeCarriedPhaseSecs: serializer.fromJson<int>(
+        json['runtimeCarriedPhaseSecs'],
+      ),
+      runtimePhaseTargetSecs: serializer.fromJson<int?>(
+        json['runtimePhaseTargetSecs'],
+      ),
+      runtimeBankedFocusSecs: serializer.fromJson<int>(
+        json['runtimeBankedFocusSecs'],
+      ),
       linkedCanvasId: serializer.fromJson<String?>(json['linkedCanvasId']),
       notes: serializer.fromJson<String?>(json['notes']),
     );
@@ -5449,6 +5657,16 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
       'status': serializer.toJson<int>(
         $FocusSessionsTable.$converterstatus.toJson(status),
       ),
+      'runtimeStatus': serializer.toJson<int?>(runtimeStatus),
+      'runtimePhase': serializer.toJson<int?>(runtimePhase),
+      'runtimePhaseStartedAt': serializer.toJson<DateTime?>(
+        runtimePhaseStartedAt,
+      ),
+      'runtimeCarriedPhaseSecs': serializer.toJson<int>(
+        runtimeCarriedPhaseSecs,
+      ),
+      'runtimePhaseTargetSecs': serializer.toJson<int?>(runtimePhaseTargetSecs),
+      'runtimeBankedFocusSecs': serializer.toJson<int>(runtimeBankedFocusSecs),
       'linkedCanvasId': serializer.toJson<String?>(linkedCanvasId),
       'notes': serializer.toJson<String?>(notes),
     };
@@ -5469,6 +5687,12 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
     Value<double?> flowBreakRatio = const Value.absent(),
     int? cyclesCompleted,
     FocusSessionStatus? status,
+    Value<int?> runtimeStatus = const Value.absent(),
+    Value<int?> runtimePhase = const Value.absent(),
+    Value<DateTime?> runtimePhaseStartedAt = const Value.absent(),
+    int? runtimeCarriedPhaseSecs,
+    Value<int?> runtimePhaseTargetSecs = const Value.absent(),
+    int? runtimeBankedFocusSecs,
     Value<String?> linkedCanvasId = const Value.absent(),
     Value<String?> notes = const Value.absent(),
   }) => FocusSession(
@@ -5492,6 +5716,20 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
         : this.flowBreakRatio,
     cyclesCompleted: cyclesCompleted ?? this.cyclesCompleted,
     status: status ?? this.status,
+    runtimeStatus: runtimeStatus.present
+        ? runtimeStatus.value
+        : this.runtimeStatus,
+    runtimePhase: runtimePhase.present ? runtimePhase.value : this.runtimePhase,
+    runtimePhaseStartedAt: runtimePhaseStartedAt.present
+        ? runtimePhaseStartedAt.value
+        : this.runtimePhaseStartedAt,
+    runtimeCarriedPhaseSecs:
+        runtimeCarriedPhaseSecs ?? this.runtimeCarriedPhaseSecs,
+    runtimePhaseTargetSecs: runtimePhaseTargetSecs.present
+        ? runtimePhaseTargetSecs.value
+        : this.runtimePhaseTargetSecs,
+    runtimeBankedFocusSecs:
+        runtimeBankedFocusSecs ?? this.runtimeBankedFocusSecs,
     linkedCanvasId: linkedCanvasId.present
         ? linkedCanvasId.value
         : this.linkedCanvasId,
@@ -5527,6 +5765,24 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
           ? data.cyclesCompleted.value
           : this.cyclesCompleted,
       status: data.status.present ? data.status.value : this.status,
+      runtimeStatus: data.runtimeStatus.present
+          ? data.runtimeStatus.value
+          : this.runtimeStatus,
+      runtimePhase: data.runtimePhase.present
+          ? data.runtimePhase.value
+          : this.runtimePhase,
+      runtimePhaseStartedAt: data.runtimePhaseStartedAt.present
+          ? data.runtimePhaseStartedAt.value
+          : this.runtimePhaseStartedAt,
+      runtimeCarriedPhaseSecs: data.runtimeCarriedPhaseSecs.present
+          ? data.runtimeCarriedPhaseSecs.value
+          : this.runtimeCarriedPhaseSecs,
+      runtimePhaseTargetSecs: data.runtimePhaseTargetSecs.present
+          ? data.runtimePhaseTargetSecs.value
+          : this.runtimePhaseTargetSecs,
+      runtimeBankedFocusSecs: data.runtimeBankedFocusSecs.present
+          ? data.runtimeBankedFocusSecs.value
+          : this.runtimeBankedFocusSecs,
       linkedCanvasId: data.linkedCanvasId.present
           ? data.linkedCanvasId.value
           : this.linkedCanvasId,
@@ -5551,6 +5807,12 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
           ..write('flowBreakRatio: $flowBreakRatio, ')
           ..write('cyclesCompleted: $cyclesCompleted, ')
           ..write('status: $status, ')
+          ..write('runtimeStatus: $runtimeStatus, ')
+          ..write('runtimePhase: $runtimePhase, ')
+          ..write('runtimePhaseStartedAt: $runtimePhaseStartedAt, ')
+          ..write('runtimeCarriedPhaseSecs: $runtimeCarriedPhaseSecs, ')
+          ..write('runtimePhaseTargetSecs: $runtimePhaseTargetSecs, ')
+          ..write('runtimeBankedFocusSecs: $runtimeBankedFocusSecs, ')
           ..write('linkedCanvasId: $linkedCanvasId, ')
           ..write('notes: $notes')
           ..write(')'))
@@ -5558,7 +5820,7 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     startedAt,
     endedAt,
@@ -5573,9 +5835,15 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
     flowBreakRatio,
     cyclesCompleted,
     status,
+    runtimeStatus,
+    runtimePhase,
+    runtimePhaseStartedAt,
+    runtimeCarriedPhaseSecs,
+    runtimePhaseTargetSecs,
+    runtimeBankedFocusSecs,
     linkedCanvasId,
     notes,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5594,6 +5862,12 @@ class FocusSession extends DataClass implements Insertable<FocusSession> {
           other.flowBreakRatio == this.flowBreakRatio &&
           other.cyclesCompleted == this.cyclesCompleted &&
           other.status == this.status &&
+          other.runtimeStatus == this.runtimeStatus &&
+          other.runtimePhase == this.runtimePhase &&
+          other.runtimePhaseStartedAt == this.runtimePhaseStartedAt &&
+          other.runtimeCarriedPhaseSecs == this.runtimeCarriedPhaseSecs &&
+          other.runtimePhaseTargetSecs == this.runtimePhaseTargetSecs &&
+          other.runtimeBankedFocusSecs == this.runtimeBankedFocusSecs &&
           other.linkedCanvasId == this.linkedCanvasId &&
           other.notes == this.notes);
 }
@@ -5613,6 +5887,12 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
   final Value<double?> flowBreakRatio;
   final Value<int> cyclesCompleted;
   final Value<FocusSessionStatus> status;
+  final Value<int?> runtimeStatus;
+  final Value<int?> runtimePhase;
+  final Value<DateTime?> runtimePhaseStartedAt;
+  final Value<int> runtimeCarriedPhaseSecs;
+  final Value<int?> runtimePhaseTargetSecs;
+  final Value<int> runtimeBankedFocusSecs;
   final Value<String?> linkedCanvasId;
   final Value<String?> notes;
   final Value<int> rowid;
@@ -5631,6 +5911,12 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
     this.flowBreakRatio = const Value.absent(),
     this.cyclesCompleted = const Value.absent(),
     this.status = const Value.absent(),
+    this.runtimeStatus = const Value.absent(),
+    this.runtimePhase = const Value.absent(),
+    this.runtimePhaseStartedAt = const Value.absent(),
+    this.runtimeCarriedPhaseSecs = const Value.absent(),
+    this.runtimePhaseTargetSecs = const Value.absent(),
+    this.runtimeBankedFocusSecs = const Value.absent(),
     this.linkedCanvasId = const Value.absent(),
     this.notes = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5650,6 +5936,12 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
     this.flowBreakRatio = const Value.absent(),
     this.cyclesCompleted = const Value.absent(),
     required FocusSessionStatus status,
+    this.runtimeStatus = const Value.absent(),
+    this.runtimePhase = const Value.absent(),
+    this.runtimePhaseStartedAt = const Value.absent(),
+    this.runtimeCarriedPhaseSecs = const Value.absent(),
+    this.runtimePhaseTargetSecs = const Value.absent(),
+    this.runtimeBankedFocusSecs = const Value.absent(),
     this.linkedCanvasId = const Value.absent(),
     this.notes = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5675,6 +5967,12 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
     Expression<double>? flowBreakRatio,
     Expression<int>? cyclesCompleted,
     Expression<int>? status,
+    Expression<int>? runtimeStatus,
+    Expression<int>? runtimePhase,
+    Expression<DateTime>? runtimePhaseStartedAt,
+    Expression<int>? runtimeCarriedPhaseSecs,
+    Expression<int>? runtimePhaseTargetSecs,
+    Expression<int>? runtimeBankedFocusSecs,
     Expression<String>? linkedCanvasId,
     Expression<String>? notes,
     Expression<int>? rowid,
@@ -5695,6 +5993,16 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
       if (flowBreakRatio != null) 'flow_break_ratio': flowBreakRatio,
       if (cyclesCompleted != null) 'cycles_completed': cyclesCompleted,
       if (status != null) 'status': status,
+      if (runtimeStatus != null) 'runtime_status': runtimeStatus,
+      if (runtimePhase != null) 'runtime_phase': runtimePhase,
+      if (runtimePhaseStartedAt != null)
+        'runtime_phase_started_at': runtimePhaseStartedAt,
+      if (runtimeCarriedPhaseSecs != null)
+        'runtime_carried_phase_secs': runtimeCarriedPhaseSecs,
+      if (runtimePhaseTargetSecs != null)
+        'runtime_phase_target_secs': runtimePhaseTargetSecs,
+      if (runtimeBankedFocusSecs != null)
+        'runtime_banked_focus_secs': runtimeBankedFocusSecs,
       if (linkedCanvasId != null) 'linked_canvas_id': linkedCanvasId,
       if (notes != null) 'notes': notes,
       if (rowid != null) 'rowid': rowid,
@@ -5716,6 +6024,12 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
     Value<double?>? flowBreakRatio,
     Value<int>? cyclesCompleted,
     Value<FocusSessionStatus>? status,
+    Value<int?>? runtimeStatus,
+    Value<int?>? runtimePhase,
+    Value<DateTime?>? runtimePhaseStartedAt,
+    Value<int>? runtimeCarriedPhaseSecs,
+    Value<int?>? runtimePhaseTargetSecs,
+    Value<int>? runtimeBankedFocusSecs,
     Value<String?>? linkedCanvasId,
     Value<String?>? notes,
     Value<int>? rowid,
@@ -5735,6 +6049,16 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
       flowBreakRatio: flowBreakRatio ?? this.flowBreakRatio,
       cyclesCompleted: cyclesCompleted ?? this.cyclesCompleted,
       status: status ?? this.status,
+      runtimeStatus: runtimeStatus ?? this.runtimeStatus,
+      runtimePhase: runtimePhase ?? this.runtimePhase,
+      runtimePhaseStartedAt:
+          runtimePhaseStartedAt ?? this.runtimePhaseStartedAt,
+      runtimeCarriedPhaseSecs:
+          runtimeCarriedPhaseSecs ?? this.runtimeCarriedPhaseSecs,
+      runtimePhaseTargetSecs:
+          runtimePhaseTargetSecs ?? this.runtimePhaseTargetSecs,
+      runtimeBankedFocusSecs:
+          runtimeBankedFocusSecs ?? this.runtimeBankedFocusSecs,
       linkedCanvasId: linkedCanvasId ?? this.linkedCanvasId,
       notes: notes ?? this.notes,
       rowid: rowid ?? this.rowid,
@@ -5790,6 +6114,32 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
         $FocusSessionsTable.$converterstatus.toSql(status.value),
       );
     }
+    if (runtimeStatus.present) {
+      map['runtime_status'] = Variable<int>(runtimeStatus.value);
+    }
+    if (runtimePhase.present) {
+      map['runtime_phase'] = Variable<int>(runtimePhase.value);
+    }
+    if (runtimePhaseStartedAt.present) {
+      map['runtime_phase_started_at'] = Variable<DateTime>(
+        runtimePhaseStartedAt.value,
+      );
+    }
+    if (runtimeCarriedPhaseSecs.present) {
+      map['runtime_carried_phase_secs'] = Variable<int>(
+        runtimeCarriedPhaseSecs.value,
+      );
+    }
+    if (runtimePhaseTargetSecs.present) {
+      map['runtime_phase_target_secs'] = Variable<int>(
+        runtimePhaseTargetSecs.value,
+      );
+    }
+    if (runtimeBankedFocusSecs.present) {
+      map['runtime_banked_focus_secs'] = Variable<int>(
+        runtimeBankedFocusSecs.value,
+      );
+    }
     if (linkedCanvasId.present) {
       map['linked_canvas_id'] = Variable<String>(linkedCanvasId.value);
     }
@@ -5819,6 +6169,12 @@ class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
           ..write('flowBreakRatio: $flowBreakRatio, ')
           ..write('cyclesCompleted: $cyclesCompleted, ')
           ..write('status: $status, ')
+          ..write('runtimeStatus: $runtimeStatus, ')
+          ..write('runtimePhase: $runtimePhase, ')
+          ..write('runtimePhaseStartedAt: $runtimePhaseStartedAt, ')
+          ..write('runtimeCarriedPhaseSecs: $runtimeCarriedPhaseSecs, ')
+          ..write('runtimePhaseTargetSecs: $runtimePhaseTargetSecs, ')
+          ..write('runtimeBankedFocusSecs: $runtimeBankedFocusSecs, ')
           ..write('linkedCanvasId: $linkedCanvasId, ')
           ..write('notes: $notes, ')
           ..write('rowid: $rowid')
@@ -14689,6 +15045,12 @@ typedef $$FocusSessionsTableCreateCompanionBuilder =
       Value<double?> flowBreakRatio,
       Value<int> cyclesCompleted,
       required FocusSessionStatus status,
+      Value<int?> runtimeStatus,
+      Value<int?> runtimePhase,
+      Value<DateTime?> runtimePhaseStartedAt,
+      Value<int> runtimeCarriedPhaseSecs,
+      Value<int?> runtimePhaseTargetSecs,
+      Value<int> runtimeBankedFocusSecs,
       Value<String?> linkedCanvasId,
       Value<String?> notes,
       Value<int> rowid,
@@ -14709,6 +15071,12 @@ typedef $$FocusSessionsTableUpdateCompanionBuilder =
       Value<double?> flowBreakRatio,
       Value<int> cyclesCompleted,
       Value<FocusSessionStatus> status,
+      Value<int?> runtimeStatus,
+      Value<int?> runtimePhase,
+      Value<DateTime?> runtimePhaseStartedAt,
+      Value<int> runtimeCarriedPhaseSecs,
+      Value<int?> runtimePhaseTargetSecs,
+      Value<int> runtimeBankedFocusSecs,
       Value<String?> linkedCanvasId,
       Value<String?> notes,
       Value<int> rowid,
@@ -14872,6 +15240,36 @@ class $$FocusSessionsTableFilterComposer
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
+  ColumnFilters<int> get runtimeStatus => $composableBuilder(
+    column: $table.runtimeStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get runtimePhase => $composableBuilder(
+    column: $table.runtimePhase,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get runtimePhaseStartedAt => $composableBuilder(
+    column: $table.runtimePhaseStartedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get runtimeCarriedPhaseSecs => $composableBuilder(
+    column: $table.runtimeCarriedPhaseSecs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get runtimePhaseTargetSecs => $composableBuilder(
+    column: $table.runtimePhaseTargetSecs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get runtimeBankedFocusSecs => $composableBuilder(
+    column: $table.runtimeBankedFocusSecs,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnFilters(column),
@@ -15032,6 +15430,36 @@ class $$FocusSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get runtimeStatus => $composableBuilder(
+    column: $table.runtimeStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get runtimePhase => $composableBuilder(
+    column: $table.runtimePhase,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get runtimePhaseStartedAt => $composableBuilder(
+    column: $table.runtimePhaseStartedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get runtimeCarriedPhaseSecs => $composableBuilder(
+    column: $table.runtimeCarriedPhaseSecs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get runtimePhaseTargetSecs => $composableBuilder(
+    column: $table.runtimePhaseTargetSecs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get runtimeBankedFocusSecs => $composableBuilder(
+    column: $table.runtimeBankedFocusSecs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
@@ -15125,6 +15553,36 @@ class $$FocusSessionsTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<FocusSessionStatus, int> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get runtimeStatus => $composableBuilder(
+    column: $table.runtimeStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get runtimePhase => $composableBuilder(
+    column: $table.runtimePhase,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get runtimePhaseStartedAt => $composableBuilder(
+    column: $table.runtimePhaseStartedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get runtimeCarriedPhaseSecs => $composableBuilder(
+    column: $table.runtimeCarriedPhaseSecs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get runtimePhaseTargetSecs => $composableBuilder(
+    column: $table.runtimePhaseTargetSecs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get runtimeBankedFocusSecs => $composableBuilder(
+    column: $table.runtimeBankedFocusSecs,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
@@ -15253,6 +15711,12 @@ class $$FocusSessionsTableTableManager
                 Value<double?> flowBreakRatio = const Value.absent(),
                 Value<int> cyclesCompleted = const Value.absent(),
                 Value<FocusSessionStatus> status = const Value.absent(),
+                Value<int?> runtimeStatus = const Value.absent(),
+                Value<int?> runtimePhase = const Value.absent(),
+                Value<DateTime?> runtimePhaseStartedAt = const Value.absent(),
+                Value<int> runtimeCarriedPhaseSecs = const Value.absent(),
+                Value<int?> runtimePhaseTargetSecs = const Value.absent(),
+                Value<int> runtimeBankedFocusSecs = const Value.absent(),
                 Value<String?> linkedCanvasId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -15271,6 +15735,12 @@ class $$FocusSessionsTableTableManager
                 flowBreakRatio: flowBreakRatio,
                 cyclesCompleted: cyclesCompleted,
                 status: status,
+                runtimeStatus: runtimeStatus,
+                runtimePhase: runtimePhase,
+                runtimePhaseStartedAt: runtimePhaseStartedAt,
+                runtimeCarriedPhaseSecs: runtimeCarriedPhaseSecs,
+                runtimePhaseTargetSecs: runtimePhaseTargetSecs,
+                runtimeBankedFocusSecs: runtimeBankedFocusSecs,
                 linkedCanvasId: linkedCanvasId,
                 notes: notes,
                 rowid: rowid,
@@ -15291,6 +15761,12 @@ class $$FocusSessionsTableTableManager
                 Value<double?> flowBreakRatio = const Value.absent(),
                 Value<int> cyclesCompleted = const Value.absent(),
                 required FocusSessionStatus status,
+                Value<int?> runtimeStatus = const Value.absent(),
+                Value<int?> runtimePhase = const Value.absent(),
+                Value<DateTime?> runtimePhaseStartedAt = const Value.absent(),
+                Value<int> runtimeCarriedPhaseSecs = const Value.absent(),
+                Value<int?> runtimePhaseTargetSecs = const Value.absent(),
+                Value<int> runtimeBankedFocusSecs = const Value.absent(),
                 Value<String?> linkedCanvasId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -15309,6 +15785,12 @@ class $$FocusSessionsTableTableManager
                 flowBreakRatio: flowBreakRatio,
                 cyclesCompleted: cyclesCompleted,
                 status: status,
+                runtimeStatus: runtimeStatus,
+                runtimePhase: runtimePhase,
+                runtimePhaseStartedAt: runtimePhaseStartedAt,
+                runtimeCarriedPhaseSecs: runtimeCarriedPhaseSecs,
+                runtimePhaseTargetSecs: runtimePhaseTargetSecs,
+                runtimeBankedFocusSecs: runtimeBankedFocusSecs,
                 linkedCanvasId: linkedCanvasId,
                 notes: notes,
                 rowid: rowid,

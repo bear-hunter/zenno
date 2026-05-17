@@ -19,10 +19,8 @@ Future<void> openReflectionEditor(
 }) {
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => ReflectionEditorPage(
-        cardId: cardId,
-        existingEntry: existingEntry,
-      ),
+      builder: (_) =>
+          ReflectionEditorPage(cardId: cardId, existingEntry: existingEntry),
     ),
   );
 }
@@ -54,8 +52,7 @@ class ReflectionEditorPage extends ConsumerStatefulWidget {
       _ReflectionEditorPageState();
 }
 
-class _ReflectionEditorPageState
-    extends ConsumerState<ReflectionEditorPage> {
+class _ReflectionEditorPageState extends ConsumerState<ReflectionEditorPage> {
   /// The template chosen for a new reflection. Always `null` when editing
   /// (the snapshot is used instead).
   ReflectionTemplateView? _selectedTemplate;
@@ -187,16 +184,10 @@ class _SnapshotHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.menu_book_outlined,
-            color: theme.colorScheme.primary,
-          ),
+          Icon(Icons.menu_book_outlined, color: theme.colorScheme.primary),
           const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Text(
-              'Framework: $name',
-              style: theme.textTheme.titleSmall,
-            ),
+            child: Text('Framework: $name', style: theme.textTheme.titleSmall),
           ),
         ],
       ),
@@ -262,9 +253,7 @@ class _TemplatePicker extends ConsumerWidget {
                   onChanged(null);
                   return;
                 }
-                onChanged(
-                  templates.firstWhere((t) => t.id == id),
-                );
+                onChanged(templates.firstWhere((t) => t.id == id));
               },
             ),
           ],

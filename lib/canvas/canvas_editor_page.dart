@@ -1,6 +1,11 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
@@ -86,6 +91,7 @@ class CanvasEditorPage extends ConsumerStatefulWidget {
 
 class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
   late final CanvasController _controller;
+  final GlobalKey _thumbnailKey = GlobalKey();
 
   /// Whether the one-shot "fly to the arrival viewport" has already run.
   bool _appliedInitialViewport = false;
@@ -133,8 +139,67 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
     // Persist any debounced/in-flight writes before the controller goes away,
     // so a canvas closed straight after a pan still saves its final state.
     final CanvasController controller = _controller;
-    controller.flush().whenComplete(controller.dispose);
+    _captureThumbnail().whenComplete(() {
+      controller.flush().whenComplete(controller.dispose);
+    });
     super.dispose();
+  }
+
+  Future<void> _captureThumbnail() async {
+    try {
+      final context = _thumbnailKey.currentContext;
+      final boundary = context?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 0.35);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null) return;
+
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/thumbnails');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final file = File('${dir.path}/${widget.canvasId}.png');
+      await file.writeAsBytes(bytes, flush: true);
+      await ref
+          .read(canvasRepositoryProvider)
+          .updateThumbnailPath(widget.canvasId, file.path);
+    } catch (_) {
+      // Best-effort preview generation; content persistence is handled by the
+      // controller's explicit save-error path.
+    }
+  }
+
+  Future<void> _handleBack() async {
+    await _controller.flush();
+    if (!mounted) return;
+    if (_controller.hasSaveError) {
+      final leave = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Canvas not saved'),
+          content: const Text(
+            'Some changes could not be saved yet. Leave this canvas anyway?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Stay'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Leave'),
+            ),
+          ],
+        ),
+      );
+      if (leave != true) return;
+    }
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   /// The [ViewportState] passed as this route's `extra`, or `null`.
@@ -174,21 +239,16 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
   /// action returns here.
   void _onFollowLink(LinkElement link) {
     final ViewportState? target = link.target.targetViewport;
-    context.push(
-      '/canvas/${link.target.targetCanvasId}',
-      extra: target,
-    );
+    context.push('/canvas/${link.target.targetCanvasId}', extra: target);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(onPressed: () => Navigator.of(context).pop()),
+        leading: BackButton(onPressed: _handleBack),
         title: const Text('Canvas'),
-        actions: [
-          CanvasBookmarksMenu(controller: _controller),
-        ],
+        actions: [CanvasBookmarksMenu(controller: _controller)],
       ),
       // Watch the controller so the body swaps from the loading spinner to the
       // canvas the moment `load` finishes hydrating it.
@@ -200,12 +260,30 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
           }
           return Column(
             children: [
+              if (_controller.hasSaveError)
+                MaterialBanner(
+                  content: const Text('Canvas not saved'),
+                  leading: const Icon(Icons.cloud_off_outlined),
+                  actions: [
+                    TextButton(
+                      onPressed: _controller.retryFailedWrites,
+                      child: const Text('Retry'),
+                    ),
+                    TextButton(
+                      onPressed: _controller.dismissSaveError,
+                      child: const Text('Dismiss'),
+                    ),
+                  ],
+                ),
               CanvasToolbar(controller: _controller),
               Expanded(
-                child: CanvasView(
-                  controller: _controller,
-                  onPlaceLink: _onPlaceLink,
-                  onFollowLink: _onFollowLink,
+                child: RepaintBoundary(
+                  key: _thumbnailKey,
+                  child: CanvasView(
+                    controller: _controller,
+                    onPlaceLink: _onPlaceLink,
+                    onFollowLink: _onFollowLink,
+                  ),
                 ),
               ),
             ],

@@ -61,8 +61,21 @@ class FocusSessions extends Table {
   IntColumn get cyclesCompleted => integer().withDefault(const Constant(0))();
   IntColumn get status => intEnum<FocusSessionStatus>()();
 
-  TextColumn get linkedCanvasId =>
-      text().nullable().references(Canvases, #id, onDelete: KeyAction.cascade)();
+  /// Restorable runtime status from the live timer engine.
+  IntColumn get runtimeStatus => integer().nullable()();
+  IntColumn get runtimePhase => integer().nullable()();
+  DateTimeColumn get runtimePhaseStartedAt => dateTime().nullable()();
+  IntColumn get runtimeCarriedPhaseSecs =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get runtimePhaseTargetSecs => integer().nullable()();
+  IntColumn get runtimeBankedFocusSecs =>
+      integer().withDefault(const Constant(0))();
+
+  TextColumn get linkedCanvasId => text().nullable().references(
+    Canvases,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
   TextColumn get notes => text().nullable()();
 
   @override
@@ -75,9 +88,11 @@ class FocusSessionRitualChecks extends Table {
   TextColumn get id => text()();
   TextColumn get sessionId =>
       text().references(FocusSessions, #id, onDelete: KeyAction.cascade)();
-  TextColumn get itemId => text()
-      .nullable()
-      .references(RitualChecklistItems, #id, onDelete: KeyAction.cascade)();
+  TextColumn get itemId => text().nullable().references(
+    RitualChecklistItems,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
 
   /// The item label as it read when the session started.
   TextColumn get itemLabelSnapshot => text()();

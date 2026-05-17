@@ -57,6 +57,5 @@ class LiveStrokePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(LiveStrokePainter oldDelegate) =>
-      oldDelegate.liveStroke != liveStroke ||
-      oldDelegate.viewport != viewport;
+      oldDelegate.liveStroke != liveStroke || oldDelegate.viewport != viewport;
 }

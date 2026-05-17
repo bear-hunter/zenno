@@ -84,14 +84,15 @@ class RemoveElementsCommand extends CanvasCommand {
   /// The list is copied defensively so later mutation of the caller's list
   /// cannot corrupt this command's undo data.
   RemoveElementsCommand(Iterable<CanvasElement> elements)
-      : elements = List<CanvasElement>.unmodifiable(elements);
+    : elements = List<CanvasElement>.unmodifiable(elements);
 
   /// The elements this command removes, in their original order.
   final List<CanvasElement> elements;
 
   @override
-  String get label =>
-      elements.length == 1 ? 'Remove element' : 'Remove ${elements.length} elements';
+  String get label => elements.length == 1
+      ? 'Remove element'
+      : 'Remove ${elements.length} elements';
 
   @override
   void apply(ElementStore store) {
@@ -129,8 +130,8 @@ class ReplaceElementsCommand extends CanvasCommand {
   ReplaceElementsCommand({
     required Iterable<CanvasElement> removed,
     required Iterable<CanvasElement> added,
-  })  : removed = List<CanvasElement>.unmodifiable(removed),
-        added = List<CanvasElement>.unmodifiable(added);
+  }) : removed = List<CanvasElement>.unmodifiable(removed),
+       added = List<CanvasElement>.unmodifiable(added);
 
   /// The elements this command removes (and a [revert] re-inserts).
   final List<CanvasElement> removed;
@@ -182,8 +183,8 @@ class MoveElementsCommand extends CanvasCommand {
     required Iterable<CanvasElement> originals,
     required Iterable<CanvasElement> moved,
     required this.delta,
-  })  : originals = List<CanvasElement>.unmodifiable(originals),
-        moved = List<CanvasElement>.unmodifiable(moved);
+  }) : originals = List<CanvasElement>.unmodifiable(originals),
+       moved = List<CanvasElement>.unmodifiable(moved);
 
   /// The elements as they were before the move.
   final List<CanvasElement> originals;
@@ -195,9 +196,8 @@ class MoveElementsCommand extends CanvasCommand {
   final Offset delta;
 
   @override
-  String get label => moved.length == 1
-      ? 'Move element'
-      : 'Move ${moved.length} elements';
+  String get label =>
+      moved.length == 1 ? 'Move element' : 'Move ${moved.length} elements';
 
   @override
   void apply(ElementStore store) {

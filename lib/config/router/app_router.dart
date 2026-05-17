@@ -12,8 +12,9 @@ import 'package:zenno/features/settings/presentation/pages/settings_page.dart';
 
 /// Navigator key for the root navigator. The full-bleed canvas route is pushed
 /// onto this navigator so it sits above the shell rather than inside a branch.
-final GlobalKey<NavigatorState> _rootNavigatorKey =
-    GlobalKey<NavigatorState>(debugLabel: 'root');
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'root',
+);
 
 /// The application router.
 ///

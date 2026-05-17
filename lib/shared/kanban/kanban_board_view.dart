@@ -158,10 +158,7 @@ class _AddColumnButton extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.add,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              Icon(Icons.add, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(height: AppSpacing.xs),
               Text(
                 'Add column',
@@ -184,9 +181,7 @@ class _AddColumnButton extends StatelessWidget {
     );
     if (name != null) {
       // New columns land at the end of the board.
-      final last = board.columns.isEmpty
-          ? null
-          : board.columns.last.position;
+      final last = board.columns.isEmpty ? null : board.columns.last.position;
       await controller.addColumn(
         name: name,
         position: KanbanPositions.between(last, null),

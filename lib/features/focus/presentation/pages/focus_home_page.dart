@@ -40,9 +40,7 @@ class FocusHomePage extends ConsumerWidget {
             tooltip: 'History',
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const FocusHistoryPage(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const FocusHistoryPage()),
             ),
           ),
         ],
@@ -57,9 +55,7 @@ class FocusHomePage extends ConsumerWidget {
               padding: const EdgeInsets.all(AppSpacing.xl),
               children: [
                 if (active.hasSession)
-                  _ResumeBanner(
-                    onTap: () => _openActive(context),
-                  )
+                  _ResumeBanner(onTap: () => _openActive(context))
                 else
                   _StartCard(onTap: () => _openSetup(context)),
                 const SizedBox(height: AppSpacing.xl),
@@ -113,16 +109,16 @@ class FocusHomePage extends ConsumerWidget {
 
   /// Pushes the Setup screen.
   void _openSetup(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const FocusSetupPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const FocusSetupPage()));
   }
 
   /// Pushes the Active screen for the session already running.
   void _openActive(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const FocusActivePage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const FocusActivePage()));
   }
 }
 
@@ -147,9 +143,7 @@ class _StartCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.xl),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: colors.primary.withValues(alpha: 0.4),
-            ),
+            border: Border.all(color: colors.primary.withValues(alpha: 0.4)),
           ),
           child: Row(
             children: [
@@ -217,11 +211,7 @@ class _ResumeBanner extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.timelapse,
-                color: AppColors.flagGreen,
-                size: 32,
-              ),
+              const Icon(Icons.timelapse, color: AppColors.flagGreen, size: 32),
               const SizedBox(width: AppSpacing.lg),
               Expanded(
                 child: Column(
@@ -277,10 +267,7 @@ class _StatsSummary extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _MiniStat(
-            label: 'Sessions',
-            value: '${stats.completedSessions}',
-          ),
+          _MiniStat(label: 'Sessions', value: '${stats.completedSessions}'),
           _Separator(color: colors.outlineVariant),
           _MiniStat(label: 'Total focus', value: focusText),
           _Separator(color: colors.outlineVariant),

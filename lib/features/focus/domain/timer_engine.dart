@@ -111,6 +111,28 @@ class TimerSnapshot {
       status == TimerStatus.finished || status == TimerStatus.abandoned;
 }
 
+/// Durable runtime state for restoring a live [TimerEngine].
+class TimerEngineRuntimeSnapshot {
+  /// Creates a runtime snapshot.
+  const TimerEngineRuntimeSnapshot({
+    required this.status,
+    required this.phase,
+    required this.phaseStartedAt,
+    required this.carried,
+    required this.phaseTarget,
+    required this.bankedFocus,
+    required this.cyclesCompleted,
+  });
+
+  final TimerStatus status;
+  final TimerPhase phase;
+  final DateTime? phaseStartedAt;
+  final Duration carried;
+  final Duration? phaseTarget;
+  final Duration bankedFocus;
+  final int cyclesCompleted;
+}
+
 /// A wall-clock-correct focus-session timer state machine.
 ///
 /// ## Why wall-clock
@@ -161,15 +183,39 @@ class TimerEngine {
        _flowBreakRatio = flowBreakRatio,
        _flowBreakMin = flowBreakMin,
        _flowBreakMax = flowBreakMax,
-       assert(
-         pomodoroWork > Duration.zero,
-         'pomodoroWork must be positive',
-       ),
-       assert(
-         pomodoroBreak > Duration.zero,
-         'pomodoroBreak must be positive',
-       ),
+       assert(pomodoroWork > Duration.zero, 'pomodoroWork must be positive'),
+       assert(pomodoroBreak > Duration.zero, 'pomodoroBreak must be positive'),
        assert(flowBreakRatio >= 0, 'flowBreakRatio must be non-negative');
+
+  /// Restores an engine from a persisted [runtime] snapshot.
+  TimerEngine.fromRuntime({
+    required this.mode,
+    required TimerEngineRuntimeSnapshot runtime,
+    DateTime Function() clock = DateTime.now,
+    Duration pomodoroWork = const Duration(minutes: 25),
+    Duration pomodoroBreak = const Duration(minutes: 5),
+    double flowBreakRatio = 0.2,
+    Duration flowBreakMin = const Duration(minutes: 2),
+    Duration flowBreakMax = const Duration(minutes: 30),
+  }) : _clock = clock,
+       _pomodoroWork = pomodoroWork,
+       _pomodoroBreak = pomodoroBreak,
+       _flowBreakRatio = flowBreakRatio,
+       _flowBreakMin = flowBreakMin,
+       _flowBreakMax = flowBreakMax,
+       assert(pomodoroWork > Duration.zero, 'pomodoroWork must be positive'),
+       assert(pomodoroBreak > Duration.zero, 'pomodoroBreak must be positive'),
+       assert(flowBreakRatio >= 0, 'flowBreakRatio must be non-negative') {
+    _status = runtime.status;
+    _phase = runtime.phase;
+    _phaseStartedAt = runtime.status == TimerStatus.running
+        ? runtime.phaseStartedAt ?? _clock()
+        : null;
+    _carried = runtime.carried;
+    _phaseTarget = runtime.phaseTarget;
+    _bankedFocus = runtime.bankedFocus;
+    _cyclesCompleted = runtime.cyclesCompleted;
+  }
 
   /// The timing model this engine runs.
   final TimerMode mode;
@@ -278,6 +324,17 @@ class TimerEngine {
     target: _phaseTarget,
     cyclesCompleted: _cyclesCompleted,
     accumulatedFocus: accumulatedFocus,
+  );
+
+  /// Plain runtime state suitable for DB persistence.
+  TimerEngineRuntimeSnapshot get runtimeSnapshot => TimerEngineRuntimeSnapshot(
+    status: _status,
+    phase: _phase,
+    phaseStartedAt: _phaseStartedAt,
+    carried: _carried,
+    phaseTarget: _phaseTarget,
+    bankedFocus: _bankedFocus,
+    cyclesCompleted: _cyclesCompleted,
   );
 
   // ---------------------------------------------------------------------------
@@ -405,8 +462,7 @@ class TimerEngine {
   /// to [TimerStatus.finished], so a session finished mid-work still records
   /// that focus. No-op once the session is already over.
   void finish() {
-    if (_status == TimerStatus.finished ||
-        _status == TimerStatus.abandoned) {
+    if (_status == TimerStatus.finished || _status == TimerStatus.abandoned) {
       return;
     }
     _bankFinalPhase();
@@ -421,8 +477,7 @@ class TimerEngine {
   /// session does not erase the focus actually done — then moves to
   /// [TimerStatus.abandoned]. No-op once the session is already over.
   void abandon() {
-    if (_status == TimerStatus.finished ||
-        _status == TimerStatus.abandoned) {
+    if (_status == TimerStatus.finished || _status == TimerStatus.abandoned) {
       return;
     }
     _bankFinalPhase();

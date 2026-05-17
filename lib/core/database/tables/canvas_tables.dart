@@ -23,8 +23,11 @@ class Canvases extends Table {
   DateTimeColumn get lastOpenedAt => dateTime().nullable()();
   TextColumn get thumbnailPath => text().nullable()();
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
-  TextColumn get folderId =>
-      text().nullable().references(CanvasFolders, #id, onDelete: KeyAction.cascade)();
+  TextColumn get folderId => text().nullable().references(
+    CanvasFolders,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
 
   /// Viewport rebasing anchor — keeps active world coordinates small.
   RealColumn get worldOriginX => real().withDefault(const Constant(0))();
@@ -103,7 +106,8 @@ class InkStrokes extends Table {
   /// Logical stroke width.
   RealColumn get strokeWidth => real()();
   IntColumn get tool => intEnum<StrokeTool>()();
-  BoolColumn get isHighlighter => boolean().withDefault(const Constant(false))();
+  BoolColumn get isHighlighter =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {elementId};

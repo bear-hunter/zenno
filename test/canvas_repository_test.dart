@@ -90,12 +90,18 @@ void main() {
       expect(ink.stroke.tool, StrokeToolKind.highlighter);
       expect(ink.stroke.points, hasLength(3));
       for (var i = 0; i < stroke.points.length; i++) {
-        expect(ink.stroke.points[i].x,
-            closeTo(stroke.points[i].x, _f32Tolerance));
-        expect(ink.stroke.points[i].y,
-            closeTo(stroke.points[i].y, _f32Tolerance));
-        expect(ink.stroke.points[i].pressure,
-            closeTo(stroke.points[i].pressure, _f32Tolerance));
+        expect(
+          ink.stroke.points[i].x,
+          closeTo(stroke.points[i].x, _f32Tolerance),
+        );
+        expect(
+          ink.stroke.points[i].y,
+          closeTo(stroke.points[i].y, _f32Tolerance),
+        );
+        expect(
+          ink.stroke.points[i].pressure,
+          closeTo(stroke.points[i].pressure, _f32Tolerance),
+        );
       }
     });
   });
@@ -156,54 +162,58 @@ void main() {
   });
 
   group('link element round-trip', () {
-    test('a plain canvas link round-trips with a null target viewport',
-        () async {
-      const original = LinkElement(
-        id: 'link-1',
-        zIndex: 2,
-        worldBounds: Rect.fromLTWH(50, 60, 220, 56),
-        label: 'See the diagram',
-        target: LinkTarget(targetCanvasId: 'other-canvas'),
-      );
+    test(
+      'a plain canvas link round-trips with a null target viewport',
+      () async {
+        const original = LinkElement(
+          id: 'link-1',
+          zIndex: 2,
+          worldBounds: Rect.fromLTWH(50, 60, 220, 56),
+          label: 'See the diagram',
+          target: LinkTarget(targetCanvasId: 'other-canvas'),
+        );
 
-      await repo.upsertElement(canvasId, original);
-      final List<CanvasElement> loaded = await repo.loadElements(canvasId);
+        await repo.upsertElement(canvasId, original);
+        final List<CanvasElement> loaded = await repo.loadElements(canvasId);
 
-      expect(loaded, hasLength(1));
-      final LinkElement link = loaded.single as LinkElement;
-      expect(link.id, 'link-1');
-      expect(link.zIndex, 2);
-      expect(link.worldBounds, const Rect.fromLTWH(50, 60, 220, 56));
-      expect(link.label, 'See the diagram');
-      expect(link.target.targetCanvasId, 'other-canvas');
-      expect(link.target.targetViewport, isNull);
-    });
+        expect(loaded, hasLength(1));
+        final LinkElement link = loaded.single as LinkElement;
+        expect(link.id, 'link-1');
+        expect(link.zIndex, 2);
+        expect(link.worldBounds, const Rect.fromLTWH(50, 60, 220, 56));
+        expect(link.label, 'See the diagram');
+        expect(link.target.targetCanvasId, 'other-canvas');
+        expect(link.target.targetViewport, isNull);
+      },
+    );
 
-    test('a region link round-trips its full target viewport losslessly',
-        () async {
-      const ViewportState targetVp = ViewportState(
-        translation: Offset(-12.5, 99.75),
-        scale: 3.25,
-        rotation: 1.5707963267948966,
-      );
-      const original = LinkElement(
-        id: 'link-region',
-        zIndex: 9,
-        worldBounds: Rect.fromLTWH(0, 0, 220, 56),
-        label: 'Jump to region',
-        target: LinkTarget(
-          targetCanvasId: 'canvas-under-test',
-          targetViewport: targetVp,
-        ),
-      );
+    test(
+      'a region link round-trips its full target viewport losslessly',
+      () async {
+        const ViewportState targetVp = ViewportState(
+          translation: Offset(-12.5, 99.75),
+          scale: 3.25,
+          rotation: 1.5707963267948966,
+        );
+        const original = LinkElement(
+          id: 'link-region',
+          zIndex: 9,
+          worldBounds: Rect.fromLTWH(0, 0, 220, 56),
+          label: 'Jump to region',
+          target: LinkTarget(
+            targetCanvasId: 'canvas-under-test',
+            targetViewport: targetVp,
+          ),
+        );
 
-      await repo.upsertElement(canvasId, original);
-      final List<CanvasElement> loaded = await repo.loadElements(canvasId);
+        await repo.upsertElement(canvasId, original);
+        final List<CanvasElement> loaded = await repo.loadElements(canvasId);
 
-      final LinkElement link = loaded.single as LinkElement;
-      expect(link.target.targetCanvasId, 'canvas-under-test');
-      expect(link.target.targetViewport, targetVp);
-    });
+        final LinkElement link = loaded.single as LinkElement;
+        expect(link.target.targetCanvasId, 'canvas-under-test');
+        expect(link.target.targetViewport, targetVp);
+      },
+    );
   });
 
   group('mixed canvas', () {
@@ -250,8 +260,12 @@ void main() {
 
       expect(loaded, hasLength(4));
       // Loaded ordered by z_index ascending.
-      expect(loaded.map((e) => e.id).toList(),
-          <String>['e-ink', 'e-img', 'e-pdf', 'e-link']);
+      expect(loaded.map((e) => e.id).toList(), <String>[
+        'e-ink',
+        'e-img',
+        'e-pdf',
+        'e-link',
+      ]);
       expect(loaded[0], isA<InkElement>());
       expect(loaded[1], isA<ImageElement>());
       expect(loaded[2], isA<PdfElement>());
@@ -259,8 +273,10 @@ void main() {
     });
 
     test('a viewport and elements persist together on one canvas', () async {
-      const ViewportState vp =
-          ViewportState(translation: Offset(1, 2), scale: 1.5);
+      const ViewportState vp = ViewportState(
+        translation: Offset(1, 2),
+        scale: 1.5,
+      );
       await repo.saveViewport(canvasId, vp);
       await repo.upsertElement(
         canvasId,

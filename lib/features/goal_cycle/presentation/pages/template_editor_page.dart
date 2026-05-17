@@ -24,8 +24,7 @@ class TemplateEditorPage extends ConsumerStatefulWidget {
   final String? templateId;
 
   @override
-  ConsumerState<TemplateEditorPage> createState() =>
-      _TemplateEditorPageState();
+  ConsumerState<TemplateEditorPage> createState() => _TemplateEditorPageState();
 }
 
 class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
@@ -208,9 +207,9 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -305,9 +304,8 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
                             onRemove: _prompts.length > 1
                                 ? () => _removePrompt(_prompts[i])
                                 : null,
-                            onMultilineChanged: (value) => setState(
-                              () => _prompts[i].multiline = value,
-                            ),
+                            onMultilineChanged: (value) =>
+                                setState(() => _prompts[i].multiline = value),
                           ),
                       ],
                     ),

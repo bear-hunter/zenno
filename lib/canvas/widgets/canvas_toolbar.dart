@@ -51,10 +51,7 @@ class CanvasToolbar extends StatelessWidget {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 6,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -127,8 +124,7 @@ class CanvasToolbar extends StatelessWidget {
         ),
       ],
       selected: <CanvasTool>{controller.activeTool},
-      onSelectionChanged: (selection) =>
-          controller.setTool(selection.first),
+      onSelectionChanged: (selection) => controller.setTool(selection.first),
     );
   }
 
@@ -165,8 +161,7 @@ class CanvasToolbar extends StatelessWidget {
         ),
       ],
       selected: <StrokeToolKind>{controller.penKind},
-      onSelectionChanged: (selection) =>
-          controller.setPenKind(selection.first),
+      onSelectionChanged: (selection) => controller.setPenKind(selection.first),
     );
   }
 
@@ -336,11 +331,7 @@ class CanvasToolbar extends StatelessWidget {
 
   /// A thin vertical rule separating toolbar groups.
   Widget _divider(ColorScheme colors) {
-    return Container(
-      width: 1,
-      height: 28,
-      color: colors.outlineVariant,
-    );
+    return Container(width: 1, height: 28, color: colors.outlineVariant);
   }
 
   /// Shared dense styling for the segmented toggles.

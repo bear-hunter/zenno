@@ -335,9 +335,7 @@ class _AddCardButton extends StatelessWidget {
     );
     if (title != null) {
       // New cards drop at the tail of the column.
-      final last = column.cards.isEmpty
-          ? null
-          : column.cards.last.position;
+      final last = column.cards.isEmpty ? null : column.cards.last.position;
       await controller.addCard(
         columnId: column.id,
         title: title,

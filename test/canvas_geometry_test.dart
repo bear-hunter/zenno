@@ -21,8 +21,9 @@ Stroke horizontalStroke(int count) {
 }
 
 /// The x coordinates of one stroke fragment, for compact assertions.
-List<double> xs(List<StrokePoint> fragment) =>
-    <double>[for (final StrokePoint p in fragment) p.x];
+List<double> xs(List<StrokePoint> fragment) => <double>[
+  for (final StrokePoint p in fragment) p.x,
+];
 
 void main() {
   group('CanvasGeometry.distanceToSegment', () {
@@ -81,21 +82,25 @@ void main() {
     ];
 
     test('a point inside the polygon is contained', () {
-      expect(CanvasGeometry.polygonContainsPoint(square, const Offset(5, 5)),
-          isTrue);
+      expect(
+        CanvasGeometry.polygonContainsPoint(square, const Offset(5, 5)),
+        isTrue,
+      );
     });
 
     test('a point outside the polygon is not contained', () {
-      expect(CanvasGeometry.polygonContainsPoint(square, const Offset(15, 5)),
-          isFalse);
+      expect(
+        CanvasGeometry.polygonContainsPoint(square, const Offset(15, 5)),
+        isFalse,
+      );
     });
 
     test('a degenerate polygon (< 3 vertices) contains nothing', () {
       expect(
-        CanvasGeometry.polygonContainsPoint(
-          <Offset>[const Offset(0, 0), const Offset(10, 0)],
-          const Offset(5, 0),
-        ),
+        CanvasGeometry.polygonContainsPoint(<Offset>[
+          const Offset(0, 0),
+          const Offset(10, 0),
+        ], const Offset(5, 0)),
         isFalse,
       );
     });
@@ -120,11 +125,11 @@ void main() {
       final Stroke stroke = horizontalStroke(10);
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        // Far below the stroke, well outside the radius.
-        eraserPath: const <Offset>[Offset(5, 100)],
-        radius: 1,
-      );
+            stroke: stroke,
+            // Far below the stroke, well outside the radius.
+            eraserPath: const <Offset>[Offset(5, 100)],
+            radius: 1,
+          );
       expect(fragments, hasLength(1));
       expect(fragments.single, hasLength(10));
       expect(xs(fragments.single), xs(stroke.points));
@@ -135,10 +140,10 @@ void main() {
       // A point eraser at x = 5 with radius 1.5 removes points x = 4, 5, 6.
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[Offset(5, 0)],
-        radius: 1.5,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[Offset(5, 0)],
+            radius: 1.5,
+          );
       expect(fragments, hasLength(2));
       expect(xs(fragments[0]), <double>[0, 1, 2, 3]);
       expect(xs(fragments[1]), <double>[7, 8, 9, 10]);
@@ -149,10 +154,10 @@ void main() {
       // A swept eraser path running the whole length, generous radius.
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[Offset(0, 0), Offset(5, 0)],
-        radius: 2,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[Offset(0, 0), Offset(5, 0)],
+            radius: 2,
+          );
       expect(fragments, isEmpty);
     });
 
@@ -162,10 +167,10 @@ void main() {
       // the stroke, so the entire span 4..16 (radius 1) is erased in one cut.
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[Offset(5, 0), Offset(15, 0)],
-        radius: 1,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[Offset(5, 0), Offset(15, 0)],
+            radius: 1,
+          );
       expect(fragments, hasLength(2));
       expect(xs(fragments[0]), <double>[0, 1, 2, 3]);
       expect(xs(fragments[1]), <double>[17, 18, 19, 20]);
@@ -177,10 +182,10 @@ void main() {
       final Stroke stroke = horizontalStroke(21); // x: 0..20
       final List<List<StrokePoint>> firstCut =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[Offset(5, 0)],
-        radius: 1,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[Offset(5, 0)],
+            radius: 1,
+          );
       // A point eraser at x=5 removes x=4,5,6 → survivors [0..3] and [7..20].
       expect(firstCut, hasLength(2));
       expect(xs(firstCut[0]), <double>[0, 1, 2, 3]);
@@ -188,10 +193,10 @@ void main() {
       // Erase the far survivor run again at x = 15 (removes x=14,15,16).
       final List<List<StrokePoint>> secondCut =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke.copyWith(points: firstCut[1]),
-        eraserPath: const <Offset>[Offset(15, 0)],
-        radius: 1,
-      );
+            stroke: stroke.copyWith(points: firstCut[1]),
+            eraserPath: const <Offset>[Offset(15, 0)],
+            radius: 1,
+          );
       expect(secondCut, hasLength(2)); // [7..13] and [17..20]
 
       // Net: three contiguous surviving runs; 6 of 21 points erased.
@@ -213,10 +218,10 @@ void main() {
       // x=1,2,3, leaving x=0 and x=4 as two lone surviving points.
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[Offset(1, 0), Offset(3, 0)],
-        radius: 0.9,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[Offset(1, 0), Offset(3, 0)],
+            radius: 0.9,
+          );
       expect(fragments, hasLength(2));
       expect(xs(fragments[0]), <double>[0]);
       expect(xs(fragments[1]), <double>[4]);
@@ -226,10 +231,10 @@ void main() {
       final Stroke stroke = horizontalStroke(4);
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[],
-        radius: 5,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[],
+            radius: 5,
+          );
       expect(fragments, hasLength(1));
       expect(xs(fragments.single), xs(stroke.points));
     });
@@ -237,15 +242,15 @@ void main() {
     test('an empty stroke yields no fragments', () {
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: const Stroke(
-          id: 'e',
-          points: <StrokePoint>[],
-          color: 0xFFFFFFFF,
-          width: 4,
-        ),
-        eraserPath: const <Offset>[Offset(0, 0)],
-        radius: 5,
-      );
+            stroke: const Stroke(
+              id: 'e',
+              points: <StrokePoint>[],
+              color: 0xFFFFFFFF,
+              width: 4,
+            ),
+            eraserPath: const <Offset>[Offset(0, 0)],
+            radius: 5,
+          );
       expect(fragments, isEmpty);
     });
 
@@ -264,10 +269,10 @@ void main() {
       // Erase the middle two points.
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: stroke,
-        eraserPath: const <Offset>[Offset(1.5, 0)],
-        radius: 0.9,
-      );
+            stroke: stroke,
+            eraserPath: const <Offset>[Offset(1.5, 0)],
+            radius: 0.9,
+          );
       expect(fragments, hasLength(2));
       expect(fragments[0].single.pressure, moreOrLessEquals(0.1));
       expect(fragments[1].single.pressure, moreOrLessEquals(0.4));

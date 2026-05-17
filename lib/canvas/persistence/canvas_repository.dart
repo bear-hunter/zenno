@@ -43,6 +43,18 @@ class CanvasRepository {
 
   final db.ZennoDatabase _db;
 
+  /// Updates the canvas thumbnail path after a snapshot is written.
+  Future<void> updateThumbnailPath(String canvasId, String path) {
+    return (_db.update(
+      _db.canvases,
+    )..where((c) => c.id.equals(canvasId))).write(
+      db.CanvasesCompanion(
+        thumbnailPath: Value(path),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Elements — read
   // ---------------------------------------------------------------------------
@@ -59,9 +71,7 @@ class CanvasRepository {
               ..where(
                 (e) => e.canvasId.equals(canvasId) & e.isDeleted.equals(false),
               )
-              ..orderBy([
-                (e) => OrderingTerm(expression: e.zIndex),
-              ]))
+              ..orderBy([(e) => OrderingTerm(expression: e.zIndex)]))
             .get();
 
     final List<CanvasElement> elements = <CanvasElement>[];
@@ -83,9 +93,9 @@ class CanvasRepository {
     final int zIndex = _zIndexFromColumn(row.zIndex);
     switch (row.kind) {
       case tables.ElementKind.stroke:
-        final db.InkStroke? detail = await (_db.select(_db.inkStrokes)
-              ..where((s) => s.elementId.equals(row.id)))
-            .getSingleOrNull();
+        final db.InkStroke? detail = await (_db.select(
+          _db.inkStrokes,
+        )..where((s) => s.elementId.equals(row.id))).getSingleOrNull();
         if (detail == null) {
           return null;
         }
@@ -102,9 +112,9 @@ class CanvasRepository {
           ),
         );
       case tables.ElementKind.image:
-        final db.Image? detail = await (_db.select(_db.images)
-              ..where((i) => i.elementId.equals(row.id)))
-            .getSingleOrNull();
+        final db.Image? detail = await (_db.select(
+          _db.images,
+        )..where((i) => i.elementId.equals(row.id))).getSingleOrNull();
         if (detail == null) {
           return null;
         }
@@ -116,9 +126,9 @@ class CanvasRepository {
           intrinsicSize: Size(detail.intrinsicWidth, detail.intrinsicHeight),
         );
       case tables.ElementKind.pdf:
-        final db.PdfDocument? detail = await (_db.select(_db.pdfDocuments)
-              ..where((p) => p.elementId.equals(row.id)))
-            .getSingleOrNull();
+        final db.PdfDocument? detail = await (_db.select(
+          _db.pdfDocuments,
+        )..where((p) => p.elementId.equals(row.id))).getSingleOrNull();
         if (detail == null) {
           return null;
         }
@@ -134,9 +144,9 @@ class CanvasRepository {
           ),
         );
       case tables.ElementKind.link:
-        final db.CanvasLink? detail = await (_db.select(_db.canvasLinks)
-              ..where((l) => l.elementId.equals(row.id)))
-            .getSingleOrNull();
+        final db.CanvasLink? detail = await (_db.select(
+          _db.canvasLinks,
+        )..where((l) => l.elementId.equals(row.id))).getSingleOrNull();
         if (detail == null) {
           return null;
         }
@@ -213,9 +223,7 @@ class CanvasRepository {
                 color: stroke.color,
                 strokeWidth: stroke.width,
                 tool: _strokeToolToColumn(stroke.tool),
-                isHighlighter: Value(
-                  stroke.tool == StrokeToolKind.highlighter,
-                ),
+                isHighlighter: Value(stroke.tool == StrokeToolKind.highlighter),
               ),
               mode: InsertMode.insertOrReplace,
             );
@@ -295,9 +303,9 @@ class CanvasRepository {
   /// Returns `null` when the canvas row does not exist. A canvas that has never
   /// had a viewport saved returns the schema-default identity viewport.
   Future<ViewportState?> loadViewport(String canvasId) async {
-    final db.Canvase? row = await (_db.select(_db.canvases)
-          ..where((c) => c.id.equals(canvasId)))
-        .getSingleOrNull();
+    final db.Canvase? row = await (_db.select(
+      _db.canvases,
+    )..where((c) => c.id.equals(canvasId))).getSingleOrNull();
     if (row == null) {
       return null;
     }
@@ -313,8 +321,7 @@ class CanvasRepository {
   /// Writes the four `canvases.vp_*` columns and bumps `updated_at`. A no-op
   /// when no canvas has that id.
   Future<void> saveViewport(String canvasId, ViewportState vp) async {
-    await (_db.update(_db.canvases)..where((c) => c.id.equals(canvasId)))
-        .write(
+    await (_db.update(_db.canvases)..where((c) => c.id.equals(canvasId))).write(
       db.CanvasesCompanion(
         vpTx: Value(vp.translation.dx),
         vpTy: Value(vp.translation.dy),
@@ -337,11 +344,15 @@ class CanvasRepository {
   /// the editor self-sufficient: a fresh canvas gets a placeholder row so its
   /// elements and viewport have a parent to hang off (and the FK holds).
   /// Returns whether a row was created.
-  Future<bool> ensureCanvasExists(String canvasId, {String title = 'Canvas'}) async {
+  Future<bool> ensureCanvasExists(
+    String canvasId, {
+    String title = 'Canvas',
+  }) async {
     final bool exists =
-        await (_db.select(_db.canvases)..where((c) => c.id.equals(canvasId)))
-                .getSingleOrNull() !=
-            null;
+        await (_db.select(
+          _db.canvases,
+        )..where((c) => c.id.equals(canvasId))).getSingleOrNull() !=
+        null;
     if (exists) {
       return false;
     }
@@ -362,8 +373,9 @@ class CanvasRepository {
 
   /// Bumps `canvases.updated_at` for [canvasId] to [now].
   Future<void> _touchCanvas(String canvasId, DateTime now) async {
-    await (_db.update(_db.canvases)..where((c) => c.id.equals(canvasId)))
-        .write(db.CanvasesCompanion(updatedAt: Value(now)));
+    await (_db.update(_db.canvases)..where((c) => c.id.equals(canvasId))).write(
+      db.CanvasesCompanion(updatedAt: Value(now)),
+    );
   }
 
   // ---------------------------------------------------------------------------

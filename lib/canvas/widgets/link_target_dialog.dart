@@ -102,8 +102,8 @@ class _LinkTargetDialogState extends State<_LinkTargetDialog> {
     final String label = typedLabel.isNotEmpty
         ? typedLabel
         : (_selected?.title.trim().isNotEmpty ?? false
-            ? _selected!.title.trim()
-            : 'Link');
+              ? _selected!.title.trim()
+              : 'Link');
     Navigator.of(context).pop(
       LinkDialogResult(
         label: label,

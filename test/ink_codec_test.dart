@@ -8,10 +8,7 @@ import 'package:zenno/canvas/persistence/ink_codec.dart';
 /// match only to that precision, so equality checks use this tolerance.
 const double _f32Tolerance = 1e-3;
 
-void _expectPointsClose(
-  List<StrokePoint> actual,
-  List<StrokePoint> expected,
-) {
+void _expectPointsClose(List<StrokePoint> actual, List<StrokePoint> expected) {
   expect(actual, hasLength(expected.length));
   for (var i = 0; i < expected.length; i++) {
     expect(actual[i].x, closeTo(expected[i].x, _f32Tolerance), reason: 'x[$i]');
@@ -51,8 +48,9 @@ void main() {
     test('round-trips a single-point stroke', () {
       final points = <StrokePoint>[const StrokePoint(7.0, 8.0, 0.9)];
 
-      final List<StrokePoint> decoded =
-          InkCodec.decodePoints(InkCodec.encodePoints(points));
+      final List<StrokePoint> decoded = InkCodec.decodePoints(
+        InkCodec.encodePoints(points),
+      );
 
       _expectPointsClose(decoded, points);
     });
@@ -60,9 +58,9 @@ void main() {
 
   group('InkCodec wire format', () {
     test('writes the format-version byte first', () {
-      final Uint8List blob = InkCodec.encodePoints(
-        <StrokePoint>[const StrokePoint(1, 2, 0.5)],
-      );
+      final Uint8List blob = InkCodec.encodePoints(<StrokePoint>[
+        const StrokePoint(1, 2, 0.5),
+      ]);
 
       expect(blob[0], InkCodec.formatVersion);
     });
@@ -98,9 +96,9 @@ void main() {
     });
 
     test('rejects an unknown format version', () {
-      final Uint8List blob = InkCodec.encodePoints(
-        <StrokePoint>[const StrokePoint(1, 2, 0.5)],
-      );
+      final Uint8List blob = InkCodec.encodePoints(<StrokePoint>[
+        const StrokePoint(1, 2, 0.5),
+      ]);
       blob[0] = 99; // Corrupt the version byte.
 
       expect(() => InkCodec.decodePoints(blob), throwsFormatException);

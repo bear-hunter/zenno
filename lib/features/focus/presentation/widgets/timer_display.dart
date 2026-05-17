@@ -36,10 +36,7 @@ class TimerDisplay extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _PhaseChip(
-          label: _phaseLabel(snapshot),
-          color: accent,
-        ),
+        _PhaseChip(label: _phaseLabel(snapshot), color: accent),
         const SizedBox(height: AppSpacing.xl),
         SizedBox(
           width: 280,
@@ -55,9 +52,7 @@ class TimerDisplay extends StatelessWidget {
                   strokeWidth: 10,
                   backgroundColor: colors.surfaceContainerHighest,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    isOpenEnded
-                        ? accent.withValues(alpha: 0.35)
-                        : accent,
+                    isOpenEnded ? accent.withValues(alpha: 0.35) : accent,
                   ),
                 ),
               ),
@@ -100,8 +95,7 @@ class TimerDisplay extends StatelessWidget {
   double _progress(TimerSnapshot snapshot) {
     final target = snapshot.target;
     if (target == null || target.inMicroseconds == 0) return 0;
-    final ratio =
-        snapshot.elapsed.inMicroseconds / target.inMicroseconds;
+    final ratio = snapshot.elapsed.inMicroseconds / target.inMicroseconds;
     return ratio.clamp(0.0, 1.0);
   }
 

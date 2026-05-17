@@ -130,11 +130,7 @@ class SpatialIndex {
     final double half = (_initialRootSize / 2)
         .clamp(first.width, double.infinity)
         .clamp(first.height, double.infinity);
-    return Rect.fromCenter(
-      center: center,
-      width: half * 2,
-      height: half * 2,
-    );
+    return Rect.fromCenter(center: center, width: half * 2, height: half * 2);
   }
 
   /// Returns a finite, non-NaN, normalised copy of [rect].
@@ -301,7 +297,9 @@ class _QuadNode {
     final bool extendRight = target.center.dx >= region.center.dx;
     final bool extendDown = target.center.dy >= region.center.dy;
 
-    final double newLeft = extendRight ? region.left : region.left - region.width;
+    final double newLeft = extendRight
+        ? region.left
+        : region.left - region.width;
     final double newTop = extendDown ? region.top : region.top - region.height;
     final Rect bigger = Rect.fromLTWH(
       newLeft,

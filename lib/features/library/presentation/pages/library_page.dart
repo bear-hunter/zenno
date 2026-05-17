@@ -4,9 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import 'package:zenno/config/router/routes.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
+import 'package:zenno/core/database/tables/settings_tables.dart';
 import 'package:zenno/features/library/application/library_providers.dart';
-import 'package:zenno/features/library/data/library_repository.dart';
 import 'package:zenno/features/library/presentation/widgets/canvas_card.dart';
+import 'package:zenno/features/settings/application/settings_providers.dart';
 
 /// The canvas library — the app's home screen.
 ///
@@ -18,10 +19,10 @@ class LibraryPage extends ConsumerWidget {
 
   /// Human-readable label for a [LibrarySort] menu entry.
   static String _sortLabel(LibrarySort sort) => switch (sort) {
-        LibrarySort.recent => 'Last edited',
-        LibrarySort.created => 'Date created',
-        LibrarySort.title => 'Title',
-      };
+    LibrarySort.recent => 'Last edited',
+    LibrarySort.created => 'Date created',
+    LibrarySort.title => 'Title',
+  };
 
   /// Creates a canvas and opens it in the full-bleed editor.
   Future<void> _createCanvas(BuildContext context, WidgetRef ref) async {
@@ -44,13 +45,10 @@ class LibraryPage extends ConsumerWidget {
             tooltip: 'Sort canvases',
             icon: const Icon(Icons.sort),
             initialValue: activeSort,
-            onSelected: ref.read(librarySortProvider.notifier).setSort,
+            onSelected: ref.read(settingsRepositoryProvider).setLibrarySort,
             itemBuilder: (context) => [
               for (final sort in LibrarySort.values)
-                PopupMenuItem(
-                  value: sort,
-                  child: Text(_sortLabel(sort)),
-                ),
+                PopupMenuItem(value: sort, child: Text(_sortLabel(sort))),
             ],
           ),
         ],
@@ -79,8 +77,7 @@ class LibraryPage extends ConsumerWidget {
               childAspectRatio: 4 / 3,
             ),
             itemCount: items.length,
-            itemBuilder: (context, index) =>
-                CanvasCard(canvas: items[index]),
+            itemBuilder: (context, index) => CanvasCard(canvas: items[index]),
           );
         },
       ),
@@ -115,11 +112,7 @@ class _LibraryMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 56,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(icon, size: 56, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: AppSpacing.lg),
             Text(title, style: theme.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),

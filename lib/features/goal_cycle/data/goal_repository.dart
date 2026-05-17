@@ -74,23 +74,23 @@ class GoalRepository {
     // card with no reflections all still surface.
     final query =
         _db.select(_db.boards).join([
-          leftOuterJoin(
-            _db.boardColumns,
-            _db.boardColumns.boardId.equalsExp(_db.boards.id),
-          ),
-          leftOuterJoin(
-            _db.boardCards,
-            _db.boardCards.columnId.equalsExp(_db.boardColumns.id),
-          ),
-          leftOuterJoin(
-            _db.goalCardDetails,
-            _db.goalCardDetails.cardId.equalsExp(_db.boardCards.id),
-          ),
-          leftOuterJoin(
-            _db.reflectionEntries,
-            _db.reflectionEntries.cardId.equalsExp(_db.boardCards.id),
-          ),
-        ])
+            leftOuterJoin(
+              _db.boardColumns,
+              _db.boardColumns.boardId.equalsExp(_db.boards.id),
+            ),
+            leftOuterJoin(
+              _db.boardCards,
+              _db.boardCards.columnId.equalsExp(_db.boardColumns.id),
+            ),
+            leftOuterJoin(
+              _db.goalCardDetails,
+              _db.goalCardDetails.cardId.equalsExp(_db.boardCards.id),
+            ),
+            leftOuterJoin(
+              _db.reflectionEntries,
+              _db.reflectionEntries.cardId.equalsExp(_db.boardCards.id),
+            ),
+          ])
           ..where(_db.boards.boardType.equalsValue(BoardType.goalCycle))
           ..orderBy([
             OrderingTerm.asc(_db.boardColumns.position),
@@ -108,11 +108,7 @@ class GoalRepository {
   /// into a [Set] so the resulting [GoalCardExtra.reflectionCount] is exact.
   KanbanBoardData _rowsToBoard(List<TypedResult> rows) {
     if (rows.isEmpty) {
-      return const KanbanBoardData(
-        id: '',
-        name: 'Goal Cycle',
-        columns: [],
-      );
+      return const KanbanBoardData(id: '', name: 'Goal Cycle', columns: []);
     }
 
     final board = rows.first.readTable(_db.boards);
@@ -350,8 +346,9 @@ class GoalRepository {
 
   /// Deletes column [columnId]; its cards (details + reflections) cascade.
   Future<void> removeColumn(String columnId) async {
-    await (_db.delete(_db.boardColumns)..where((c) => c.id.equals(columnId)))
-        .go();
+    await (_db.delete(
+      _db.boardColumns,
+    )..where((c) => c.id.equals(columnId))).go();
   }
 
   // ---------------------------------------------------------------------------

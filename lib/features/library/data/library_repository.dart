@@ -1,22 +1,8 @@
 import 'package:drift/drift.dart';
 
 import 'package:zenno/core/database/database.dart';
+import 'package:zenno/core/database/tables/settings_tables.dart';
 import 'package:zenno/core/util/id.dart';
-
-/// Ordering applied to the canvas library grid.
-///
-/// Persisted (in a later phase) to `app_settings.library_sort`; for now it is
-/// held in memory by the library's sort provider.
-enum LibrarySort {
-  /// Most recently edited first — ordered by `updated_at` descending.
-  recent,
-
-  /// Most recently created first — ordered by `created_at` descending.
-  created,
-
-  /// Alphabetical — ordered by `title` ascending.
-  title,
-}
 
 /// Data layer for the canvas library.
 ///
@@ -79,10 +65,7 @@ class LibraryRepository {
   /// Renames the canvas [id] to [title] and bumps its `updated_at`.
   Future<void> renameCanvas(String id, String title) {
     return (_db.update(_db.canvases)..where((c) => c.id.equals(id))).write(
-      CanvasesCompanion(
-        title: Value(title),
-        updatedAt: Value(DateTime.now()),
-      ),
+      CanvasesCompanion(title: Value(title), updatedAt: Value(DateTime.now())),
     );
   }
 
@@ -103,6 +86,16 @@ class LibraryRepository {
   Future<void> touchOpened(String id) {
     return (_db.update(_db.canvases)..where((c) => c.id.equals(id))).write(
       CanvasesCompanion(lastOpenedAt: Value(DateTime.now())),
+    );
+  }
+
+  /// Updates the generated thumbnail path for [id].
+  Future<void> updateThumbnailPath(String id, String thumbnailPath) {
+    return (_db.update(_db.canvases)..where((c) => c.id.equals(id))).write(
+      CanvasesCompanion(
+        thumbnailPath: Value(thumbnailPath),
+        updatedAt: Value(DateTime.now()),
+      ),
     );
   }
 }

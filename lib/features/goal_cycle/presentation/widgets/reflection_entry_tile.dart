@@ -59,10 +59,7 @@ class ReflectionEntryTile extends StatelessWidget {
             Icons.menu_book_outlined,
             color: theme.colorScheme.primary,
           ),
-          title: Text(
-            entry.templateName,
-            style: theme.textTheme.titleSmall,
-          ),
+          title: Text(entry.templateName, style: theme.textTheme.titleSmall),
           subtitle: Text(
             'Written ${relativeTime(entry.createdAt)}',
             style: theme.textTheme.labelSmall?.copyWith(

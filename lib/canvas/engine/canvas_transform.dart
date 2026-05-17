@@ -80,9 +80,7 @@ abstract final class CanvasTransform {
 
   /// Pans [current] by [screenDelta] (a translation in screen pixels).
   static ViewportState panBy(ViewportState current, Offset screenDelta) {
-    return current.copyWith(
-      translation: current.translation + screenDelta,
-    );
+    return current.copyWith(translation: current.translation + screenDelta);
   }
 
   /// Zooms [current] by [scaleFactor] while keeping the world point currently
@@ -98,8 +96,7 @@ abstract final class CanvasTransform {
     final Offset worldAnchor = toWorld(current, focusScreen);
     final double newScale = clampScale(current.scale * scaleFactor);
     final Offset newTranslation =
-        focusScreen -
-        _rotateThenScale(worldAnchor, current.rotation, newScale);
+        focusScreen - _rotateThenScale(worldAnchor, current.rotation, newScale);
     return current.copyWith(scale: newScale, translation: newTranslation);
   }
 

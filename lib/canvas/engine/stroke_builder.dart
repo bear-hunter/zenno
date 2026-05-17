@@ -39,8 +39,7 @@ Path buildStrokeOutline(
   }
 
   final inputPoints = <PointVector>[
-    for (final point in points)
-      PointVector(point.x, point.y, point.pressure),
+    for (final point in points) PointVector(point.x, point.y, point.pressure),
   ];
 
   final outline = getStroke(
@@ -79,11 +78,7 @@ Path buildStrokeOutline(
 /// zero-radius (invisible) path.
 Path _dotPath(StrokePoint point, double size) {
   final radius = (size / 2) * (0.5 + 0.5 * point.pressure.clamp(0.0, 1.0));
-  return Path()
-    ..addOval(
-      Rect.fromCircle(
-        center: point.offset,
-        radius: radius <= 0 ? 0.5 : radius,
-      ),
-    );
+  return Path()..addOval(
+    Rect.fromCircle(center: point.offset, radius: radius <= 0 ? 0.5 : radius),
+  );
 }

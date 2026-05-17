@@ -63,8 +63,7 @@ class _GoalCardDetailSheetState extends ConsumerState<_GoalCardDetailSheet> {
           );
   }
 
-  GoalBoardController get _controller =>
-      ref.read(goalBoardControllerProvider);
+  GoalBoardController get _controller => ref.read(goalBoardControllerProvider);
 
   @override
   void initState() {
@@ -204,9 +203,7 @@ class _GoalCardDetailSheetState extends ConsumerState<_GoalCardDetailSheet> {
     final theme = Theme.of(context);
     // Lift the sheet above the keyboard when a field is focused.
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final reflectionsAsync = ref.watch(
-      cardReflectionsProvider(widget.card.id),
-    );
+    final reflectionsAsync = ref.watch(cardReflectionsProvider(widget.card.id));
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -216,9 +213,7 @@ class _GoalCardDetailSheetState extends ConsumerState<_GoalCardDetailSheet> {
         AppSpacing.xl + bottomInset,
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: AppSpacing.contentMaxWidth,
-        ),
+        constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -375,10 +370,7 @@ class _TargetDateRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.flag_outlined,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          Icon(Icons.flag_outlined, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(

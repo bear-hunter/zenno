@@ -33,10 +33,152 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 /// culled subset and issues a `drawPath` per element, so a pan or repaint with
 /// unchanged elements does no geometry work.
 //
-// TODO(perf): full tile / `ui.Picture` caching — group culled elements into
-// world-space ~2048-unit tiles and blit a cached picture per tile, so a pan
-// becomes pure compositing. Viewport culling + the per-element path cache are
-// the required step-1.3 win; tile caching is a later optimisation.
+/// Cache for committed element pictures grouped by fixed world-space tiles.
+///
+/// Owned by the view rather than the painter so pictures survive repaint
+/// delegate instances. A changed element/raster signature invalidates the
+/// whole cache; otherwise each visible tile is recorded once and reused while
+/// panning/zooming.
+class ElementsTileCache {
+  /// Creates a tile-picture cache.
+  ElementsTileCache({this.maxTiles = 96});
+
+  /// Maximum cached tile pictures before least-recently-used eviction.
+  final int maxTiles;
+
+  static const double tileSize = 2048.0;
+
+  final Map<_TileKey, _TilePicture> _pictures = <_TileKey, _TilePicture>{};
+  int _revision = 0;
+  int _tick = 0;
+
+  /// Number of currently retained tile pictures.
+  int get tileCount => _pictures.length;
+
+  /// Clears all retained pictures.
+  void clear() {
+    for (final picture in _pictures.values) {
+      picture.picture.dispose();
+    }
+    _pictures.clear();
+  }
+
+  /// Releases native picture resources.
+  void dispose() => clear();
+
+  void _syncRevision(List<CanvasElement> elements) {
+    final int nextRevision = Object.hashAll(elements.map(_elementRevisionPart));
+    if (nextRevision == _revision) {
+      return;
+    }
+    _revision = nextRevision;
+    clear();
+  }
+
+  ui.Picture _pictureFor({
+    required _TileKey key,
+    required Rect tileRect,
+    required List<CanvasElement> elements,
+    required SpatialIndex spatialIndex,
+    required void Function(Canvas canvas, CanvasElement element) paintElement,
+  }) {
+    final cached = _pictures[key];
+    if (cached != null) {
+      cached.lastUsed = ++_tick;
+      return cached.picture;
+    }
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.clipRect(tileRect);
+
+    final Set<String> tileIds = spatialIndex.query(tileRect).toSet();
+    for (final element in elements) {
+      if (tileIds.contains(element.id)) {
+        paintElement(canvas, element);
+      }
+    }
+
+    final picture = recorder.endRecording();
+    _pictures[key] = _TilePicture(picture, ++_tick);
+    _evictIfNeeded();
+    return picture;
+  }
+
+  void _evictIfNeeded() {
+    while (_pictures.length > maxTiles) {
+      _TileKey? oldestKey;
+      int oldestTick = 1 << 62;
+      for (final entry in _pictures.entries) {
+        if (entry.value.lastUsed < oldestTick) {
+          oldestTick = entry.value.lastUsed;
+          oldestKey = entry.key;
+        }
+      }
+      final removed = _pictures.remove(oldestKey);
+      removed?.picture.dispose();
+    }
+  }
+
+  static Object _elementRevisionPart(CanvasElement element) {
+    final Rect b = element.worldBounds;
+    final Object rasterPart = switch (element) {
+      ImageElement(:final raster) => Object.hash(
+        identityHashCode(raster),
+        raster?.width,
+        raster?.height,
+      ),
+      PdfElement(:final raster) => Object.hash(
+        identityHashCode(raster),
+        raster?.width,
+        raster?.height,
+      ),
+      _ => 0,
+    };
+    return Object.hash(
+      element.id,
+      element.zIndex,
+      b.left,
+      b.top,
+      b.width,
+      b.height,
+      element.hashCode,
+      rasterPart,
+    );
+  }
+}
+
+class _TileKey {
+  const _TileKey(this.x, this.y);
+
+  final int x;
+  final int y;
+
+  Rect get rect {
+    return Rect.fromLTWH(
+      x * ElementsTileCache.tileSize,
+      y * ElementsTileCache.tileSize,
+      ElementsTileCache.tileSize,
+      ElementsTileCache.tileSize,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is _TileKey && other.x == x && other.y == y;
+  }
+
+  @override
+  int get hashCode => Object.hash(x, y);
+}
+
+class _TilePicture {
+  _TilePicture(this.picture, this.lastUsed);
+
+  final ui.Picture picture;
+  int lastUsed;
+}
+
 class ElementsPainter extends CustomPainter {
   /// Creates a painter for the committed [elements] under [viewport].
   ///
@@ -48,6 +190,7 @@ class ElementsPainter extends CustomPainter {
     required this.elements,
     required this.spatialIndex,
     required this.viewport,
+    this.tileCache,
     this.selectedIds = const <String>{},
     this.selectionDragDelta = Offset.zero,
   });
@@ -60,6 +203,9 @@ class ElementsPainter extends CustomPainter {
 
   /// The camera through which the world elements are observed.
   final ViewportState viewport;
+
+  /// Optional committed-layer tile cache, owned outside the painter.
+  final ElementsTileCache? tileCache;
 
   /// Ids of the elements currently in the lasso selection.
   ///
@@ -104,9 +250,8 @@ class ElementsPainter extends CustomPainter {
     }
 
     // The set of element ids whose world bounds intersect the visible region.
-    final Set<String> visibleIds = spatialIndex
-        .query(_visibleWorldRect(size))
-        .toSet();
+    final Rect visibleWorldRect = _visibleWorldRect(size);
+    final Set<String> visibleIds = spatialIndex.query(visibleWorldRect).toSet();
     // Fast path: nothing visible and no drag that could pull an off-screen
     // selected element into view — there is nothing to paint.
     if (visibleIds.isEmpty && !_dragging) {
@@ -115,6 +260,12 @@ class ElementsPainter extends CustomPainter {
 
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
+
+    if (!_dragging && selectedIds.isEmpty && tileCache != null) {
+      _paintCachedTiles(canvas, visibleWorldRect);
+      canvas.restore();
+      return;
+    }
 
     // Iterate `elements` (already z-ordered) and skip the culled ones, so the
     // surviving elements are still painted back-to-front. A selected element
@@ -141,6 +292,43 @@ class ElementsPainter extends CustomPainter {
     }
 
     canvas.restore();
+  }
+
+  void _paintCachedTiles(Canvas canvas, Rect visibleRect) {
+    final ElementsTileCache cache = tileCache!;
+    cache._syncRevision(elements);
+
+    final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
+    final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();
+    final int minY = (visibleRect.top / ElementsTileCache.tileSize).floor();
+    final int maxY = (visibleRect.bottom / ElementsTileCache.tileSize).floor();
+
+    for (int y = minY; y <= maxY; y += 1) {
+      for (int x = minX; x <= maxX; x += 1) {
+        final key = _TileKey(x, y);
+        final picture = cache._pictureFor(
+          key: key,
+          tileRect: key.rect,
+          elements: elements,
+          spatialIndex: spatialIndex,
+          paintElement: _paintUnselectedElement,
+        );
+        canvas.drawPicture(picture);
+      }
+    }
+  }
+
+  void _paintUnselectedElement(Canvas canvas, CanvasElement element) {
+    switch (element) {
+      case InkElement():
+        _paintInk(canvas, element, selected: false);
+      case ImageElement():
+        _paintImage(canvas, element, selected: false);
+      case PdfElement():
+        _paintPdf(canvas, element, selected: false);
+      case LinkElement():
+        _paintLink(canvas, element, selected: false);
+    }
   }
 
   /// Paints a single [element]'s ink stroke onto the world-space [canvas].
@@ -185,7 +373,11 @@ class ElementsPainter extends CustomPainter {
   /// rect (the canvas already carries the world→screen transform). Until the
   /// decode finishes [element.raster] is `null` and a neutral placeholder is
   /// drawn instead so the element still occupies its space.
-  void _paintImage(Canvas canvas, ImageElement element, {required bool selected}) {
+  void _paintImage(
+    Canvas canvas,
+    ImageElement element, {
+    required bool selected,
+  }) {
     final ui.Image? raster = element.raster;
     final Rect dst = element.worldBounds;
     if (raster == null) {
@@ -227,7 +419,11 @@ class ElementsPainter extends CustomPainter {
   /// the label is empty). The corner radius and inner padding scale with the
   /// chip so it reads consistently at any size. A [selected] chip gets the same
   /// gold halo as a selected image / PDF.
-  void _paintLink(Canvas canvas, LinkElement element, {required bool selected}) {
+  void _paintLink(
+    Canvas canvas,
+    LinkElement element, {
+    required bool selected,
+  }) {
     final Rect rect = element.worldBounds;
     if (rect.isEmpty) {
       return;
@@ -265,17 +461,15 @@ class ElementsPainter extends CustomPainter {
     )..layout();
     icon.paint(
       canvas,
-      Offset(
-        rect.left + pad / 2,
-        rect.center.dy - icon.height / 2,
-      ),
+      Offset(rect.left + pad / 2, rect.center.dy - icon.height / 2),
     );
 
     final double labelLeft = rect.left + pad / 2 + icon.width + pad / 3;
     final double labelWidth = rect.right - pad / 2 - labelLeft;
     if (labelWidth > 0) {
-      final String text =
-          element.label.trim().isEmpty ? _linkFallbackLabel : element.label;
+      final String text = element.label.trim().isEmpty
+          ? _linkFallbackLabel
+          : element.label;
       final TextPainter label = TextPainter(
         textDirection: TextDirection.ltr,
         maxLines: 1,
@@ -289,10 +483,7 @@ class ElementsPainter extends CustomPainter {
           ),
         ),
       )..layout(maxWidth: labelWidth);
-      label.paint(
-        canvas,
-        Offset(labelLeft, rect.center.dy - label.height / 2),
-      );
+      label.paint(canvas, Offset(labelLeft, rect.center.dy - label.height / 2));
     }
 
     if (selected) {

@@ -72,10 +72,7 @@ class RevisionBoardController implements KanbanController {
   }
 
   @override
-  Future<void> renameColumn({
-    required String columnId,
-    required String name,
-  }) {
+  Future<void> renameColumn({required String columnId, required String name}) {
     return _repository.renameColumn(columnId: columnId, name: name);
   }
 

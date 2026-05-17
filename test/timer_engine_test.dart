@@ -31,10 +31,7 @@ void main() {
 
     test('start moves idle to running work', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       expect(engine.status, TimerStatus.running);
       expect(engine.phase, TimerPhase.work);
@@ -42,10 +39,7 @@ void main() {
 
     test('start is a no-op once already running', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 3));
       engine.start(); // should not reset the phase
@@ -86,10 +80,7 @@ void main() {
 
     test('a backward clock jump does not produce negative elapsed', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: -5));
       expect(engine.elapsed, Duration.zero);
@@ -100,10 +91,7 @@ void main() {
   group('pause / resume', () {
     test('elapsed freezes while paused', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 6));
       engine.pause();
@@ -115,10 +103,7 @@ void main() {
 
     test('resume does not count the paused gap', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 6));
       engine.pause();
@@ -132,10 +117,7 @@ void main() {
 
     test('multiple pause/resume cycles accumulate run time only', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 2));
       engine.pause();
@@ -152,20 +134,14 @@ void main() {
 
     test('pause is a no-op when not running', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.pause();
       expect(engine.status, TimerStatus.idle);
     });
 
     test('resume is a no-op when not paused', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       engine.resume();
       expect(engine.status, TimerStatus.running);
@@ -270,10 +246,7 @@ void main() {
   group('flowmodoro', () {
     test('work is open-ended — no target, count-up', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.flowmodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.flowmodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 40));
       final snap = engine.snapshot();
@@ -361,10 +334,7 @@ void main() {
 
     test('endStretch is a no-op during a break', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.flowmodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.flowmodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 30));
       engine.endStretch(); // → break
@@ -376,10 +346,7 @@ void main() {
 
     test('endStretch is a no-op in pomodoro mode', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 10));
       engine.endStretch();
@@ -408,10 +375,7 @@ void main() {
   group('finish / abandon', () {
     test('finish banks in-progress work into accumulatedFocus', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.flowmodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.flowmodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 18));
       engine.finish();
@@ -451,10 +415,7 @@ void main() {
 
     test('finish is a no-op once the session is over', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 10));
       engine.finish();
@@ -467,10 +428,7 @@ void main() {
 
     test('elapsed stops advancing once finished', () {
       final clock = _FakeClock(epoch);
-      final engine = TimerEngine(
-        mode: TimerMode.pomodoro,
-        clock: clock.now,
-      );
+      final engine = TimerEngine(mode: TimerMode.pomodoro, clock: clock.now);
       engine.start();
       clock.advance(const Duration(minutes: 10));
       engine.finish();
@@ -497,6 +455,59 @@ void main() {
         TimerEngine(mode: TimerMode.flowmodoro).snapshot().mode,
         TimerMode.flowmodoro,
       );
+    });
+  });
+
+  group('runtime restore', () {
+    test('restores a running Pomodoro phase from durable runtime', () {
+      final clock = _FakeClock(epoch);
+      final engine = TimerEngine(
+        mode: TimerMode.pomodoro,
+        clock: clock.now,
+        pomodoroWork: const Duration(minutes: 25),
+        pomodoroBreak: const Duration(minutes: 5),
+      )..start();
+      clock.advance(const Duration(minutes: 7));
+
+      final restored = TimerEngine.fromRuntime(
+        mode: TimerMode.pomodoro,
+        runtime: engine.runtimeSnapshot,
+        clock: clock.now,
+        pomodoroWork: const Duration(minutes: 25),
+        pomodoroBreak: const Duration(minutes: 5),
+      );
+
+      expect(restored.status, TimerStatus.running);
+      expect(restored.phase, TimerPhase.work);
+      expect(restored.elapsed, const Duration(minutes: 7));
+      expect(restored.remaining, const Duration(minutes: 18));
+    });
+
+    test('restores a paused Flowmodoro break without counting paused time', () {
+      final clock = _FakeClock(epoch);
+      final engine = TimerEngine(
+        mode: TimerMode.flowmodoro,
+        clock: clock.now,
+        flowBreakRatio: 0.5,
+      )..start();
+      clock.advance(const Duration(minutes: 10));
+      engine.endStretch();
+      clock.advance(const Duration(minutes: 2));
+      engine.pause();
+      clock.advance(const Duration(minutes: 20));
+
+      final restored = TimerEngine.fromRuntime(
+        mode: TimerMode.flowmodoro,
+        runtime: engine.runtimeSnapshot,
+        clock: clock.now,
+        flowBreakRatio: 0.5,
+      );
+
+      expect(restored.status, TimerStatus.paused);
+      expect(restored.phase, TimerPhase.breakTime);
+      expect(restored.elapsed, const Duration(minutes: 2));
+      expect(restored.accumulatedFocus, const Duration(minutes: 10));
+      expect(restored.cyclesCompleted, 1);
     });
   });
 }

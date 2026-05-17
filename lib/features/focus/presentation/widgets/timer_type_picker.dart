@@ -94,27 +94,19 @@ class _ModeCard extends StatelessWidget {
                 children: [
                   Icon(
                     icon,
-                    color: selected
-                        ? colors.primary
-                        : colors.onSurfaceVariant,
+                    color: selected ? colors.primary : colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       title,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: selected
-                            ? colors.primary
-                            : colors.onSurface,
+                        color: selected ? colors.primary : colors.onSurface,
                       ),
                     ),
                   ),
                   if (selected)
-                    Icon(
-                      Icons.check_circle,
-                      size: 20,
-                      color: colors.primary,
-                    ),
+                    Icon(Icons.check_circle, size: 20, color: colors.primary),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),

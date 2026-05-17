@@ -181,14 +181,15 @@ class ReflectionRepository {
     required ReflectionTemplateSchema schema,
   }) async {
     await _assertNotBuiltin(id, 'edited');
-    await (_db.update(_db.reflectionTemplates)..where((t) => t.id.equals(id)))
-        .write(
-          ReflectionTemplatesCompanion(
-            name: Value(name),
-            description: Value(description),
-            schemaJson: Value(schema.toJsonString()),
-          ),
-        );
+    await (_db.update(
+      _db.reflectionTemplates,
+    )..where((t) => t.id.equals(id))).write(
+      ReflectionTemplatesCompanion(
+        name: Value(name),
+        description: Value(description),
+        schemaJson: Value(schema.toJsonString()),
+      ),
+    );
   }
 
   /// Deletes a custom template.
@@ -213,8 +214,9 @@ class ReflectionRepository {
       );
     }
 
-    await (_db.delete(_db.reflectionTemplates)..where((t) => t.id.equals(id)))
-        .go();
+    await (_db.delete(
+      _db.reflectionTemplates,
+    )..where((t) => t.id.equals(id))).go();
   }
 
   /// Forks template [sourceId] into a new, editable, non-builtin copy.
@@ -305,20 +307,21 @@ class ReflectionRepository {
     String entryId, {
     required Map<String, String> answers,
   }) async {
-    await (_db.update(_db.reflectionEntries)
-          ..where((e) => e.id.equals(entryId)))
-        .write(
-          ReflectionEntriesCompanion(
-            answersJson: Value(reflectionAnswersToJsonString(answers)),
-            updatedAt: Value(DateTime.now().toUtc()),
-          ),
-        );
+    await (_db.update(
+      _db.reflectionEntries,
+    )..where((e) => e.id.equals(entryId))).write(
+      ReflectionEntriesCompanion(
+        answersJson: Value(reflectionAnswersToJsonString(answers)),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
   }
 
   /// Deletes the reflection entry [entryId].
   Future<void> deleteEntry(String entryId) async {
-    await (_db.delete(_db.reflectionEntries)..where((e) => e.id.equals(entryId)))
-        .go();
+    await (_db.delete(
+      _db.reflectionEntries,
+    )..where((e) => e.id.equals(entryId))).go();
   }
 
   // ---------------------------------------------------------------------------

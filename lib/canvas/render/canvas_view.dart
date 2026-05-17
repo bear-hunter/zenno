@@ -103,6 +103,8 @@ enum _ToolGesture {
 }
 
 class _CanvasViewState extends State<CanvasView> {
+  final ElementsTileCache _elementsTileCache = ElementsTileCache();
+
   /// All pointers currently down on (or hovering over) the surface.
   final Map<int, _ActivePointer> _pointers = <int, _ActivePointer>{};
 
@@ -149,6 +151,12 @@ class _CanvasViewState extends State<CanvasView> {
   double? _pinchStartAngle;
 
   CanvasController get _controller => widget.controller;
+
+  @override
+  void dispose() {
+    _elementsTileCache.dispose();
+    super.dispose();
+  }
 
   /// Surface-local positions of every touch pointer currently down.
   List<Offset> get _touchPositions => <Offset>[
@@ -311,7 +319,9 @@ class _CanvasViewState extends State<CanvasView> {
     // A tap (no movement) with the lasso tool clears any selection — the loop
     // is too small for `endLasso` to select anything anyway, so treat the tap
     // on empty space as "deselect". A drag still goes through `endLasso`.
-    if (_toolGesture == _ToolGesture.lasso && !cancelled && !_toolPointerMoved) {
+    if (_toolGesture == _ToolGesture.lasso &&
+        !cancelled &&
+        !_toolPointerMoved) {
       _controller.cancelLasso();
       _controller.clearSelection();
       return;
@@ -526,6 +536,7 @@ class _CanvasViewState extends State<CanvasView> {
                           elements: _controller.elements,
                           spatialIndex: _controller.spatialIndex,
                           viewport: viewport,
+                          tileCache: _elementsTileCache,
                           selectedIds: _controller.selectedIds,
                           selectionDragDelta: _controller.selectionDragDelta,
                         ),
@@ -536,7 +547,8 @@ class _CanvasViewState extends State<CanvasView> {
                         // Freehand ink and the in-progress shape preview share
                         // the live layer — only one is ever non-null at once.
                         painter: LiveStrokePainter(
-                          liveStroke: _controller.liveStroke ??
+                          liveStroke:
+                              _controller.liveStroke ??
                               _controller.liveShapeStroke,
                           viewport: viewport,
                         ),

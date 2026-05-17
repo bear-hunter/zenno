@@ -132,10 +132,7 @@ class _PromptField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          prompt.label,
-          style: theme.textTheme.titleSmall,
-        ),
+        Text(prompt.label, style: theme.textTheme.titleSmall),
         const SizedBox(height: AppSpacing.sm),
         TextField(
           controller: controller,

@@ -63,9 +63,7 @@ class RitualChecklist extends StatelessWidget {
             checked: checkedItemIds.contains(item.id),
             editable: editable,
             onToggle: () => onToggle(item.id),
-            onEdit: onEdit == null
-                ? null
-                : () => _promptRename(context, item),
+            onEdit: onEdit == null ? null : () => _promptRename(context, item),
             onRetire: onRetire == null ? null : () => onRetire!(item.id),
           ),
       ],
@@ -94,8 +92,7 @@ class RitualChecklist extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text),
+            onPressed: () => Navigator.of(context).pop(controller.text),
             child: const Text('Save'),
           ),
         ],
@@ -142,9 +139,7 @@ class _RitualRow extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                checked
-                    ? Icons.check_box
-                    : Icons.check_box_outline_blank,
+                checked ? Icons.check_box : Icons.check_box_outline_blank,
                 color: checked ? colors.primary : colors.onSurfaceVariant,
               ),
               const SizedBox(width: AppSpacing.md),
@@ -152,19 +147,14 @@ class _RitualRow extends StatelessWidget {
                 child: Text(
                   item.label,
                   style: theme.textTheme.bodyLarge?.copyWith(
-                    color: checked
-                        ? colors.onSurface
-                        : colors.onSurfaceVariant,
+                    color: checked ? colors.onSurface : colors.onSurfaceVariant,
                   ),
                 ),
               ),
               if (editable && (onEdit != null || onRetire != null))
                 PopupMenuButton<_RitualAction>(
                   tooltip: 'Edit ritual item',
-                  icon: Icon(
-                    Icons.more_vert,
-                    color: colors.onSurfaceVariant,
-                  ),
+                  icon: Icon(Icons.more_vert, color: colors.onSurfaceVariant),
                   onSelected: (action) {
                     switch (action) {
                       case _RitualAction.rename:

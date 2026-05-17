@@ -48,7 +48,7 @@ class ZennoDatabase extends _$ZennoDatabase {
     : super(executor ?? openZennoConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// Persist `DateTime` columns as ISO-8601 TEXT (sortable, debuggable, and
   /// export-friendly) rather than Unix timestamp integers.
@@ -60,6 +60,16 @@ class ZennoDatabase extends _$ZennoDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(focusSessions, focusSessions.runtimeStatus);
+        await m.addColumn(focusSessions, focusSessions.runtimePhase);
+        await m.addColumn(focusSessions, focusSessions.runtimePhaseStartedAt);
+        await m.addColumn(focusSessions, focusSessions.runtimeCarriedPhaseSecs);
+        await m.addColumn(focusSessions, focusSessions.runtimePhaseTargetSecs);
+        await m.addColumn(focusSessions, focusSessions.runtimeBankedFocusSecs);
+      }
     },
     beforeOpen: (details) async {
       // Drift does not enable foreign keys by default — cascade deletes

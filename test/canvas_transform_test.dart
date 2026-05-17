@@ -9,7 +9,11 @@ import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 
 /// Asserts that two [Offset]s are equal within [epsilon] on both axes.
-void expectOffsetClose(Offset actual, Offset expected, {double epsilon = 1e-6}) {
+void expectOffsetClose(
+  Offset actual,
+  Offset expected, {
+  double epsilon = 1e-6,
+}) {
   expect(
     actual.dx,
     closeTo(expected.dx, epsilon),
@@ -31,16 +35,8 @@ void main() {
     ViewportState(scale: 3.5),
     ViewportState(scale: 0.1),
     ViewportState(rotation: math.pi / 6),
-    ViewportState(
-      translation: Offset(-340, 512),
-      scale: 2.25,
-      rotation: -1.1,
-    ),
-    ViewportState(
-      translation: Offset(64, 64),
-      scale: 0.37,
-      rotation: 2.7,
-    ),
+    ViewportState(translation: Offset(-340, 512), scale: 2.25, rotation: -1.1),
+    ViewportState(translation: Offset(64, 64), scale: 0.37, rotation: 2.7),
   ];
 
   // Sample world points, including the origin, negatives, and large values.
@@ -259,10 +255,14 @@ void main() {
     });
 
     test('passes the exact bounds through', () {
-      expect(CanvasTransform.clampScale(CanvasTransform.minScale),
-          CanvasTransform.minScale);
-      expect(CanvasTransform.clampScale(CanvasTransform.maxScale),
-          CanvasTransform.maxScale);
+      expect(
+        CanvasTransform.clampScale(CanvasTransform.minScale),
+        CanvasTransform.minScale,
+      );
+      expect(
+        CanvasTransform.clampScale(CanvasTransform.maxScale),
+        CanvasTransform.maxScale,
+      );
     });
   });
 

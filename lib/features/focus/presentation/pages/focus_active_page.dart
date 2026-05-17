@@ -117,9 +117,7 @@ class _ActiveBody extends StatelessWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: AppSpacing.contentMaxWidth,
-        ),
+        constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.xl),
           children: [
@@ -137,10 +135,7 @@ class _ActiveBody extends StatelessWidget {
             const SizedBox(height: AppSpacing.xxl),
             _PrimaryControls(snapshot: snapshot, controller: controller),
             const SizedBox(height: AppSpacing.lg),
-            _SecondaryControls(
-              controller: controller,
-              onFinish: onFinish,
-            ),
+            _SecondaryControls(controller: controller, onFinish: onFinish),
           ],
         ),
       ),
@@ -150,10 +145,7 @@ class _ActiveBody extends StatelessWidget {
 
 /// Pause / resume plus the phase-specific action button.
 class _PrimaryControls extends StatelessWidget {
-  const _PrimaryControls({
-    required this.snapshot,
-    required this.controller,
-  });
+  const _PrimaryControls({required this.snapshot, required this.controller});
 
   final TimerSnapshot snapshot;
   final ActiveSessionController controller;
@@ -162,8 +154,7 @@ class _PrimaryControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final running = snapshot.isRunning;
     final isBreak = snapshot.phase == TimerPhase.breakTime;
-    final isFlowWork =
-        snapshot.mode == TimerMode.flowmodoro && !isBreak;
+    final isFlowWork = snapshot.mode == TimerMode.flowmodoro && !isBreak;
 
     return Row(
       children: [
@@ -189,13 +180,9 @@ class _PrimaryControls extends StatelessWidget {
             onPressed: isBreak
                 ? controller.skipBreak
                 : (isFlowWork ? controller.endStretch : null),
-            icon: Icon(
-              isBreak ? Icons.skip_next : Icons.coffee_outlined,
-            ),
+            icon: Icon(isBreak ? Icons.skip_next : Icons.coffee_outlined),
             label: Text(
-              isBreak
-                  ? 'Skip break'
-                  : (isFlowWork ? 'End stretch' : 'Auto'),
+              isBreak ? 'Skip break' : (isFlowWork ? 'End stretch' : 'Auto'),
             ),
           ),
         ),
@@ -206,10 +193,7 @@ class _PrimaryControls extends StatelessWidget {
 
 /// The distraction-capture and finish actions.
 class _SecondaryControls extends StatelessWidget {
-  const _SecondaryControls({
-    required this.controller,
-    required this.onFinish,
-  });
+  const _SecondaryControls({required this.controller, required this.onFinish});
 
   final ActiveSessionController controller;
   final VoidCallback onFinish;
@@ -248,13 +232,8 @@ class _SecondaryControls extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     final capture = await DistractionSheet.show(context);
     if (capture == null) return;
-    await controller.captureDistraction(
-      kind: capture.kind,
-      note: capture.note,
-    );
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Distraction logged')),
-    );
+    await controller.captureDistraction(kind: capture.kind, note: capture.note);
+    messenger.showSnackBar(const SnackBar(content: Text('Distraction logged')));
   }
 }
 
@@ -278,8 +257,7 @@ class _NoSession extends StatelessWidget {
           Text('No active session', style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.lg),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).popUntil((r) => r.isFirst),
+            onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
             child: const Text('Back to Focus'),
           ),
         ],
