@@ -1,0 +1,24 @@
+# Static analysis configuration for Zenno.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  plugins:
+    - custom_lint        # hosts riverpod_lint
+  exclude:
+    - "**/*.g.dart"      # generated (drift, riverpod, json_serializable)
+    - "**/*.freezed.dart"
+  errors:
+    # freezed / json_serializable emit annotations on generated targets.
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    - prefer_const_constructors
+    - prefer_const_constructors_in_immutables
+    - prefer_const_declarations
+    - prefer_final_locals
+    - avoid_print
+    - require_trailing_commas
+    - unawaited_futures
+    - use_key_in_widget_constructors
+    - directives_ordering

@@ -1,0 +1,71 @@
+import 'package:drift/drift.dart';
+import 'package:zenno/core/database/connection.dart';
+import 'package:zenno/core/database/seed/seed_data.dart';
+import 'package:zenno/core/database/tables/board_tables.dart';
+import 'package:zenno/core/database/tables/canvas_tables.dart';
+import 'package:zenno/core/database/tables/focus_tables.dart';
+import 'package:zenno/core/database/tables/reflection_tables.dart';
+import 'package:zenno/core/database/tables/settings_tables.dart';
+
+part 'database.g.dart';
+
+/// The single Drift database for Zenno. Holds every table across the Canvas,
+/// Focus, Kanban, Reflection and Settings groups.
+@DriftDatabase(
+  tables: [
+    // Canvas group.
+    Canvases,
+    CanvasFolders,
+    CanvasElements,
+    InkStrokes,
+    PdfDocuments,
+    Images,
+    CanvasLinks,
+    // Focus group.
+    RitualChecklists,
+    RitualChecklistItems,
+    FocusSessions,
+    FocusSessionRitualChecks,
+    Distractions,
+    // Kanban group.
+    Boards,
+    BoardColumns,
+    BoardCards,
+    RevisionCardDetails,
+    GoalCardDetails,
+    // Reflection group.
+    ReflectionTemplates,
+    ReflectionEntries,
+    // Settings.
+    AppSettings,
+  ],
+)
+class ZennoDatabase extends _$ZennoDatabase {
+  /// Opens the database. The optional [executor] exists so tests can inject an
+  /// in-memory executor; production code passes nothing and gets the on-device
+  /// connection from [openZennoConnection].
+  ZennoDatabase([QueryExecutor? executor])
+    : super(executor ?? openZennoConnection());
+
+  @override
+  int get schemaVersion => 1;
+
+  /// Persist `DateTime` columns as ISO-8601 TEXT (sortable, debuggable, and
+  /// export-friendly) rather than Unix timestamp integers.
+  @override
+  DriftDatabaseOptions get options =>
+      const DriftDatabaseOptions(storeDateTimeAsText: true);
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async {
+      await m.createAll();
+    },
+    beforeOpen: (details) async {
+      // Drift does not enable foreign keys by default — cascade deletes
+      // silently fail without this pragma.
+      await customStatement('PRAGMA foreign_keys = ON');
+      await seedDatabase(this);
+    },
+  );
+}
