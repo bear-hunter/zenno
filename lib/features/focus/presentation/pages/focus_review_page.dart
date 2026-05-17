@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:zenno/config/router/routes.dart';
 import 'package:zenno/config/theme/app_colors.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/database.dart' hide RitualChecklist;
@@ -75,6 +77,20 @@ class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
                 const SizedBox(height: AppSpacing.sm),
                 if (sessionId != null) _DistractionReview(sessionId: sessionId),
                 const SizedBox(height: AppSpacing.xl),
+
+                if (session.config?.linkedCanvasId != null) ...[
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    onPressed: () => context.push(
+                      Routes.canvasPath(session.config!.linkedCanvasId!),
+                    ),
+                    icon: const Icon(Icons.draw_outlined),
+                    label: const Text('Open canvas'),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
 
                 // --- Ritual upkeep ------------------------------------
                 const _SectionTitle('Tidy your ritual for next time'),

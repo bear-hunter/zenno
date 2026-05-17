@@ -22,6 +22,7 @@ class FocusSetupState {
     required this.flowBreakRatio,
     required this.plannedDuration,
     required this.checkedItemIds,
+    this.linkedCanvasId,
   });
 
   /// The draft as it stands before the user has touched anything, seeded from
@@ -36,6 +37,7 @@ class FocusSetupState {
       flowBreakRatio: settings.defaultFlowBreakRatio,
       plannedDuration: Duration(seconds: settings.defaultSessionLengthSecs),
       checkedItemIds: const <String>{},
+      linkedCanvasId: null,
     );
   }
 
@@ -63,6 +65,9 @@ class FocusSetupState {
   /// Ids of ritual items the user has ticked.
   final Set<String> checkedItemIds;
 
+  /// Optional working canvas for this focus session.
+  final String? linkedCanvasId;
+
   /// Returns a copy with the given fields replaced.
   FocusSetupState copyWith({
     String? goalText,
@@ -73,6 +78,8 @@ class FocusSetupState {
     double? flowBreakRatio,
     Duration? plannedDuration,
     Set<String>? checkedItemIds,
+    String? linkedCanvasId,
+    bool clearLinkedCanvas = false,
   }) {
     return FocusSetupState(
       goalText: goalText ?? this.goalText,
@@ -83,6 +90,9 @@ class FocusSetupState {
       flowBreakRatio: flowBreakRatio ?? this.flowBreakRatio,
       plannedDuration: plannedDuration ?? this.plannedDuration,
       checkedItemIds: checkedItemIds ?? this.checkedItemIds,
+      linkedCanvasId: clearLinkedCanvas
+          ? null
+          : (linkedCanvasId ?? this.linkedCanvasId),
     );
   }
 
@@ -97,6 +107,7 @@ class FocusSetupState {
       pomodoroWork: pomodoroWork,
       pomodoroBreak: pomodoroBreak,
       flowBreakRatio: flowBreakRatio,
+      linkedCanvasId: linkedCanvasId,
     );
   }
 }
@@ -128,6 +139,7 @@ class FocusSetupController extends _$FocusSetupController {
             flowBreakRatio: 0.2,
             plannedDuration: Duration(minutes: 50),
             checkedItemIds: <String>{},
+            linkedCanvasId: null,
           )
         : FocusSetupState.fromSettings(settings);
   }
@@ -178,6 +190,16 @@ class FocusSetupController extends _$FocusSetupController {
       next.add(itemId);
     }
     state = state.copyWith(checkedItemIds: next);
+  }
+
+  /// Links a working canvas to the draft session.
+  void setLinkedCanvas(String canvasId) {
+    state = state.copyWith(linkedCanvasId: canvasId);
+  }
+
+  /// Clears the draft session's working canvas.
+  void clearLinkedCanvas() {
+    state = state.copyWith(clearLinkedCanvas: true);
   }
 
   /// Resets the draft to the `app_settings` defaults.

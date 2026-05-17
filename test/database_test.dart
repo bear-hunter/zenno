@@ -159,4 +159,32 @@ void main() {
     await migrated.close();
     schema.close();
   });
+
+  test('v2 migrates to v3 and adds card canvas attachments table', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(2);
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    await migrated.select(migrated.cardCanvasAttachments).get();
+
+    final tables = await migrated
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'card_canvas_attachments'",
+        )
+        .get();
+    final columns = await migrated
+        .customSelect('PRAGMA table_info(card_canvas_attachments)')
+        .get();
+    final columnNames = columns.map((row) => row.read<String>('name'));
+
+    expect(tables, hasLength(1));
+    expect(columnNames, containsAll(['card_id', 'canvas_id', 'label']));
+
+    await migrated.close();
+    schema.close();
+  });
 }

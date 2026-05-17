@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:zenno/config/router/routes.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
 import 'package:zenno/features/focus/application/active_session_controller.dart';
@@ -135,6 +137,19 @@ class _ActiveBody extends StatelessWidget {
             const SizedBox(height: AppSpacing.xxl),
             _PrimaryControls(snapshot: snapshot, controller: controller),
             const SizedBox(height: AppSpacing.lg),
+            if (session.config?.linkedCanvasId != null) ...[
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                onPressed: () => context.push(
+                  Routes.canvasPath(session.config!.linkedCanvasId!),
+                ),
+                icon: const Icon(Icons.draw_outlined),
+                label: const Text('Open canvas'),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
             _SecondaryControls(controller: controller, onFinish: onFinish),
           ],
         ),

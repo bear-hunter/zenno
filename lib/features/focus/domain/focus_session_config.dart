@@ -70,6 +70,7 @@ class FocusSessionConfig {
     Duration? pomodoroBreak,
     double? flowBreakRatio,
     String? linkedCanvasId,
+    bool clearLinkedCanvas = false,
   }) {
     return FocusSessionConfig(
       goalText: goalText ?? this.goalText,
@@ -79,7 +80,9 @@ class FocusSessionConfig {
       pomodoroWork: pomodoroWork ?? this.pomodoroWork,
       pomodoroBreak: pomodoroBreak ?? this.pomodoroBreak,
       flowBreakRatio: flowBreakRatio ?? this.flowBreakRatio,
-      linkedCanvasId: linkedCanvasId ?? this.linkedCanvasId,
+      linkedCanvasId: clearLinkedCanvas
+          ? null
+          : (linkedCanvasId ?? this.linkedCanvasId),
     );
   }
 }

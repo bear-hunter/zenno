@@ -9,6 +9,7 @@ import 'package:zenno/features/goal_cycle/data/goal_repository.dart';
 import 'package:zenno/features/goal_cycle/data/reflection_repository.dart';
 import 'package:zenno/features/goal_cycle/presentation/pages/reflection_editor_page.dart';
 import 'package:zenno/features/goal_cycle/presentation/widgets/reflection_entry_tile.dart';
+import 'package:zenno/shared/canvas_attachments/card_canvas_attachments_section.dart';
 import 'package:zenno/shared/kanban/kanban_models.dart';
 
 /// Opens the goal-card detail sheet for [card] as a modal bottom sheet.
@@ -304,6 +305,13 @@ class _GoalCardDetailSheetState extends ConsumerState<_GoalCardDetailSheet> {
                   onEdit: _editReflection,
                   onDelete: _deleteReflection,
                 ),
+              ),
+
+              const SizedBox(height: AppSpacing.xl),
+
+              CardCanvasAttachmentsSection(
+                cardId: widget.card.id,
+                defaultCanvasTitle: widget.card.title,
               ),
 
               const SizedBox(height: AppSpacing.xl),

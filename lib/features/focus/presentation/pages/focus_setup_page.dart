@@ -10,6 +10,8 @@ import 'package:zenno/features/focus/presentation/pages/focus_active_page.dart';
 import 'package:zenno/features/focus/presentation/widgets/energy_rating_selector.dart';
 import 'package:zenno/features/focus/presentation/widgets/ritual_checklist.dart';
 import 'package:zenno/features/focus/presentation/widgets/timer_type_picker.dart';
+import 'package:zenno/features/library/application/library_providers.dart';
+import 'package:zenno/shared/canvas_attachments/canvas_picker_dialog.dart';
 
 /// The Focus Setup screen.
 ///
@@ -123,6 +125,12 @@ class _SetupBody extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpacing.xxl),
 
+              // --- Working canvas --------------------------------------
+              const _SectionTitle('Working canvas'),
+              const SizedBox(height: AppSpacing.sm),
+              _FocusCanvasRow(setup: setup, controller: controller),
+              const SizedBox(height: AppSpacing.xxl),
+
               // --- Start ------------------------------------------------
               FilledButton.icon(
                 style: FilledButton.styleFrom(
@@ -165,6 +173,75 @@ class _SetupBody extends ConsumerWidget {
     await navigator.pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const FocusActivePage()),
     );
+  }
+}
+
+class _FocusCanvasRow extends ConsumerWidget {
+  const _FocusCanvasRow({required this.setup, required this.controller});
+
+  final FocusSetupState setup;
+  final FocusSetupController controller;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final canvasId = setup.linkedCanvasId;
+    final canvases = ref.watch(canvasListProvider).value ?? const <Canvase>[];
+    final selected = canvasId == null
+        ? null
+        : canvases.where((canvas) => canvas.id == canvasId).firstOrNull;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.draw_outlined),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              selected?.title ??
+                  (canvasId == null ? 'No canvas linked' : 'Linked canvas'),
+              style: theme.textTheme.bodyLarge,
+            ),
+          ),
+          if (canvasId != null)
+            IconButton(
+              tooltip: 'Clear canvas',
+              onPressed: controller.clearLinkedCanvas,
+              icon: const Icon(Icons.close),
+            ),
+          TextButton.icon(
+            onPressed: () => _chooseCanvas(context, ref),
+            icon: Icon(canvasId == null ? Icons.add : Icons.swap_horiz),
+            label: Text(canvasId == null ? 'Add' : 'Change'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _chooseCanvas(BuildContext context, WidgetRef ref) async {
+    final defaultTitle = setup.goalText.trim().isEmpty
+        ? 'Focus canvas'
+        : setup.goalText.trim();
+    final result = await showCanvasPickerDialog(
+      context,
+      defaultTitle: defaultTitle,
+    );
+    if (result == null) return;
+    switch (result) {
+      case ExistingCanvasPicked(:final canvasId):
+        controller.setLinkedCanvas(canvasId);
+      case NewCanvasPicked(:final title):
+        final id = await ref
+            .read(libraryRepositoryProvider)
+            .createCanvas(title: title);
+        controller.setLinkedCanvas(id);
+    }
   }
 }
 

@@ -8861,6 +8861,426 @@ class GoalCardDetailsCompanion extends UpdateCompanion<GoalCardDetail> {
   }
 }
 
+class $CardCanvasAttachmentsTable extends CardCanvasAttachments
+    with TableInfo<$CardCanvasAttachmentsTable, CardCanvasAttachment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CardCanvasAttachmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cardIdMeta = const VerificationMeta('cardId');
+  @override
+  late final GeneratedColumn<String> cardId = GeneratedColumn<String>(
+    'card_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES board_cards (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _canvasIdMeta = const VerificationMeta(
+    'canvasId',
+  );
+  @override
+  late final GeneratedColumn<String> canvasId = GeneratedColumn<String>(
+    'canvas_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES canvases (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<double> position = GeneratedColumn<double>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    cardId,
+    canvasId,
+    label,
+    position,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'card_canvas_attachments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CardCanvasAttachment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('card_id')) {
+      context.handle(
+        _cardIdMeta,
+        cardId.isAcceptableOrUnknown(data['card_id']!, _cardIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cardIdMeta);
+    }
+    if (data.containsKey('canvas_id')) {
+      context.handle(
+        _canvasIdMeta,
+        canvasId.isAcceptableOrUnknown(data['canvas_id']!, _canvasIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_canvasIdMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_labelMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {cardId, canvasId},
+  ];
+  @override
+  CardCanvasAttachment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CardCanvasAttachment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      cardId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}card_id'],
+      )!,
+      canvasId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canvas_id'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}position'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CardCanvasAttachmentsTable createAlias(String alias) {
+    return $CardCanvasAttachmentsTable(attachedDatabase, alias);
+  }
+}
+
+class CardCanvasAttachment extends DataClass
+    implements Insertable<CardCanvasAttachment> {
+  final String id;
+  final String cardId;
+  final String canvasId;
+  final String label;
+
+  /// Fractional ordering position within the card's canvas list.
+  final double position;
+  final DateTime createdAt;
+  const CardCanvasAttachment({
+    required this.id,
+    required this.cardId,
+    required this.canvasId,
+    required this.label,
+    required this.position,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['card_id'] = Variable<String>(cardId);
+    map['canvas_id'] = Variable<String>(canvasId);
+    map['label'] = Variable<String>(label);
+    map['position'] = Variable<double>(position);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  CardCanvasAttachmentsCompanion toCompanion(bool nullToAbsent) {
+    return CardCanvasAttachmentsCompanion(
+      id: Value(id),
+      cardId: Value(cardId),
+      canvasId: Value(canvasId),
+      label: Value(label),
+      position: Value(position),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory CardCanvasAttachment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CardCanvasAttachment(
+      id: serializer.fromJson<String>(json['id']),
+      cardId: serializer.fromJson<String>(json['cardId']),
+      canvasId: serializer.fromJson<String>(json['canvasId']),
+      label: serializer.fromJson<String>(json['label']),
+      position: serializer.fromJson<double>(json['position']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'cardId': serializer.toJson<String>(cardId),
+      'canvasId': serializer.toJson<String>(canvasId),
+      'label': serializer.toJson<String>(label),
+      'position': serializer.toJson<double>(position),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  CardCanvasAttachment copyWith({
+    String? id,
+    String? cardId,
+    String? canvasId,
+    String? label,
+    double? position,
+    DateTime? createdAt,
+  }) => CardCanvasAttachment(
+    id: id ?? this.id,
+    cardId: cardId ?? this.cardId,
+    canvasId: canvasId ?? this.canvasId,
+    label: label ?? this.label,
+    position: position ?? this.position,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  CardCanvasAttachment copyWithCompanion(CardCanvasAttachmentsCompanion data) {
+    return CardCanvasAttachment(
+      id: data.id.present ? data.id.value : this.id,
+      cardId: data.cardId.present ? data.cardId.value : this.cardId,
+      canvasId: data.canvasId.present ? data.canvasId.value : this.canvasId,
+      label: data.label.present ? data.label.value : this.label,
+      position: data.position.present ? data.position.value : this.position,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CardCanvasAttachment(')
+          ..write('id: $id, ')
+          ..write('cardId: $cardId, ')
+          ..write('canvasId: $canvasId, ')
+          ..write('label: $label, ')
+          ..write('position: $position, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, cardId, canvasId, label, position, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CardCanvasAttachment &&
+          other.id == this.id &&
+          other.cardId == this.cardId &&
+          other.canvasId == this.canvasId &&
+          other.label == this.label &&
+          other.position == this.position &&
+          other.createdAt == this.createdAt);
+}
+
+class CardCanvasAttachmentsCompanion
+    extends UpdateCompanion<CardCanvasAttachment> {
+  final Value<String> id;
+  final Value<String> cardId;
+  final Value<String> canvasId;
+  final Value<String> label;
+  final Value<double> position;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const CardCanvasAttachmentsCompanion({
+    this.id = const Value.absent(),
+    this.cardId = const Value.absent(),
+    this.canvasId = const Value.absent(),
+    this.label = const Value.absent(),
+    this.position = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CardCanvasAttachmentsCompanion.insert({
+    required String id,
+    required String cardId,
+    required String canvasId,
+    required String label,
+    required double position,
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       cardId = Value(cardId),
+       canvasId = Value(canvasId),
+       label = Value(label),
+       position = Value(position),
+       createdAt = Value(createdAt);
+  static Insertable<CardCanvasAttachment> custom({
+    Expression<String>? id,
+    Expression<String>? cardId,
+    Expression<String>? canvasId,
+    Expression<String>? label,
+    Expression<double>? position,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (cardId != null) 'card_id': cardId,
+      if (canvasId != null) 'canvas_id': canvasId,
+      if (label != null) 'label': label,
+      if (position != null) 'position': position,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CardCanvasAttachmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? cardId,
+    Value<String>? canvasId,
+    Value<String>? label,
+    Value<double>? position,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return CardCanvasAttachmentsCompanion(
+      id: id ?? this.id,
+      cardId: cardId ?? this.cardId,
+      canvasId: canvasId ?? this.canvasId,
+      label: label ?? this.label,
+      position: position ?? this.position,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (cardId.present) {
+      map['card_id'] = Variable<String>(cardId.value);
+    }
+    if (canvasId.present) {
+      map['canvas_id'] = Variable<String>(canvasId.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<double>(position.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CardCanvasAttachmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('cardId: $cardId, ')
+          ..write('canvasId: $canvasId, ')
+          ..write('label: $label, ')
+          ..write('position: $position, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ReflectionTemplatesTable extends ReflectionTemplates
     with TableInfo<$ReflectionTemplatesTable, ReflectionTemplate> {
   @override
@@ -10612,6 +11032,8 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
   late final $GoalCardDetailsTable goalCardDetails = $GoalCardDetailsTable(
     this,
   );
+  late final $CardCanvasAttachmentsTable cardCanvasAttachments =
+      $CardCanvasAttachmentsTable(this);
   late final $ReflectionTemplatesTable reflectionTemplates =
       $ReflectionTemplatesTable(this);
   late final $ReflectionEntriesTable reflectionEntries =
@@ -10653,6 +11075,14 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     'idx_board_cards_board_id',
     'CREATE INDEX idx_board_cards_board_id ON board_cards (board_id)',
   );
+  late final Index idxCardCanvasAttachmentsCardPosition = Index(
+    'idx_card_canvas_attachments_card_position',
+    'CREATE INDEX idx_card_canvas_attachments_card_position ON card_canvas_attachments (card_id, position)',
+  );
+  late final Index idxCardCanvasAttachmentsCanvasId = Index(
+    'idx_card_canvas_attachments_canvas_id',
+    'CREATE INDEX idx_card_canvas_attachments_canvas_id ON card_canvas_attachments (canvas_id)',
+  );
   late final Index idxReflectionEntriesCardId = Index(
     'idx_reflection_entries_card_id',
     'CREATE INDEX idx_reflection_entries_card_id ON reflection_entries (card_id)',
@@ -10679,6 +11109,7 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     boardCards,
     revisionCardDetails,
     goalCardDetails,
+    cardCanvasAttachments,
     reflectionTemplates,
     reflectionEntries,
     appSettings,
@@ -10691,6 +11122,8 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     idxBoardColumnsBoardId,
     idxBoardCardsColumnIdPosition,
     idxBoardCardsBoardId,
+    idxCardCanvasAttachmentsCardPosition,
+    idxCardCanvasAttachmentsCanvasId,
     idxReflectionEntriesCardId,
   ];
   @override
@@ -10810,6 +11243,20 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('goal_card_details', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'board_cards',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('card_canvas_attachments', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'canvases',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('card_canvas_attachments', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -11210,6 +11657,34 @@ final class $$CanvasesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $CardCanvasAttachmentsTable,
+    List<CardCanvasAttachment>
+  >
+  _cardCanvasAttachmentsRefsTable(_$ZennoDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.cardCanvasAttachments,
+        aliasName: $_aliasNameGenerator(
+          db.canvases.id,
+          db.cardCanvasAttachments.canvasId,
+        ),
+      );
+
+  $$CardCanvasAttachmentsTableProcessedTableManager
+  get cardCanvasAttachmentsRefs {
+    final manager = $$CardCanvasAttachmentsTableTableManager(
+      $_db,
+      $_db.cardCanvasAttachments,
+    ).filter((f) => f.canvasId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _cardCanvasAttachmentsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CanvasesTableFilterComposer
@@ -11362,6 +11837,32 @@ class $$CanvasesTableFilterComposer
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> cardCanvasAttachmentsRefs(
+    Expression<bool> Function($$CardCanvasAttachmentsTableFilterComposer f) f,
+  ) {
+    final $$CardCanvasAttachmentsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.cardCanvasAttachments,
+          getReferencedColumn: (t) => t.canvasId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CardCanvasAttachmentsTableFilterComposer(
+                $db: $db,
+                $table: $db.cardCanvasAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -11607,6 +12108,32 @@ class $$CanvasesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> cardCanvasAttachmentsRefs<T extends Object>(
+    Expression<T> Function($$CardCanvasAttachmentsTableAnnotationComposer a) f,
+  ) {
+    final $$CardCanvasAttachmentsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.cardCanvasAttachments,
+          getReferencedColumn: (t) => t.canvasId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CardCanvasAttachmentsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.cardCanvasAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$CanvasesTableTableManager
@@ -11626,6 +12153,7 @@ class $$CanvasesTableTableManager
             bool folderId,
             bool canvasElementsRefs,
             bool focusSessionsRefs,
+            bool cardCanvasAttachmentsRefs,
           })
         > {
   $$CanvasesTableTableManager(_$ZennoDatabase db, $CanvasesTable table)
@@ -11724,12 +12252,14 @@ class $$CanvasesTableTableManager
                 folderId = false,
                 canvasElementsRefs = false,
                 focusSessionsRefs = false,
+                cardCanvasAttachmentsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (canvasElementsRefs) db.canvasElements,
                     if (focusSessionsRefs) db.focusSessions,
+                    if (cardCanvasAttachmentsRefs) db.cardCanvasAttachments,
                   ],
                   addJoins:
                       <
@@ -11807,6 +12337,27 @@ class $$CanvasesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (cardCanvasAttachmentsRefs)
+                        await $_getPrefetchedData<
+                          Canvase,
+                          $CanvasesTable,
+                          CardCanvasAttachment
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CanvasesTableReferences
+                              ._cardCanvasAttachmentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CanvasesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).cardCanvasAttachmentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.canvasId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -11831,6 +12382,7 @@ typedef $$CanvasesTableProcessedTableManager =
         bool folderId,
         bool canvasElementsRefs,
         bool focusSessionsRefs,
+        bool cardCanvasAttachmentsRefs,
       })
     >;
 typedef $$CanvasElementsTableCreateCompanionBuilder =
@@ -17622,6 +18174,34 @@ final class $$BoardCardsTableReferences
     );
   }
 
+  static MultiTypedResultKey<
+    $CardCanvasAttachmentsTable,
+    List<CardCanvasAttachment>
+  >
+  _cardCanvasAttachmentsRefsTable(_$ZennoDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.cardCanvasAttachments,
+        aliasName: $_aliasNameGenerator(
+          db.boardCards.id,
+          db.cardCanvasAttachments.cardId,
+        ),
+      );
+
+  $$CardCanvasAttachmentsTableProcessedTableManager
+  get cardCanvasAttachmentsRefs {
+    final manager = $$CardCanvasAttachmentsTableTableManager(
+      $_db,
+      $_db.cardCanvasAttachments,
+    ).filter((f) => f.cardId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _cardCanvasAttachmentsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$ReflectionEntriesTable, List<ReflectionEntry>>
   _reflectionEntriesRefsTable(_$ZennoDatabase db) =>
       MultiTypedResultKey.fromTable(
@@ -17779,6 +18359,32 @@ class $$BoardCardsTableFilterComposer
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> cardCanvasAttachmentsRefs(
+    Expression<bool> Function($$CardCanvasAttachmentsTableFilterComposer f) f,
+  ) {
+    final $$CardCanvasAttachmentsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.cardCanvasAttachments,
+          getReferencedColumn: (t) => t.cardId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CardCanvasAttachmentsTableFilterComposer(
+                $db: $db,
+                $table: $db.cardCanvasAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 
@@ -18018,6 +18624,32 @@ class $$BoardCardsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> cardCanvasAttachmentsRefs<T extends Object>(
+    Expression<T> Function($$CardCanvasAttachmentsTableAnnotationComposer a) f,
+  ) {
+    final $$CardCanvasAttachmentsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.cardCanvasAttachments,
+          getReferencedColumn: (t) => t.cardId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CardCanvasAttachmentsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.cardCanvasAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> reflectionEntriesRefs<T extends Object>(
     Expression<T> Function($$ReflectionEntriesTableAnnotationComposer a) f,
   ) {
@@ -18063,6 +18695,7 @@ class $$BoardCardsTableTableManager
             bool boardId,
             bool revisionCardDetailsRefs,
             bool goalCardDetailsRefs,
+            bool cardCanvasAttachmentsRefs,
             bool reflectionEntriesRefs,
           })
         > {
@@ -18135,6 +18768,7 @@ class $$BoardCardsTableTableManager
                 boardId = false,
                 revisionCardDetailsRefs = false,
                 goalCardDetailsRefs = false,
+                cardCanvasAttachmentsRefs = false,
                 reflectionEntriesRefs = false,
               }) {
                 return PrefetchHooks(
@@ -18142,6 +18776,7 @@ class $$BoardCardsTableTableManager
                   explicitlyWatchedTables: [
                     if (revisionCardDetailsRefs) db.revisionCardDetails,
                     if (goalCardDetailsRefs) db.goalCardDetails,
+                    if (cardCanvasAttachmentsRefs) db.cardCanvasAttachments,
                     if (reflectionEntriesRefs) db.reflectionEntries,
                   ],
                   addJoins:
@@ -18235,6 +18870,27 @@ class $$BoardCardsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (cardCanvasAttachmentsRefs)
+                        await $_getPrefetchedData<
+                          BoardCard,
+                          $BoardCardsTable,
+                          CardCanvasAttachment
+                        >(
+                          currentTable: table,
+                          referencedTable: $$BoardCardsTableReferences
+                              ._cardCanvasAttachmentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$BoardCardsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).cardCanvasAttachmentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.cardId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (reflectionEntriesRefs)
                         await $_getPrefetchedData<
                           BoardCard,
@@ -18281,6 +18937,7 @@ typedef $$BoardCardsTableProcessedTableManager =
         bool boardId,
         bool revisionCardDetailsRefs,
         bool goalCardDetailsRefs,
+        bool cardCanvasAttachmentsRefs,
         bool reflectionEntriesRefs,
       })
     >;
@@ -18904,6 +19561,456 @@ typedef $$GoalCardDetailsTableProcessedTableManager =
       (GoalCardDetail, $$GoalCardDetailsTableReferences),
       GoalCardDetail,
       PrefetchHooks Function({bool cardId})
+    >;
+typedef $$CardCanvasAttachmentsTableCreateCompanionBuilder =
+    CardCanvasAttachmentsCompanion Function({
+      required String id,
+      required String cardId,
+      required String canvasId,
+      required String label,
+      required double position,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$CardCanvasAttachmentsTableUpdateCompanionBuilder =
+    CardCanvasAttachmentsCompanion Function({
+      Value<String> id,
+      Value<String> cardId,
+      Value<String> canvasId,
+      Value<String> label,
+      Value<double> position,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+final class $$CardCanvasAttachmentsTableReferences
+    extends
+        BaseReferences<
+          _$ZennoDatabase,
+          $CardCanvasAttachmentsTable,
+          CardCanvasAttachment
+        > {
+  $$CardCanvasAttachmentsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $BoardCardsTable _cardIdTable(_$ZennoDatabase db) =>
+      db.boardCards.createAlias(
+        $_aliasNameGenerator(db.cardCanvasAttachments.cardId, db.boardCards.id),
+      );
+
+  $$BoardCardsTableProcessedTableManager get cardId {
+    final $_column = $_itemColumn<String>('card_id')!;
+
+    final manager = $$BoardCardsTableTableManager(
+      $_db,
+      $_db.boardCards,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_cardIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $CanvasesTable _canvasIdTable(_$ZennoDatabase db) =>
+      db.canvases.createAlias(
+        $_aliasNameGenerator(db.cardCanvasAttachments.canvasId, db.canvases.id),
+      );
+
+  $$CanvasesTableProcessedTableManager get canvasId {
+    final $_column = $_itemColumn<String>('canvas_id')!;
+
+    final manager = $$CanvasesTableTableManager(
+      $_db,
+      $_db.canvases,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_canvasIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CardCanvasAttachmentsTableFilterComposer
+    extends Composer<_$ZennoDatabase, $CardCanvasAttachmentsTable> {
+  $$CardCanvasAttachmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$BoardCardsTableFilterComposer get cardId {
+    final $$BoardCardsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cardId,
+      referencedTable: $db.boardCards,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BoardCardsTableFilterComposer(
+            $db: $db,
+            $table: $db.boardCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CanvasesTableFilterComposer get canvasId {
+    final $$CanvasesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableFilterComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CardCanvasAttachmentsTableOrderingComposer
+    extends Composer<_$ZennoDatabase, $CardCanvasAttachmentsTable> {
+  $$CardCanvasAttachmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$BoardCardsTableOrderingComposer get cardId {
+    final $$BoardCardsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cardId,
+      referencedTable: $db.boardCards,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BoardCardsTableOrderingComposer(
+            $db: $db,
+            $table: $db.boardCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CanvasesTableOrderingComposer get canvasId {
+    final $$CanvasesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableOrderingComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CardCanvasAttachmentsTableAnnotationComposer
+    extends Composer<_$ZennoDatabase, $CardCanvasAttachmentsTable> {
+  $$CardCanvasAttachmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<double> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$BoardCardsTableAnnotationComposer get cardId {
+    final $$BoardCardsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cardId,
+      referencedTable: $db.boardCards,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BoardCardsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.boardCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CanvasesTableAnnotationComposer get canvasId {
+    final $$CanvasesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CardCanvasAttachmentsTableTableManager
+    extends
+        RootTableManager<
+          _$ZennoDatabase,
+          $CardCanvasAttachmentsTable,
+          CardCanvasAttachment,
+          $$CardCanvasAttachmentsTableFilterComposer,
+          $$CardCanvasAttachmentsTableOrderingComposer,
+          $$CardCanvasAttachmentsTableAnnotationComposer,
+          $$CardCanvasAttachmentsTableCreateCompanionBuilder,
+          $$CardCanvasAttachmentsTableUpdateCompanionBuilder,
+          (CardCanvasAttachment, $$CardCanvasAttachmentsTableReferences),
+          CardCanvasAttachment,
+          PrefetchHooks Function({bool cardId, bool canvasId})
+        > {
+  $$CardCanvasAttachmentsTableTableManager(
+    _$ZennoDatabase db,
+    $CardCanvasAttachmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CardCanvasAttachmentsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CardCanvasAttachmentsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CardCanvasAttachmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> cardId = const Value.absent(),
+                Value<String> canvasId = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<double> position = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CardCanvasAttachmentsCompanion(
+                id: id,
+                cardId: cardId,
+                canvasId: canvasId,
+                label: label,
+                position: position,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String cardId,
+                required String canvasId,
+                required String label,
+                required double position,
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CardCanvasAttachmentsCompanion.insert(
+                id: id,
+                cardId: cardId,
+                canvasId: canvasId,
+                label: label,
+                position: position,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CardCanvasAttachmentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({cardId = false, canvasId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (cardId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.cardId,
+                                referencedTable:
+                                    $$CardCanvasAttachmentsTableReferences
+                                        ._cardIdTable(db),
+                                referencedColumn:
+                                    $$CardCanvasAttachmentsTableReferences
+                                        ._cardIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (canvasId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.canvasId,
+                                referencedTable:
+                                    $$CardCanvasAttachmentsTableReferences
+                                        ._canvasIdTable(db),
+                                referencedColumn:
+                                    $$CardCanvasAttachmentsTableReferences
+                                        ._canvasIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CardCanvasAttachmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ZennoDatabase,
+      $CardCanvasAttachmentsTable,
+      CardCanvasAttachment,
+      $$CardCanvasAttachmentsTableFilterComposer,
+      $$CardCanvasAttachmentsTableOrderingComposer,
+      $$CardCanvasAttachmentsTableAnnotationComposer,
+      $$CardCanvasAttachmentsTableCreateCompanionBuilder,
+      $$CardCanvasAttachmentsTableUpdateCompanionBuilder,
+      (CardCanvasAttachment, $$CardCanvasAttachmentsTableReferences),
+      CardCanvasAttachment,
+      PrefetchHooks Function({bool cardId, bool canvasId})
     >;
 typedef $$ReflectionTemplatesTableCreateCompanionBuilder =
     ReflectionTemplatesCompanion Function({
@@ -20122,6 +21229,8 @@ class $ZennoDatabaseManager {
       $$RevisionCardDetailsTableTableManager(_db, _db.revisionCardDetails);
   $$GoalCardDetailsTableTableManager get goalCardDetails =>
       $$GoalCardDetailsTableTableManager(_db, _db.goalCardDetails);
+  $$CardCanvasAttachmentsTableTableManager get cardCanvasAttachments =>
+      $$CardCanvasAttachmentsTableTableManager(_db, _db.cardCanvasAttachments);
   $$ReflectionTemplatesTableTableManager get reflectionTemplates =>
       $$ReflectionTemplatesTableTableManager(_db, _db.reflectionTemplates);
   $$ReflectionEntriesTableTableManager get reflectionEntries =>

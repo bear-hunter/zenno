@@ -7,6 +7,7 @@ import 'package:zenno/core/util/relative_time.dart';
 import 'package:zenno/features/revision/application/revision_providers.dart';
 import 'package:zenno/features/revision/data/revision_repository.dart';
 import 'package:zenno/features/revision/presentation/widgets/mastery_flag_chip.dart';
+import 'package:zenno/shared/canvas_attachments/card_canvas_attachments_section.dart';
 import 'package:zenno/shared/kanban/kanban_models.dart';
 
 /// Opens the revision-card detail sheet for [card] as a modal bottom sheet.
@@ -202,6 +203,13 @@ class _RevisionCardDetailSheetState
 
             // --- Revision history ----------------------------------------
             _RevisionStats(extra: _extra),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            CardCanvasAttachmentsSection(
+              cardId: widget.card.id,
+              defaultCanvasTitle: widget.card.title,
+            ),
 
             const SizedBox(height: AppSpacing.xl),
 
