@@ -21,6 +21,7 @@ part 'database.g.dart';
     PdfDocuments,
     Images,
     CanvasLinks,
+    CanvasTexts,
     // Focus group.
     RitualChecklists,
     RitualChecklistItems,
@@ -49,7 +50,7 @@ class ZennoDatabase extends _$ZennoDatabase {
     : super(executor ?? openZennoConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// Persist `DateTime` columns as ISO-8601 TEXT (sortable, debuggable, and
   /// export-friendly) rather than Unix timestamp integers.
@@ -73,6 +74,9 @@ class ZennoDatabase extends _$ZennoDatabase {
       }
       if (from < 3) {
         await m.createTable(cardCanvasAttachments);
+      }
+      if (from < 4) {
+        await m.createTable(canvasTexts);
       }
     },
     beforeOpen: (details) async {

@@ -45,7 +45,9 @@ class CanvasToolbar extends StatelessWidget {
         final CanvasTool tool = controller.activeTool;
         // The colour + width controls only matter for tools that emit ink.
         final bool inkControlsApply =
-            tool == CanvasTool.pen || tool == CanvasTool.shape;
+            tool == CanvasTool.pen ||
+            tool == CanvasTool.shape ||
+            tool == CanvasTool.text;
         return Material(
           color: colors.surfaceContainerHigh,
           child: SafeArea(
@@ -63,6 +65,7 @@ class CanvasToolbar extends StatelessWidget {
                   if (tool == CanvasTool.eraser) _eraserModeToggle(colors),
                   if (tool == CanvasTool.shape) _shapeKindToggle(colors),
                   if (tool == CanvasTool.link) _linkHint(colors),
+                  if (tool == CanvasTool.text) _textHint(colors),
                   if (inkControlsApply) ...[
                     _divider(colors),
                     _swatchRow(colors),
@@ -122,6 +125,11 @@ class CanvasToolbar extends StatelessWidget {
           icon: Icon(Icons.add_link),
           tooltip: 'Place a link',
         ),
+        ButtonSegment<CanvasTool>(
+          value: CanvasTool.text,
+          icon: Icon(Icons.notes_outlined),
+          tooltip: 'Text note',
+        ),
       ],
       selected: <CanvasTool>{controller.activeTool},
       onSelectionChanged: (selection) => controller.setTool(selection.first),
@@ -137,6 +145,21 @@ class CanvasToolbar extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           'Tap the canvas to place a link',
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+        ),
+      ],
+    );
+  }
+
+  /// A short instruction shown while the text tool is active.
+  Widget _textHint(ColorScheme colors) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.notes_outlined, size: 18, color: colors.primary),
+        const SizedBox(width: 6),
+        Text(
+          'Tap to add or edit a note',
           style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
         ),
       ],

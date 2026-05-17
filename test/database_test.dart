@@ -187,4 +187,35 @@ void main() {
     await migrated.close();
     schema.close();
   });
+
+  test('v3 migrates to v4 and adds canvas text notes table', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(3);
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    await migrated.select(migrated.canvasTexts).get();
+
+    final tables = await migrated
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'canvas_texts'",
+        )
+        .get();
+    final columns = await migrated
+        .customSelect('PRAGMA table_info(canvas_texts)')
+        .get();
+    final columnNames = columns.map((row) => row.read<String>('name'));
+
+    expect(tables, hasLength(1));
+    expect(
+      columnNames,
+      containsAll(['element_id', 'note_text', 'color', 'font_size']),
+    );
+
+    await migrated.close();
+    schema.close();
+  });
 }

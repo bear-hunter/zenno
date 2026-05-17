@@ -133,6 +133,11 @@ class ElementsTileCache {
         raster?.width,
         raster?.height,
       ),
+      TextElement(:final text, :final color, :final fontSize) => Object.hash(
+        text,
+        color,
+        fontSize,
+      ),
       _ => 0,
     };
     return Object.hash(
@@ -288,6 +293,8 @@ class ElementsPainter extends CustomPainter {
           _paintPdf(canvas, drawn, selected: selected);
         case LinkElement():
           _paintLink(canvas, drawn, selected: selected);
+        case TextElement():
+          _paintText(canvas, drawn, selected: selected);
       }
     }
 
@@ -328,6 +335,8 @@ class ElementsPainter extends CustomPainter {
         _paintPdf(canvas, element, selected: false);
       case LinkElement():
         _paintLink(canvas, element, selected: false);
+      case TextElement():
+        _paintText(canvas, element, selected: false);
     }
   }
 
@@ -484,6 +493,55 @@ class ElementsPainter extends CustomPainter {
         ),
       )..layout(maxWidth: labelWidth);
       label.paint(canvas, Offset(labelLeft, rect.center.dy - label.height / 2));
+    }
+
+    if (selected) {
+      _paintSelectionOutline(canvas, rect);
+    }
+  }
+
+  /// Paints a [TextElement] as plain multiline text in its world rectangle.
+  void _paintText(
+    Canvas canvas,
+    TextElement element, {
+    required bool selected,
+  }) {
+    final Rect rect = element.worldBounds;
+    if (rect.isEmpty || element.text.trim().isEmpty) {
+      return;
+    }
+
+    final double pad = (element.fontSize * 0.35).clamp(4.0, 14.0);
+    final Rect inner = rect.deflate(pad);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+      Paint()..color = const Color(0x1AFFFFFF),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = const Color(0x22FFFFFF),
+    );
+
+    if (inner.width > 0 && inner.height > 0) {
+      final TextPainter painter = TextPainter(
+        textDirection: TextDirection.ltr,
+        maxLines: null,
+        text: TextSpan(
+          text: element.text,
+          style: TextStyle(
+            color: Color(element.color),
+            fontSize: element.fontSize,
+            height: 1.25,
+          ),
+        ),
+      )..layout(maxWidth: inner.width);
+      canvas.save();
+      canvas.clipRect(inner);
+      painter.paint(canvas, inner.topLeft);
+      canvas.restore();
     }
 
     if (selected) {

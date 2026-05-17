@@ -86,6 +86,24 @@ abstract final class CanvasGeometry {
         return true;
       }
     }
+    for (int i = 0; i < a.length - 1; i++) {
+      for (int j = 0; j < b.length - 1; j++) {
+        if (_segmentIntersectionT(a[i], a[i + 1], b[j], b[j + 1]) != null) {
+          return true;
+        }
+        final double? t = _closestParameterBetweenSegments(
+          a[i],
+          a[i + 1],
+          b[j],
+          b[j + 1],
+        );
+        if (t != null &&
+            distanceToSegment(_pointAt(a[i], a[i + 1], t), b[j], b[j + 1]) <=
+                distance) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 
@@ -160,11 +178,10 @@ abstract final class CanvasGeometry {
 
   /// Splits [stroke] wherever an eraser circle crosses its centerline.
   ///
-  /// The eraser is modelled as a circle of [radius] swept along [eraserPath]
-  /// (the world-space points sampled during the erase drag). Every centerline
-  /// point of [stroke] that falls within [radius] of any eraser segment is
-  /// dropped; each remaining maximal run of consecutive surviving points
-  /// becomes one fragment.
+  /// The eraser is modelled as a circle of [radius] swept along [eraserPath].
+  /// Stroke samples covered by that swept circle are removed, and sparse
+  /// stroke segments that cross the eraser are cut at projected intersection
+  /// points so fast strokes with few samples still split reliably.
   ///
   /// The result is a list of new point lists, in original stroke order:
   ///
@@ -173,8 +190,8 @@ abstract final class CanvasGeometry {
   /// * two or more lists — the stroke was cut into that many surviving pieces.
   ///
   /// Single-point fragments are kept (an isolated surviving dot is still ink).
-  /// Everything stays vector — points are only ever removed, never resampled or
-  /// rasterised. The caller wraps each fragment in a fresh [Stroke]/`InkElement`.
+  /// Everything stays vector: inserted split points are interpolated from the
+  /// original segment, including pressure.
   static List<List<StrokePoint>> splitStrokeByEraser({
     required Stroke stroke,
     required List<Offset> eraserPath,
@@ -186,18 +203,66 @@ abstract final class CanvasGeometry {
         if (points.isNotEmpty) List<StrokePoint>.of(points),
       ];
     }
+    if (points.length == 1) {
+      return _eraserCoversPoint(points.single.offset, eraserPath, radius)
+          ? const <List<StrokePoint>>[]
+          : <List<StrokePoint>>[List<StrokePoint>.of(points)];
+    }
 
     final List<List<StrokePoint>> fragments = <List<StrokePoint>>[];
     List<StrokePoint> current = <StrokePoint>[];
-    for (final StrokePoint point in points) {
-      final bool erased = _eraserCoversPoint(point.offset, eraserPath, radius);
-      if (erased) {
+
+    final bool firstErased = _eraserCoversPoint(
+      points.first.offset,
+      eraserPath,
+      radius,
+    );
+    if (!firstErased) {
+      current.add(points.first);
+    }
+
+    for (int i = 0; i < points.length - 1; i++) {
+      final StrokePoint a = points[i];
+      final StrokePoint b = points[i + 1];
+      final bool aErased = _eraserCoversPoint(a.offset, eraserPath, radius);
+      final bool bErased = _eraserCoversPoint(b.offset, eraserPath, radius);
+      final List<_StrokeCut> cuts = _segmentCutsByEraser(
+        a: a,
+        b: b,
+        eraserPath: eraserPath,
+        radius: radius,
+      );
+
+      if (aErased && !bErased) {
+        final StrokePoint? exit = cuts.isEmpty ? null : cuts.last.point;
+        if (exit != null) {
+          current = <StrokePoint>[exit, b];
+        } else {
+          current = <StrokePoint>[b];
+        }
+      } else if (!aErased && bErased) {
+        final StrokePoint? entry = cuts.isEmpty ? null : cuts.first.point;
+        if (entry != null && current.isNotEmpty) {
+          current.add(entry);
+        }
         if (current.isNotEmpty) {
           fragments.add(current);
           current = <StrokePoint>[];
         }
-      } else {
-        current.add(point);
+      } else if (!aErased && !bErased) {
+        if (cuts.length >= 2) {
+          current.add(cuts.first.point);
+          if (current.isNotEmpty) {
+            fragments.add(current);
+          }
+          current = <StrokePoint>[cuts.last.point, b];
+        } else if (cuts.length == 1) {
+          current.add(cuts.single.point);
+          fragments.add(current);
+          current = <StrokePoint>[cuts.single.point, b];
+        } else {
+          current.add(b);
+        }
       }
     }
     if (current.isNotEmpty) {
@@ -225,6 +290,143 @@ abstract final class CanvasGeometry {
     }
     return false;
   }
+
+  static List<_StrokeCut> _segmentCutsByEraser({
+    required StrokePoint a,
+    required StrokePoint b,
+    required List<Offset> eraserPath,
+    required double radius,
+  }) {
+    final List<_StrokeCut> cuts = <_StrokeCut>[];
+    final Offset start = a.offset;
+    final Offset end = b.offset;
+    if (eraserPath.length == 1) {
+      for (final double t in _segmentCircleIntersectionTs(
+        start,
+        end,
+        eraserPath.first,
+        radius,
+      )) {
+        cuts.add(_StrokeCut(t, _interpolate(a, b, t)));
+      }
+    } else {
+      for (int i = 0; i < eraserPath.length - 1; i++) {
+        final Offset ea = eraserPath[i];
+        final Offset eb = eraserPath[i + 1];
+        final double? intersectionT = _segmentIntersectionT(start, end, ea, eb);
+        if (intersectionT != null) {
+          cuts.add(
+            _StrokeCut(intersectionT, _interpolate(a, b, intersectionT)),
+          );
+          continue;
+        }
+        final double? t = _closestParameterBetweenSegments(start, end, ea, eb);
+        if (t != null &&
+            distanceToSegment(_pointAt(start, end, t), ea, eb) <= radius) {
+          cuts.add(_StrokeCut(t, _interpolate(a, b, t)));
+        }
+      }
+    }
+    cuts.sort((left, right) => left.t.compareTo(right.t));
+    final List<_StrokeCut> deduped = <_StrokeCut>[];
+    for (final _StrokeCut cut in cuts) {
+      if (deduped.isEmpty || (cut.t - deduped.last.t).abs() > 1e-4) {
+        deduped.add(cut);
+      }
+    }
+    return deduped;
+  }
+
+  static List<double> _segmentCircleIntersectionTs(
+    Offset a,
+    Offset b,
+    Offset center,
+    double radius,
+  ) {
+    final Offset d = b - a;
+    final Offset f = a - center;
+    final double aa = d.dx * d.dx + d.dy * d.dy;
+    if (aa == 0) {
+      return const <double>[];
+    }
+    final double bb = 2 * (f.dx * d.dx + f.dy * d.dy);
+    final double cc = f.dx * f.dx + f.dy * f.dy - radius * radius;
+    final double discriminant = bb * bb - 4 * aa * cc;
+    if (discriminant < 0) {
+      return const <double>[];
+    }
+    final double root = math.sqrt(discriminant);
+    final double t1 = (-bb - root) / (2 * aa);
+    final double t2 = (-bb + root) / (2 * aa);
+    return <double>[
+      if (t1 >= 0 && t1 <= 1) t1,
+      if (t2 >= 0 && t2 <= 1 && (t2 - t1).abs() > 1e-9) t2,
+    ]..sort();
+  }
+
+  static double? _projectionOnSegment(Offset p, Offset a, Offset b) {
+    final double dx = b.dx - a.dx;
+    final double dy = b.dy - a.dy;
+    final double lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared == 0) {
+      return null;
+    }
+    return (((p.dx - a.dx) * dx + (p.dy - a.dy) * dy) / lengthSquared).clamp(
+      0.0,
+      1.0,
+    );
+  }
+
+  static double? _segmentIntersectionT(Offset a, Offset b, Offset c, Offset d) {
+    final Offset r = b - a;
+    final Offset s = d - c;
+    final double denominator = _cross(r, s);
+    if (denominator.abs() < 1e-9) {
+      return null;
+    }
+    final Offset cMinusA = c - a;
+    final double t = _cross(cMinusA, s) / denominator;
+    final double u = _cross(cMinusA, r) / denominator;
+    if (t < 0 || t > 1 || u < 0 || u > 1) {
+      return null;
+    }
+    return t;
+  }
+
+  static double? _closestParameterBetweenSegments(
+    Offset a,
+    Offset b,
+    Offset c,
+    Offset d,
+  ) {
+    final double? t1 = _projectionOnSegment(c, a, b);
+    final double? t2 = _projectionOnSegment(d, a, b);
+    final List<double> candidates = <double>[?t1, ?t2, 0, 1];
+    double? bestT;
+    double bestDistance = double.infinity;
+    for (final double t in candidates) {
+      final double distance = distanceToSegment(_pointAt(a, b, t), c, d);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestT = t;
+      }
+    }
+    return bestT;
+  }
+
+  static Offset _pointAt(Offset a, Offset b, double t) {
+    return Offset(a.dx + (b.dx - a.dx) * t, a.dy + (b.dy - a.dy) * t);
+  }
+
+  static StrokePoint _interpolate(StrokePoint a, StrokePoint b, double t) {
+    return StrokePoint(
+      a.x + (b.x - a.x) * t,
+      a.y + (b.y - a.y) * t,
+      a.pressure + (b.pressure - a.pressure) * t,
+    );
+  }
+
+  static double _cross(Offset a, Offset b) => a.dx * b.dy - a.dy * b.dx;
 
   // ---------------------------------------------------------------------------
   // Shape perimeter generators
@@ -299,4 +501,11 @@ abstract final class CanvasGeometry {
     // one unbroken stroke.
     return <Offset>[start, end, barbLeft, end, barbRight];
   }
+}
+
+class _StrokeCut {
+  const _StrokeCut(this.t, this.point);
+
+  final double t;
+  final StrokePoint point;
 }

@@ -4234,6 +4234,328 @@ class CanvasLinksCompanion extends UpdateCompanion<CanvasLink> {
   }
 }
 
+class $CanvasTextsTable extends CanvasTexts
+    with TableInfo<$CanvasTextsTable, CanvasText> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanvasTextsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _elementIdMeta = const VerificationMeta(
+    'elementId',
+  );
+  @override
+  late final GeneratedColumn<String> elementId = GeneratedColumn<String>(
+    'element_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES canvas_elements (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _noteTextMeta = const VerificationMeta(
+    'noteText',
+  );
+  @override
+  late final GeneratedColumn<String> noteText = GeneratedColumn<String>(
+    'note_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fontSizeMeta = const VerificationMeta(
+    'fontSize',
+  );
+  @override
+  late final GeneratedColumn<double> fontSize = GeneratedColumn<double>(
+    'font_size',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [elementId, noteText, color, fontSize];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canvas_texts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanvasText> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('element_id')) {
+      context.handle(
+        _elementIdMeta,
+        elementId.isAcceptableOrUnknown(data['element_id']!, _elementIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_elementIdMeta);
+    }
+    if (data.containsKey('note_text')) {
+      context.handle(
+        _noteTextMeta,
+        noteText.isAcceptableOrUnknown(data['note_text']!, _noteTextMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteTextMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('font_size')) {
+      context.handle(
+        _fontSizeMeta,
+        fontSize.isAcceptableOrUnknown(data['font_size']!, _fontSizeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fontSizeMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {elementId};
+  @override
+  CanvasText map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanvasText(
+      elementId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}element_id'],
+      )!,
+      noteText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note_text'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color'],
+      )!,
+      fontSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}font_size'],
+      )!,
+    );
+  }
+
+  @override
+  $CanvasTextsTable createAlias(String alias) {
+    return $CanvasTextsTable(attachedDatabase, alias);
+  }
+}
+
+class CanvasText extends DataClass implements Insertable<CanvasText> {
+  final String elementId;
+
+  /// Multiline note body.
+  final String noteText;
+
+  /// Packed ARGB text colour.
+  final int color;
+
+  /// World-space font size at scale 1.
+  final double fontSize;
+  const CanvasText({
+    required this.elementId,
+    required this.noteText,
+    required this.color,
+    required this.fontSize,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['element_id'] = Variable<String>(elementId);
+    map['note_text'] = Variable<String>(noteText);
+    map['color'] = Variable<int>(color);
+    map['font_size'] = Variable<double>(fontSize);
+    return map;
+  }
+
+  CanvasTextsCompanion toCompanion(bool nullToAbsent) {
+    return CanvasTextsCompanion(
+      elementId: Value(elementId),
+      noteText: Value(noteText),
+      color: Value(color),
+      fontSize: Value(fontSize),
+    );
+  }
+
+  factory CanvasText.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanvasText(
+      elementId: serializer.fromJson<String>(json['elementId']),
+      noteText: serializer.fromJson<String>(json['noteText']),
+      color: serializer.fromJson<int>(json['color']),
+      fontSize: serializer.fromJson<double>(json['fontSize']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'elementId': serializer.toJson<String>(elementId),
+      'noteText': serializer.toJson<String>(noteText),
+      'color': serializer.toJson<int>(color),
+      'fontSize': serializer.toJson<double>(fontSize),
+    };
+  }
+
+  CanvasText copyWith({
+    String? elementId,
+    String? noteText,
+    int? color,
+    double? fontSize,
+  }) => CanvasText(
+    elementId: elementId ?? this.elementId,
+    noteText: noteText ?? this.noteText,
+    color: color ?? this.color,
+    fontSize: fontSize ?? this.fontSize,
+  );
+  CanvasText copyWithCompanion(CanvasTextsCompanion data) {
+    return CanvasText(
+      elementId: data.elementId.present ? data.elementId.value : this.elementId,
+      noteText: data.noteText.present ? data.noteText.value : this.noteText,
+      color: data.color.present ? data.color.value : this.color,
+      fontSize: data.fontSize.present ? data.fontSize.value : this.fontSize,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasText(')
+          ..write('elementId: $elementId, ')
+          ..write('noteText: $noteText, ')
+          ..write('color: $color, ')
+          ..write('fontSize: $fontSize')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(elementId, noteText, color, fontSize);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanvasText &&
+          other.elementId == this.elementId &&
+          other.noteText == this.noteText &&
+          other.color == this.color &&
+          other.fontSize == this.fontSize);
+}
+
+class CanvasTextsCompanion extends UpdateCompanion<CanvasText> {
+  final Value<String> elementId;
+  final Value<String> noteText;
+  final Value<int> color;
+  final Value<double> fontSize;
+  final Value<int> rowid;
+  const CanvasTextsCompanion({
+    this.elementId = const Value.absent(),
+    this.noteText = const Value.absent(),
+    this.color = const Value.absent(),
+    this.fontSize = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanvasTextsCompanion.insert({
+    required String elementId,
+    required String noteText,
+    required int color,
+    required double fontSize,
+    this.rowid = const Value.absent(),
+  }) : elementId = Value(elementId),
+       noteText = Value(noteText),
+       color = Value(color),
+       fontSize = Value(fontSize);
+  static Insertable<CanvasText> custom({
+    Expression<String>? elementId,
+    Expression<String>? noteText,
+    Expression<int>? color,
+    Expression<double>? fontSize,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (elementId != null) 'element_id': elementId,
+      if (noteText != null) 'note_text': noteText,
+      if (color != null) 'color': color,
+      if (fontSize != null) 'font_size': fontSize,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanvasTextsCompanion copyWith({
+    Value<String>? elementId,
+    Value<String>? noteText,
+    Value<int>? color,
+    Value<double>? fontSize,
+    Value<int>? rowid,
+  }) {
+    return CanvasTextsCompanion(
+      elementId: elementId ?? this.elementId,
+      noteText: noteText ?? this.noteText,
+      color: color ?? this.color,
+      fontSize: fontSize ?? this.fontSize,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (elementId.present) {
+      map['element_id'] = Variable<String>(elementId.value);
+    }
+    if (noteText.present) {
+      map['note_text'] = Variable<String>(noteText.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
+    }
+    if (fontSize.present) {
+      map['font_size'] = Variable<double>(fontSize.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasTextsCompanion(')
+          ..write('elementId: $elementId, ')
+          ..write('noteText: $noteText, ')
+          ..write('color: $color, ')
+          ..write('fontSize: $fontSize, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $RitualChecklistsTable extends RitualChecklists
     with TableInfo<$RitualChecklistsTable, RitualChecklist> {
   @override
@@ -11015,6 +11337,7 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
   late final $PdfDocumentsTable pdfDocuments = $PdfDocumentsTable(this);
   late final $ImagesTable images = $ImagesTable(this);
   late final $CanvasLinksTable canvasLinks = $CanvasLinksTable(this);
+  late final $CanvasTextsTable canvasTexts = $CanvasTextsTable(this);
   late final $RitualChecklistsTable ritualChecklists = $RitualChecklistsTable(
     this,
   );
@@ -11099,6 +11422,7 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     pdfDocuments,
     images,
     canvasLinks,
+    canvasTexts,
     ritualChecklists,
     ritualChecklistItems,
     focusSessions,
@@ -11169,6 +11493,13 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('canvas_links', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'canvas_elements',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('canvas_texts', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -12527,6 +12858,27 @@ final class $$CanvasElementsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$CanvasTextsTable, List<CanvasText>>
+  _canvasTextsRefsTable(_$ZennoDatabase db) => MultiTypedResultKey.fromTable(
+    db.canvasTexts,
+    aliasName: $_aliasNameGenerator(
+      db.canvasElements.id,
+      db.canvasTexts.elementId,
+    ),
+  );
+
+  $$CanvasTextsTableProcessedTableManager get canvasTextsRefs {
+    final manager = $$CanvasTextsTableTableManager(
+      $_db,
+      $_db.canvasTexts,
+    ).filter((f) => f.elementId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_canvasTextsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CanvasElementsTableFilterComposer
@@ -12708,6 +13060,31 @@ class $$CanvasElementsTableFilterComposer
           }) => $$CanvasLinksTableFilterComposer(
             $db: $db,
             $table: $db.canvasLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> canvasTextsRefs(
+    Expression<bool> Function($$CanvasTextsTableFilterComposer f) f,
+  ) {
+    final $$CanvasTextsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasTexts,
+      getReferencedColumn: (t) => t.elementId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasTextsTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasTexts,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -12970,6 +13347,31 @@ class $$CanvasElementsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> canvasTextsRefs<T extends Object>(
+    Expression<T> Function($$CanvasTextsTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasTextsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasTexts,
+      getReferencedColumn: (t) => t.elementId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasTextsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasTexts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$CanvasElementsTableTableManager
@@ -12991,6 +13393,7 @@ class $$CanvasElementsTableTableManager
             bool pdfDocumentsRefs,
             bool imagesRefs,
             bool canvasLinksRefs,
+            bool canvasTextsRefs,
           })
         > {
   $$CanvasElementsTableTableManager(
@@ -13081,6 +13484,7 @@ class $$CanvasElementsTableTableManager
                 pdfDocumentsRefs = false,
                 imagesRefs = false,
                 canvasLinksRefs = false,
+                canvasTextsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -13089,6 +13493,7 @@ class $$CanvasElementsTableTableManager
                     if (pdfDocumentsRefs) db.pdfDocuments,
                     if (imagesRefs) db.images,
                     if (canvasLinksRefs) db.canvasLinks,
+                    if (canvasTextsRefs) db.canvasTexts,
                   ],
                   addJoins:
                       <
@@ -13210,6 +13615,27 @@ class $$CanvasElementsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (canvasTextsRefs)
+                        await $_getPrefetchedData<
+                          CanvasElement,
+                          $CanvasElementsTable,
+                          CanvasText
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CanvasElementsTableReferences
+                              ._canvasTextsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CanvasElementsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasTextsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.elementId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -13236,6 +13662,7 @@ typedef $$CanvasElementsTableProcessedTableManager =
         bool pdfDocumentsRefs,
         bool imagesRefs,
         bool canvasLinksRefs,
+        bool canvasTextsRefs,
       })
     >;
 typedef $$InkStrokesTableCreateCompanionBuilder =
@@ -14835,6 +15262,306 @@ typedef $$CanvasLinksTableProcessedTableManager =
       $$CanvasLinksTableUpdateCompanionBuilder,
       (CanvasLink, $$CanvasLinksTableReferences),
       CanvasLink,
+      PrefetchHooks Function({bool elementId})
+    >;
+typedef $$CanvasTextsTableCreateCompanionBuilder =
+    CanvasTextsCompanion Function({
+      required String elementId,
+      required String noteText,
+      required int color,
+      required double fontSize,
+      Value<int> rowid,
+    });
+typedef $$CanvasTextsTableUpdateCompanionBuilder =
+    CanvasTextsCompanion Function({
+      Value<String> elementId,
+      Value<String> noteText,
+      Value<int> color,
+      Value<double> fontSize,
+      Value<int> rowid,
+    });
+
+final class $$CanvasTextsTableReferences
+    extends BaseReferences<_$ZennoDatabase, $CanvasTextsTable, CanvasText> {
+  $$CanvasTextsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $CanvasElementsTable _elementIdTable(_$ZennoDatabase db) =>
+      db.canvasElements.createAlias(
+        $_aliasNameGenerator(db.canvasTexts.elementId, db.canvasElements.id),
+      );
+
+  $$CanvasElementsTableProcessedTableManager get elementId {
+    final $_column = $_itemColumn<String>('element_id')!;
+
+    final manager = $$CanvasElementsTableTableManager(
+      $_db,
+      $_db.canvasElements,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_elementIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CanvasTextsTableFilterComposer
+    extends Composer<_$ZennoDatabase, $CanvasTextsTable> {
+  $$CanvasTextsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get noteText => $composableBuilder(
+    column: $table.noteText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fontSize => $composableBuilder(
+    column: $table.fontSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CanvasElementsTableFilterComposer get elementId {
+    final $$CanvasElementsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.elementId,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasTextsTableOrderingComposer
+    extends Composer<_$ZennoDatabase, $CanvasTextsTable> {
+  $$CanvasTextsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get noteText => $composableBuilder(
+    column: $table.noteText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fontSize => $composableBuilder(
+    column: $table.fontSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CanvasElementsTableOrderingComposer get elementId {
+    final $$CanvasElementsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.elementId,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableOrderingComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasTextsTableAnnotationComposer
+    extends Composer<_$ZennoDatabase, $CanvasTextsTable> {
+  $$CanvasTextsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get noteText =>
+      $composableBuilder(column: $table.noteText, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<double> get fontSize =>
+      $composableBuilder(column: $table.fontSize, builder: (column) => column);
+
+  $$CanvasElementsTableAnnotationComposer get elementId {
+    final $$CanvasElementsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.elementId,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasTextsTableTableManager
+    extends
+        RootTableManager<
+          _$ZennoDatabase,
+          $CanvasTextsTable,
+          CanvasText,
+          $$CanvasTextsTableFilterComposer,
+          $$CanvasTextsTableOrderingComposer,
+          $$CanvasTextsTableAnnotationComposer,
+          $$CanvasTextsTableCreateCompanionBuilder,
+          $$CanvasTextsTableUpdateCompanionBuilder,
+          (CanvasText, $$CanvasTextsTableReferences),
+          CanvasText,
+          PrefetchHooks Function({bool elementId})
+        > {
+  $$CanvasTextsTableTableManager(_$ZennoDatabase db, $CanvasTextsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanvasTextsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CanvasTextsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CanvasTextsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> elementId = const Value.absent(),
+                Value<String> noteText = const Value.absent(),
+                Value<int> color = const Value.absent(),
+                Value<double> fontSize = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasTextsCompanion(
+                elementId: elementId,
+                noteText: noteText,
+                color: color,
+                fontSize: fontSize,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String elementId,
+                required String noteText,
+                required int color,
+                required double fontSize,
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasTextsCompanion.insert(
+                elementId: elementId,
+                noteText: noteText,
+                color: color,
+                fontSize: fontSize,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CanvasTextsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({elementId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (elementId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.elementId,
+                                referencedTable: $$CanvasTextsTableReferences
+                                    ._elementIdTable(db),
+                                referencedColumn: $$CanvasTextsTableReferences
+                                    ._elementIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CanvasTextsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ZennoDatabase,
+      $CanvasTextsTable,
+      CanvasText,
+      $$CanvasTextsTableFilterComposer,
+      $$CanvasTextsTableOrderingComposer,
+      $$CanvasTextsTableAnnotationComposer,
+      $$CanvasTextsTableCreateCompanionBuilder,
+      $$CanvasTextsTableUpdateCompanionBuilder,
+      (CanvasText, $$CanvasTextsTableReferences),
+      CanvasText,
       PrefetchHooks Function({bool elementId})
     >;
 typedef $$RitualChecklistsTableCreateCompanionBuilder =
@@ -21206,6 +21933,8 @@ class $ZennoDatabaseManager {
       $$ImagesTableTableManager(_db, _db.images);
   $$CanvasLinksTableTableManager get canvasLinks =>
       $$CanvasLinksTableTableManager(_db, _db.canvasLinks);
+  $$CanvasTextsTableTableManager get canvasTexts =>
+      $$CanvasTextsTableTableManager(_db, _db.canvasTexts);
   $$RitualChecklistsTableTableManager get ritualChecklists =>
       $$RitualChecklistsTableTableManager(_db, _db.ritualChecklists);
   $$RitualChecklistItemsTableTableManager get ritualChecklistItems =>
