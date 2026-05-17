@@ -43,6 +43,9 @@ enum CanvasTool {
   /// chip's label and target canvas. With the [CanvasTool.pan] tool a tap on an
   /// existing chip instead *follows* the link.
   link,
+
+  /// A stylus or mouse tap places a typed multiline note.
+  text,
 }
 
 /// How the eraser tool removes ink.
@@ -273,6 +276,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// The imported picture / PDF page is placed at this size (preserving aspect
   /// ratio) unless the viewport is small, in which case it is scaled to fit.
   static const double _importDefaultWorldSize = 720.0;
+
+  /// Minimum screen-space movement before a pointer press becomes a drag.
+  static const double tapSlop = 8.0;
+
+  /// Default font size for newly-created typed notes.
+  static const double defaultTextFontSize = 22.0;
 
   /// World-space points sampled along the in-progress eraser drag, or `null`
   /// when the eraser is not active. Drawn by the overlay as the eraser cursor
@@ -678,7 +687,19 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (stroke == null) {
       return;
     }
-    stroke.points.add(StrokePoint(world.dx, world.dy, pressure));
+    final StrokePoint last = stroke.points.last;
+    final double minDistance = 1.0 / viewport.scale;
+    final bool movedEnough = (world - last.offset).distance >= minDistance;
+    final bool pressureChanged = (pressure - last.pressure).abs() >= 0.035;
+    if (!movedEnough && !pressureChanged) {
+      return;
+    }
+    liveStroke = stroke.copyWith(
+      points: <StrokePoint>[
+        ...stroke.points,
+        StrokePoint(world.dx, world.dy, pressure),
+      ],
+    );
     notifyListeners();
   }
 
@@ -1045,6 +1066,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       case ImageElement():
       case PdfElement():
       case LinkElement():
+      case TextElement():
         return _pathReachesRect(path, element.worldBounds, worldRadius);
     }
   }
@@ -1151,6 +1173,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       case ImageElement():
       case PdfElement():
       case LinkElement():
+      case TextElement():
         final Rect r = element.worldBounds;
         final List<Offset> samples = <Offset>[
           r.topLeft,
@@ -1233,6 +1256,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         case ImageElement():
         case PdfElement():
         case LinkElement():
+        case TextElement():
           if (element.worldBounds.inflate(slop).contains(world)) {
             return true;
           }
@@ -1468,6 +1492,75 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       center: center,
       width: chip.width / s,
       height: chip.height / s,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Text tool
+  // ---------------------------------------------------------------------------
+
+  /// Places a new typed note on the canvas as one undoable command.
+  TextElement placeText({
+    required Offset worldCenter,
+    required String text,
+    int? color,
+    double fontSize = defaultTextFontSize,
+  }) {
+    final String body = text.trim();
+    if (body.isEmpty) {
+      throw ArgumentError.value(text, 'text', 'Text note cannot be empty.');
+    }
+    final TextElement element = TextElement(
+      id: newId(),
+      zIndex: _nextZIndex,
+      worldBounds: _textPlacementRect(worldCenter),
+      text: body,
+      color: color ?? penColor,
+      fontSize: fontSize,
+    );
+    _runCommand(AddElementCommand(element));
+    return element;
+  }
+
+  /// Replaces [element] with an updated text body as one undoable command.
+  void updateTextElement(TextElement element, String text) {
+    final String body = text.trim();
+    if (body.isEmpty) {
+      removeElements(<CanvasElement>[element]);
+      return;
+    }
+    final TextElement updated = element.copyWith(text: body);
+    _runCommand(
+      ReplaceElementsCommand(
+        removed: <CanvasElement>[element],
+        added: <CanvasElement>[updated],
+      ),
+    );
+  }
+
+  /// Returns the topmost text note at [world], or `null` if none.
+  TextElement? textAt(Offset world) {
+    final Set<String> candidateIds = _spatialIndex
+        .query(Rect.fromCenter(center: world, width: 1, height: 1))
+        .toSet();
+    TextElement? hit;
+    for (final CanvasElement element in _elements) {
+      if (element is TextElement &&
+          candidateIds.contains(element.id) &&
+          element.worldBounds.contains(world)) {
+        hit = element;
+      }
+    }
+    return hit;
+  }
+
+  Rect _textPlacementRect(Offset center) {
+    final double s = viewport.scale;
+    const Size note = TextElement.defaultNoteSize;
+    return Rect.fromCenter(
+      center: center,
+      width: note.width / s,
+      height: note.height / s,
     );
   }
 
@@ -1719,6 +1812,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       switch (element) {
         case InkElement():
         case LinkElement():
+        case TextElement():
           // Vector ink and link chips have no raster — nothing to schedule.
           break;
         case ImageElement():
@@ -1947,6 +2041,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       switch (element) {
         case InkElement():
         case LinkElement():
+        case TextElement():
           // No raster to evict.
           break;
         case ImageElement():
@@ -1975,6 +2070,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       switch (element) {
         case InkElement():
         case LinkElement():
+        case TextElement():
           // No raster to dispose.
           break;
         case ImageElement():

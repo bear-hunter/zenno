@@ -145,8 +145,8 @@ void main() {
             radius: 1.5,
           );
       expect(fragments, hasLength(2));
-      expect(xs(fragments[0]), <double>[0, 1, 2, 3]);
-      expect(xs(fragments[1]), <double>[7, 8, 9, 10]);
+      expect(xs(fragments[0]), <double>[0, 1, 2, 3, 3.5]);
+      expect(xs(fragments[1]), <double>[6.5, 7, 8, 9, 10]);
     });
 
     test('an eraser covering everything fully erases the stroke', () {
@@ -172,8 +172,8 @@ void main() {
             radius: 1,
           );
       expect(fragments, hasLength(2));
-      expect(xs(fragments[0]), <double>[0, 1, 2, 3]);
-      expect(xs(fragments[1]), <double>[17, 18, 19, 20]);
+      expect(xs(fragments[0]), <double>[0, 1, 2, 3, 4]);
+      expect(xs(fragments[1]), <double>[16, 17, 18, 19, 20]);
     });
 
     test('two disjoint point erasers cut the stroke into three pieces', () {
@@ -188,7 +188,7 @@ void main() {
           );
       // A point eraser at x=5 removes x=4,5,6 → survivors [0..3] and [7..20].
       expect(firstCut, hasLength(2));
-      expect(xs(firstCut[0]), <double>[0, 1, 2, 3]);
+      expect(xs(firstCut[0]), <double>[0, 1, 2, 3, 4]);
 
       // Erase the far survivor run again at x = 15 (removes x=14,15,16).
       final List<List<StrokePoint>> secondCut =
@@ -199,7 +199,8 @@ void main() {
           );
       expect(secondCut, hasLength(2)); // [7..13] and [17..20]
 
-      // Net: three contiguous surviving runs; 6 of 21 points erased.
+      // Net: three contiguous surviving runs, with cut boundary points
+      // inserted to keep sparse strokes visually continuous.
       final List<List<StrokePoint>> allRuns = <List<StrokePoint>>[
         firstCut[0],
         ...secondCut,
@@ -209,7 +210,7 @@ void main() {
         0,
         (int sum, List<StrokePoint> run) => sum + run.length,
       );
-      expect(survivingPoints, 15);
+      expect(survivingPoints, 19);
     });
 
     test('an isolated surviving point is kept as a single-point fragment', () {
@@ -223,8 +224,8 @@ void main() {
             radius: 0.9,
           );
       expect(fragments, hasLength(2));
-      expect(xs(fragments[0]), <double>[0]);
-      expect(xs(fragments[1]), <double>[4]);
+      expect(xs(fragments[0]), <double>[0, 1]);
+      expect(xs(fragments[1]), <double>[3, 4]);
     });
 
     test('an empty eraser path leaves the stroke whole', () {
@@ -274,8 +275,10 @@ void main() {
             radius: 0.9,
           );
       expect(fragments, hasLength(2));
-      expect(fragments[0].single.pressure, moreOrLessEquals(0.1));
-      expect(fragments[1].single.pressure, moreOrLessEquals(0.4));
+      expect(fragments[0].first.pressure, moreOrLessEquals(0.1));
+      expect(fragments[0].last.pressure, moreOrLessEquals(0.16));
+      expect(fragments[1].first.pressure, moreOrLessEquals(0.34));
+      expect(fragments[1].last.pressure, moreOrLessEquals(0.4));
     });
   });
 

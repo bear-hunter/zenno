@@ -216,8 +216,33 @@ void main() {
     );
   });
 
+  group('text element round-trip', () {
+    test('save then load reconstructs the TextElement', () async {
+      const original = TextElement(
+        id: 'text-1',
+        zIndex: 6,
+        worldBounds: Rect.fromLTWH(40, 50, 320, 180),
+        text: 'First line\nSecond line',
+        color: 0xFFE8B84B,
+        fontSize: 22,
+      );
+
+      await repo.upsertElement(canvasId, original);
+      final List<CanvasElement> loaded = await repo.loadElements(canvasId);
+
+      expect(loaded, hasLength(1));
+      final TextElement note = loaded.single as TextElement;
+      expect(note.id, 'text-1');
+      expect(note.zIndex, 6);
+      expect(note.worldBounds, const Rect.fromLTWH(40, 50, 320, 180));
+      expect(note.text, 'First line\nSecond line');
+      expect(note.color, 0xFFE8B84B);
+      expect(note.fontSize, 22);
+    });
+  });
+
   group('mixed canvas', () {
-    test('round-trips ink + image + pdf + link in z-order', () async {
+    test('round-trips ink + image + pdf + text + link in z-order', () async {
       final ink = InkElement.fromStroke(
         const Stroke(
           id: 'e-ink',
@@ -244,10 +269,18 @@ void main() {
       );
       const link = LinkElement(
         id: 'e-link',
-        zIndex: 3,
+        zIndex: 4,
         worldBounds: Rect.fromLTWH(400, 0, 220, 56),
         label: 'Go',
         target: LinkTarget(targetCanvasId: 'dest'),
+      );
+      const text = TextElement(
+        id: 'e-text',
+        zIndex: 3,
+        worldBounds: Rect.fromLTWH(100, 100, 320, 180),
+        text: 'Remember this',
+        color: 0xFFFFFFFF,
+        fontSize: 22,
       );
 
       // Insert deliberately out of z-order.
@@ -255,21 +288,24 @@ void main() {
       await repo.upsertElement(canvasId, ink);
       await repo.upsertElement(canvasId, pdf);
       await repo.upsertElement(canvasId, image);
+      await repo.upsertElement(canvasId, text);
 
       final List<CanvasElement> loaded = await repo.loadElements(canvasId);
 
-      expect(loaded, hasLength(4));
+      expect(loaded, hasLength(5));
       // Loaded ordered by z_index ascending.
       expect(loaded.map((e) => e.id).toList(), <String>[
         'e-ink',
         'e-img',
         'e-pdf',
+        'e-text',
         'e-link',
       ]);
       expect(loaded[0], isA<InkElement>());
       expect(loaded[1], isA<ImageElement>());
       expect(loaded[2], isA<PdfElement>());
-      expect(loaded[3], isA<LinkElement>());
+      expect(loaded[3], isA<TextElement>());
+      expect(loaded[4], isA<LinkElement>());
     });
 
     test('a viewport and elements persist together on one canvas', () async {

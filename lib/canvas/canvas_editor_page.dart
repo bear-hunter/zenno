@@ -232,6 +232,55 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
     );
   }
 
+  /// Handles a text-tool tap by creating a note or editing the tapped one.
+  Future<void> _onEditText(Offset worldCenter, TextElement? existing) async {
+    final String? text = await _showTextNoteDialog(existing?.text ?? '');
+    if (text == null) {
+      return;
+    }
+    if (existing == null) {
+      if (text.trim().isNotEmpty) {
+        _controller.placeText(worldCenter: worldCenter, text: text);
+      }
+    } else {
+      _controller.updateTextElement(existing, text);
+    }
+  }
+
+  Future<String?> _showTextNoteDialog(String initialText) {
+    final controller = TextEditingController(text: initialText);
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(initialText.trim().isEmpty ? 'New note' : 'Edit note'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 5,
+            maxLines: 10,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Write a note',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
+  }
+
   /// Handles a pan-tool tap on an existing link chip.
   ///
   /// Pushes the destination canvas route. When the link pins a target viewport
@@ -283,6 +332,7 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
                     controller: _controller,
                     onPlaceLink: _onPlaceLink,
                     onFollowLink: _onFollowLink,
+                    onEditText: _onEditText,
                   ),
                 ),
               ),

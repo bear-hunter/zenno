@@ -197,3 +197,21 @@ class CanvasLinks extends Table {
   @override
   Set<Column> get primaryKey => {elementId};
 }
+
+/// 1:1 detail for [ElementKind.text] elements.
+class CanvasTexts extends Table {
+  TextColumn get elementId =>
+      text().references(CanvasElements, #id, onDelete: KeyAction.cascade)();
+
+  /// Multiline note body.
+  TextColumn get noteText => text()();
+
+  /// Packed ARGB text colour.
+  IntColumn get color => integer()();
+
+  /// World-space font size at scale 1.
+  RealColumn get fontSize => real()();
+
+  @override
+  Set<Column> get primaryKey => {elementId};
+}

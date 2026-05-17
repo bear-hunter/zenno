@@ -83,4 +83,23 @@ void main() {
 
     cache.dispose();
   });
+
+  test('paints text notes in their bounds without throwing', () {
+    final cache = ElementsTileCache();
+    const elements = <CanvasElement>[
+      TextElement(
+        id: 'note',
+        zIndex: 0,
+        worldBounds: Rect.fromLTWH(20, 24, 180, 90),
+        text: 'A multiline\ncanvas note',
+        color: 0xFFFFFFFF,
+        fontSize: 18,
+      ),
+    ];
+
+    _paint(cache: cache, elements: elements, viewport: ViewportState.initial);
+
+    expect(cache.tileCount, greaterThan(0));
+    cache.dispose();
+  });
 }

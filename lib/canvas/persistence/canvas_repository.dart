@@ -33,6 +33,7 @@ import 'package:zenno/core/database/tables/canvas_tables.dart' as tables;
 /// | `image`                    | `images`         | [ImageElement] |
 /// | `pdf`                      | `pdf_documents`  | [PdfElement]   |
 /// | `link`                     | `canvas_links`   | [LinkElement]  |
+/// | `text`                     | `canvas_texts`   | [TextElement]  |
 ///
 /// A `z_index` is an `int` in the engine model but a `REAL` column; the
 /// conversion is a plain `int` ↔ `double` round-trip (engine z-indices are
@@ -161,6 +162,20 @@ class CanvasRepository {
           ),
         );
       case tables.ElementKind.text:
+        final db.CanvasText? detail = await (_db.select(
+          _db.canvasTexts,
+        )..where((t) => t.elementId.equals(row.id))).getSingleOrNull();
+        if (detail == null) {
+          return null;
+        }
+        return TextElement(
+          id: row.id,
+          zIndex: zIndex,
+          worldBounds: bounds,
+          text: detail.noteText,
+          color: detail.color,
+          fontSize: detail.fontSize,
+        );
       case tables.ElementKind.card:
       case tables.ElementKind.shape:
         // No engine representation yet — a later phase reconstructs these.
@@ -281,6 +296,18 @@ class CanvasRepository {
               ),
               mode: InsertMode.insertOrReplace,
             );
+      case TextElement():
+        await _db
+            .into(_db.canvasTexts)
+            .insert(
+              db.CanvasTextsCompanion.insert(
+                elementId: element.id,
+                noteText: element.text,
+                color: element.color,
+                fontSize: element.fontSize,
+              ),
+              mode: InsertMode.insertOrReplace,
+            );
     }
   }
 
@@ -389,6 +416,7 @@ class CanvasRepository {
       ImageElement() => tables.ElementKind.image,
       PdfElement() => tables.ElementKind.pdf,
       LinkElement() => tables.ElementKind.link,
+      TextElement() => tables.ElementKind.text,
     };
   }
 

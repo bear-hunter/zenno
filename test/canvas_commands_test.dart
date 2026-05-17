@@ -1,9 +1,13 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/engine/canvas_commands.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/stroke.dart';
+import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/render/live_stroke_painter.dart';
 
 /// Builds a trivial two-point [InkElement] for command tests.
 ///
@@ -212,6 +216,70 @@ void main() {
     });
   });
 
+  group('TextElement', () {
+    test('translates its bounds without changing content', () {
+      const TextElement element = TextElement(
+        id: 'note-1',
+        zIndex: 4,
+        worldBounds: Rect.fromLTWH(10, 20, 200, 100),
+        text: 'Hello\ncanvas',
+        color: 0xFFFFFFFF,
+        fontSize: 22,
+      );
+
+      final TextElement moved = element.translated(const Offset(30, -10));
+
+      expect(moved.id, 'note-1');
+      expect(moved.zIndex, 4);
+      expect(moved.text, 'Hello\ncanvas');
+      expect(moved.color, 0xFFFFFFFF);
+      expect(moved.fontSize, 22);
+      expect(moved.worldBounds, const Rect.fromLTWH(40, 10, 200, 100));
+    });
+  });
+
+  group('live stroke repaint', () {
+    test('appendToStroke replaces liveStroke identity before commit', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      controller.beginStroke(const Offset(0, 0), 0.5);
+      final Stroke first = controller.liveStroke!;
+
+      controller.appendToStroke(const Offset(10, 0), 0.5);
+      final Stroke second = controller.liveStroke!;
+
+      expect(identical(first, second), isFalse);
+      expect(second.points, hasLength(2));
+    });
+
+    test('LiveStrokePainter repaints after an appended stroke sample', () {
+      const Stroke before = Stroke(
+        id: 'live',
+        points: <StrokePoint>[StrokePoint(0, 0, 0.5)],
+        color: 0xFFFFFFFF,
+        width: 4,
+      );
+      const Stroke after = Stroke(
+        id: 'live',
+        points: <StrokePoint>[StrokePoint(0, 0, 0.5), StrokePoint(10, 0, 0.5)],
+        color: 0xFFFFFFFF,
+        width: 4,
+      );
+
+      const oldPainter = LiveStrokePainter(
+        liveStroke: before,
+        viewport: ViewportState.initial,
+      );
+      const newPainter = LiveStrokePainter(
+        liveStroke: after,
+        viewport: ViewportState.initial,
+      );
+
+      expect(newPainter.shouldRepaint(oldPainter), isTrue);
+    });
+  });
+
   group('CanvasController — command-backed undo/redo', () {
     /// Commits a stroke through the controller's normal begin/append/end path.
     void drawStroke(CanvasController controller) {
@@ -406,6 +474,26 @@ void main() {
       expect(controller.elementCount, 1);
     });
 
+    test('partial eraser splits a sparse two-point stroke at a crossing', () {
+      final CanvasController controller = CanvasController()
+        ..setTool(CanvasTool.eraser)
+        ..setEraserMode(EraserMode.partial)
+        ..setEraserRadius(6);
+      addTearDown(controller.dispose);
+
+      drawLine(controller, const Offset(0, 0), const Offset(100, 0));
+
+      controller
+        ..beginErase(const Offset(50, -20))
+        ..appendErase(const Offset(50, 20))
+        ..endErase();
+
+      expect(controller.elementCount, 2);
+      final fragments = controller.elements.cast<InkElement>().toList();
+      expect(fragments.first.stroke.points.last.x, closeTo(50, 0.01));
+      expect(fragments.last.stroke.points.first.x, closeTo(50, 0.01));
+    });
+
     test('lasso selects an enclosed stroke and clears on switch', () {
       final CanvasController controller = CanvasController()
         ..setTool(CanvasTool.lasso);
@@ -495,6 +583,41 @@ void main() {
       final InkElement reverted = controller.elements.single as InkElement;
       expect(reverted.stroke.points.first.x, moreOrLessEquals(startX));
       expect(controller.hasSelection, isTrue);
+    });
+
+    test('text notes lasso-select, move, delete, undo and redo', () {
+      final CanvasController controller = CanvasController()
+        ..setTool(CanvasTool.text);
+      addTearDown(controller.dispose);
+
+      final TextElement note = controller.placeText(
+        worldCenter: const Offset(100, 100),
+        text: 'Line one\nLine two',
+      );
+      expect(controller.elements.single, isA<TextElement>());
+
+      controller
+        ..setTool(CanvasTool.lasso)
+        ..beginLasso(const Offset(-100, -100))
+        ..appendLasso(const Offset(300, -100))
+        ..appendLasso(const Offset(300, 300))
+        ..appendLasso(const Offset(-100, 300))
+        ..endLasso();
+      expect(controller.selectedElements, hasLength(1));
+
+      controller
+        ..beginSelectionDrag()
+        ..updateSelectionDrag(const Offset(25, 10))
+        ..endSelectionDrag();
+      final moved = controller.elements.single as TextElement;
+      expect(moved.worldBounds, note.worldBounds.shift(const Offset(25, 10)));
+
+      controller.deleteSelection();
+      expect(controller.elementCount, 0);
+      controller.undo();
+      expect(controller.elementCount, 1);
+      controller.redo();
+      expect(controller.elementCount, 0);
     });
 
     test('a zero-distance selection drag records no command', () {

@@ -52,6 +52,7 @@ class CanvasView extends StatefulWidget {
     required this.controller,
     this.onPlaceLink,
     this.onFollowLink,
+    this.onEditText,
     super.key,
   });
 
@@ -65,6 +66,10 @@ class CanvasView extends StatefulWidget {
   /// Called when the pan tool taps an existing [LinkElement] chip. `null`
   /// disables link following (the tap then does nothing).
   final void Function(LinkElement link)? onFollowLink;
+
+  /// Called when the text tool is tapped, with an existing note when the tap
+  /// hit one or `null` plus the world-space tap point for creating a new note.
+  final void Function(Offset worldCenter, TextElement? existing)? onEditText;
 
   @override
   State<CanvasView> createState() => _CanvasViewState();
@@ -100,6 +105,9 @@ enum _ToolGesture {
   /// Placing a link chip — a tap with the link tool. Committed on pointer-up
   /// (when the press did not turn into a drag) via [CanvasView.onPlaceLink].
   placeLink,
+
+  /// Creating or editing a typed text note.
+  editText,
 }
 
 class _CanvasViewState extends State<CanvasView> {
@@ -137,6 +145,9 @@ class _CanvasViewState extends State<CanvasView> {
   /// Held so a press-release with no movement (a tap) can be resolved to a
   /// world point on pointer-up for the link-place / link-follow gestures.
   Offset? _toolPointerDownPosition;
+
+  /// Latest surface-local position of the active tool pointer.
+  Offset? _toolPointerUpPosition;
 
   /// Viewport captured when a two-finger pinch began.
   ViewportState? _pinchStartViewport;
@@ -182,6 +193,9 @@ class _CanvasViewState extends State<CanvasView> {
     // A finger always transforms the viewport — never draws or erases. This is
     // the palm-rejection guarantee: a resting palm reports as touch.
     if (kind == CanvasInputKind.touch) {
+      if (_toolPointerId != null) {
+        return;
+      }
       _syncTouchGesture();
       return;
     }
@@ -196,6 +210,7 @@ class _CanvasViewState extends State<CanvasView> {
     _toolPointerId = event.pointer;
     _toolPointerMoved = false;
     _toolPointerDownPosition = event.localPosition;
+    _toolPointerUpPosition = event.localPosition;
     _toolGesture = _beginToolGesture(event);
   }
 
@@ -233,6 +248,8 @@ class _CanvasViewState extends State<CanvasView> {
         // A link chip is placed on pointer-up (a tap); the press itself does
         // nothing so a drag with the link tool is harmless.
         return _ToolGesture.placeLink;
+      case CanvasTool.text:
+        return _ToolGesture.editText;
     }
   }
 
@@ -245,12 +262,20 @@ class _CanvasViewState extends State<CanvasView> {
     pointer.position = event.localPosition;
 
     if (event.pointer == _toolPointerId) {
-      _toolPointerMoved = true;
+      _toolPointerUpPosition = event.localPosition;
+      final Offset? down = _toolPointerDownPosition;
+      if (down == null ||
+          (event.localPosition - down).distance > CanvasController.tapSlop) {
+        _toolPointerMoved = true;
+      }
       _routeToolMove(event, previous);
       return;
     }
 
     if (pointer.kind == CanvasInputKind.touch) {
+      if (_toolPointerId != null) {
+        return;
+      }
       final touches = _touchPositions;
       if (touches.length == 1) {
         _controller.panBy(event.localPosition - previous);
@@ -283,12 +308,17 @@ class _CanvasViewState extends State<CanvasView> {
         // Placing a link is a tap; movement is ignored (the chip is committed
         // at the press point on pointer-up).
         break;
+      case _ToolGesture.editText:
+        break;
       case null:
         break;
     }
   }
 
   void _onPointerUp(PointerUpEvent event) {
+    if (event.pointer == _toolPointerId) {
+      _toolPointerUpPosition = event.localPosition;
+    }
     _endPointer(event.pointer);
   }
 
@@ -308,6 +338,7 @@ class _CanvasViewState extends State<CanvasView> {
       _toolPointerId = null;
       _toolGesture = null;
       _toolPointerDownPosition = null;
+      _toolPointerUpPosition = null;
     }
     if (pointer?.kind == CanvasInputKind.touch) {
       _syncTouchGesture();
@@ -364,6 +395,10 @@ class _CanvasViewState extends State<CanvasView> {
         if (!cancelled && !_toolPointerMoved) {
           _emitLinkPlacement();
         }
+      case _ToolGesture.editText:
+        if (!cancelled && !_toolPointerMoved) {
+          _emitTextEdit();
+        }
       case _ToolGesture.pan:
         // A pan that never moved is a tap: if it landed on a link chip, follow
         // the link. A real pan drag falls through and does nothing here.
@@ -377,7 +412,7 @@ class _CanvasViewState extends State<CanvasView> {
 
   /// Reports a link-placement tap to [CanvasView.onPlaceLink].
   void _emitLinkPlacement() {
-    final Offset? down = _toolPointerDownPosition;
+    final Offset? down = _toolPointerUpPosition ?? _toolPointerDownPosition;
     final void Function(Offset)? callback = widget.onPlaceLink;
     if (down == null || callback == null) {
       return;
@@ -388,7 +423,7 @@ class _CanvasViewState extends State<CanvasView> {
   /// Follows a link chip when the pan tool tapped one, via
   /// [CanvasView.onFollowLink].
   void _maybeFollowLinkAtTap() {
-    final Offset? down = _toolPointerDownPosition;
+    final Offset? down = _toolPointerUpPosition ?? _toolPointerDownPosition;
     final void Function(LinkElement)? callback = widget.onFollowLink;
     if (down == null || callback == null) {
       return;
@@ -397,6 +432,16 @@ class _CanvasViewState extends State<CanvasView> {
     if (link != null) {
       callback(link);
     }
+  }
+
+  void _emitTextEdit() {
+    final Offset? up = _toolPointerUpPosition ?? _toolPointerDownPosition;
+    final callback = widget.onEditText;
+    if (up == null || callback == null) {
+      return;
+    }
+    final Offset world = _toWorld(up);
+    callback(world, _controller.textAt(world));
   }
 
   void _onPointerHover(PointerHoverEvent event) {

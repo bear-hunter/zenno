@@ -17,10 +17,8 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 /// is exhaustively checked at compile time. The concrete variants today are
 /// [InkElement] (freehand ink and geometric shapes), [ImageElement] (an
 /// imported raster picture), [PdfElement] (one rasterised page of an imported
-/// PDF) and [LinkElement] (a tappable chip that navigates to another canvas).
-/// Future content kinds (`TextElement`, `CardElement`) extend this base and
-/// slot into the same pipeline — they only need to supply an [id], a [zIndex]
-/// and a [worldBounds].
+/// PDF), [LinkElement] (a tappable chip that navigates to another canvas), and
+/// [TextElement] (a positioned typed note).
 ///
 /// Elements are treated as immutable: a mutation produces a new instance
 /// (see [InkElement.copyWith]) so the command stack and `CustomPainter`
@@ -614,4 +612,83 @@ final class LinkElement extends CanvasElement {
   String toString() =>
       'LinkElement(id: $id, zIndex: $zIndex, bounds: $_worldBounds, '
       'label: $label, target: $target)';
+}
+
+/// A positioned typed note on the canvas.
+///
+/// Text notes are intentionally plain v1 objects: multiline text, one colour
+/// and one font size. The placement rect is persisted directly, and moving a
+/// note simply shifts that rect like images, PDFs and links.
+final class TextElement extends CanvasElement {
+  /// Creates a text note placed at [worldBounds].
+  const TextElement({
+    required super.id,
+    required super.zIndex,
+    required Rect worldBounds,
+    required this.text,
+    required this.color,
+    required this.fontSize,
+  }) : _worldBounds = worldBounds;
+
+  /// Default note size, in screen pixels before conversion to world units.
+  static const Size defaultNoteSize = Size(320, 180);
+
+  final Rect _worldBounds;
+
+  /// Multiline note body.
+  final String text;
+
+  /// Packed ARGB note text colour.
+  final int color;
+
+  /// Font size in world units at scale 1.
+  final double fontSize;
+
+  @override
+  Rect get worldBounds => _worldBounds;
+
+  /// Returns a copy with the given fields replaced.
+  TextElement copyWith({
+    String? id,
+    int? zIndex,
+    Rect? worldBounds,
+    String? text,
+    int? color,
+    double? fontSize,
+  }) {
+    return TextElement(
+      id: id ?? this.id,
+      zIndex: zIndex ?? this.zIndex,
+      worldBounds: worldBounds ?? _worldBounds,
+      text: text ?? this.text,
+      color: color ?? this.color,
+      fontSize: fontSize ?? this.fontSize,
+    );
+  }
+
+  @override
+  TextElement translated(Offset delta) {
+    return copyWith(worldBounds: _worldBounds.shift(delta));
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is TextElement &&
+        other.id == id &&
+        other.zIndex == zIndex &&
+        other._worldBounds == _worldBounds &&
+        other.text == text &&
+        other.color == color &&
+        other.fontSize == fontSize;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, zIndex, _worldBounds, text, color, fontSize);
+
+  @override
+  String toString() =>
+      'TextElement(id: $id, zIndex: $zIndex, bounds: $_worldBounds, '
+      'text: $text)';
 }
