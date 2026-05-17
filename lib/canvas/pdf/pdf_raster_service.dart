@@ -176,8 +176,7 @@ class PdfRasterService {
     final double ladder = _scaleLadder[bucket];
     int targetWidth = (page.width * ladder).round().clamp(1, 1 << 20);
     int targetHeight = (page.height * ladder).round().clamp(1, 1 << 20);
-    final int longest =
-        targetWidth > targetHeight ? targetWidth : targetHeight;
+    final int longest = targetWidth > targetHeight ? targetWidth : targetHeight;
     if (longest > _maxRasterPixelSide) {
       final double shrink = _maxRasterPixelSide / longest;
       targetWidth = (targetWidth * shrink).round().clamp(1, 1 << 20);
@@ -214,11 +213,7 @@ class PdfRasterService {
   /// `pdfrx` hands back pixels in `bgra8888`; [ui.decodeImageFromPixels] takes
   /// that format directly and decodes asynchronously on the engine side, so no
   /// codec round-trip is needed.
-  static Future<ui.Image> _decodeBgra(
-    Uint8List pixels,
-    int width,
-    int height,
-  ) {
+  static Future<ui.Image> _decodeBgra(Uint8List pixels, int width, int height) {
     final Completer<ui.Image> completer = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       pixels,

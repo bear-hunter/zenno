@@ -78,15 +78,12 @@ class RitualRepository {
   /// sorts last; the first item starts at `0`.
   Future<void> addItem(String label) async {
     final checklistId = await _resolveDefaultChecklistId();
-    final existing = await (_db.select(_db.ritualChecklistItems)
-          ..where((i) => i.checklistId.equals(checklistId)))
-        .get();
+    final existing = await (_db.select(
+      _db.ritualChecklistItems,
+    )..where((i) => i.checklistId.equals(checklistId))).get();
     final nextPosition = existing.isEmpty
         ? 0.0
-        : existing
-                  .map((i) => i.position)
-                  .reduce((a, b) => a > b ? a : b) +
-              1.0;
+        : existing.map((i) => i.position).reduce((a, b) => a > b ? a : b) + 1.0;
 
     await _db
         .into(_db.ritualChecklistItems)
@@ -102,11 +99,9 @@ class RitualRepository {
 
   /// Renames the ritual item identified by [itemId] to [label].
   Future<void> editItem(String itemId, String label) async {
-    await (_db.update(
-      _db.ritualChecklistItems,
-    )..where((i) => i.id.equals(itemId))).write(
-      RitualChecklistItemsCompanion(label: Value(label)),
-    );
+    await (_db.update(_db.ritualChecklistItems)
+          ..where((i) => i.id.equals(itemId)))
+        .write(RitualChecklistItemsCompanion(label: Value(label)));
   }
 
   /// Retires the ritual item identified by [itemId].
@@ -114,11 +109,9 @@ class RitualRepository {
   /// The row is *kept* with `is_active = false` rather than deleted, so any
   /// `focus_session_ritual_checks` snapshot that references it stays valid.
   Future<void> retireItem(String itemId) async {
-    await (_db.update(
-      _db.ritualChecklistItems,
-    )..where((i) => i.id.equals(itemId))).write(
-      const RitualChecklistItemsCompanion(isActive: Value(false)),
-    );
+    await (_db.update(_db.ritualChecklistItems)
+          ..where((i) => i.id.equals(itemId)))
+        .write(const RitualChecklistItemsCompanion(isActive: Value(false)));
   }
 
   /// Reads the singleton `app_settings` row, which carries the Pomodoro,

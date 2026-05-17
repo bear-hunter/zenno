@@ -59,9 +59,7 @@ abstract final class AppTheme {
   /// The light theme — a clean, valid Material 3 light variant from the same
   /// gold seed. Not the focus of the app; it just needs to be coherent.
   static ThemeData get light {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.goldAccent,
-    );
+    final colorScheme = ColorScheme.fromSeed(seedColor: AppColors.goldAccent);
 
     return _buildTheme(
       colorScheme: colorScheme,
@@ -110,13 +108,17 @@ abstract final class AppTheme {
         indicatorShape: const StadiumBorder(),
         selectedIconTheme: IconThemeData(color: colorScheme.primary),
         unselectedIconTheme: IconThemeData(
-          color: isDark ? AppColors.onSurfaceMuted : colorScheme.onSurfaceVariant,
+          color: isDark
+              ? AppColors.onSurfaceMuted
+              : colorScheme.onSurfaceVariant,
         ),
         selectedLabelTextStyle: textTheme.labelMedium?.copyWith(
           color: colorScheme.primary,
         ),
         unselectedLabelTextStyle: textTheme.labelMedium?.copyWith(
-          color: isDark ? AppColors.onSurfaceMuted : colorScheme.onSurfaceVariant,
+          color: isDark
+              ? AppColors.onSurfaceMuted
+              : colorScheme.onSurfaceVariant,
         ),
         useIndicator: true,
       ),

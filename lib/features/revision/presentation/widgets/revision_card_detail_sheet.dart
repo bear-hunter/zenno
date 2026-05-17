@@ -150,9 +150,7 @@ class _RevisionCardDetailSheetState
         AppSpacing.xl + bottomInset,
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: AppSpacing.contentMaxWidth,
-        ),
+        constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

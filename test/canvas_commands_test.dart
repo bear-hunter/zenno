@@ -1,4 +1,3 @@
-import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
@@ -66,8 +65,9 @@ void main() {
   group('AddElementCommand', () {
     test('apply inserts the element, revert removes it', () {
       final _FakeStore store = _FakeStore();
-      final AddElementCommand command =
-          AddElementCommand(inkElement('a', zIndex: 0));
+      final AddElementCommand command = AddElementCommand(
+        inkElement('a', zIndex: 0),
+      );
 
       command.apply(store);
       expect(store.ids, <String>['a']);
@@ -78,8 +78,9 @@ void main() {
 
     test('apply is idempotent — a replay never duplicates the element', () {
       final _FakeStore store = _FakeStore();
-      final AddElementCommand command =
-          AddElementCommand(inkElement('a', zIndex: 0));
+      final AddElementCommand command = AddElementCommand(
+        inkElement('a', zIndex: 0),
+      );
 
       command.apply(store);
       command.apply(store);
@@ -94,10 +95,9 @@ void main() {
         ..addElementToStore(inkElement('b', zIndex: 1))
         ..addElementToStore(inkElement('c', zIndex: 2));
 
-      final RemoveElementsCommand command = RemoveElementsCommand(<CanvasElement>[
-        inkElement('a', zIndex: 0),
-        inkElement('c', zIndex: 2),
-      ]);
+      final RemoveElementsCommand command = RemoveElementsCommand(
+        <CanvasElement>[inkElement('a', zIndex: 0), inkElement('c', zIndex: 2)],
+      );
 
       command.apply(store);
       expect(store.ids, <String>['b']);
@@ -175,8 +175,7 @@ void main() {
   group('MoveElementsCommand', () {
     test('apply installs the moved copies, revert restores the originals', () {
       final InkElement original = inkElement('a', zIndex: 0);
-      final InkElement moved =
-          original.translated(const Offset(50, 25));
+      final InkElement moved = original.translated(const Offset(50, 25));
       final _FakeStore store = _FakeStore()..addElementToStore(original);
 
       final MoveElementsCommand command = MoveElementsCommand(
@@ -188,13 +187,11 @@ void main() {
       command.apply(store);
       expect(store.ids, <String>['a']);
       // The id is preserved; only the geometry shifted.
-      final InkElement afterMove =
-          store.currentElements.single as InkElement;
+      final InkElement afterMove = store.currentElements.single as InkElement;
       expect(afterMove.stroke.points.first.x, moreOrLessEquals(50));
 
       command.revert(store);
-      final InkElement afterRevert =
-          store.currentElements.single as InkElement;
+      final InkElement afterRevert = store.currentElements.single as InkElement;
       expect(afterRevert.stroke.points.first.x, moreOrLessEquals(0));
     });
   });
@@ -481,8 +478,7 @@ void main() {
         ..appendLasso(const Offset(80, 80))
         ..appendLasso(const Offset(-50, 80))
         ..endLasso();
-      final InkElement before =
-          controller.elements.single as InkElement;
+      final InkElement before = controller.elements.single as InkElement;
       final double startX = before.stroke.points.first.x;
 
       controller
@@ -490,15 +486,13 @@ void main() {
         ..updateSelectionDrag(const Offset(100, 0))
         ..endSelectionDrag();
 
-      final InkElement after =
-          controller.elements.single as InkElement;
+      final InkElement after = controller.elements.single as InkElement;
       expect(after.stroke.points.first.x, moreOrLessEquals(startX + 100));
       // The selection still tracks the moved element.
       expect(controller.hasSelection, isTrue);
 
       controller.undo();
-      final InkElement reverted =
-          controller.elements.single as InkElement;
+      final InkElement reverted = controller.elements.single as InkElement;
       expect(reverted.stroke.points.first.x, moreOrLessEquals(startX));
       expect(controller.hasSelection, isTrue);
     });

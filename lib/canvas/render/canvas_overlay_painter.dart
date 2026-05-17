@@ -139,11 +139,7 @@ class CanvasOverlayPainter extends CustomPainter {
   /// Strokes one eraser footprint circle: a soft fill plus a crisp ring.
   void _strokeEraserCircle(Canvas canvas, Offset center, double radius) {
     canvas
-      ..drawCircle(
-        center,
-        radius,
-        Paint()..color = const Color(0x14FFFFFF),
-      )
+      ..drawCircle(center, radius, Paint()..color = const Color(0x14FFFFFF))
       ..drawCircle(
         center,
         radius,
@@ -173,10 +169,7 @@ class CanvasOverlayPainter extends CustomPainter {
     screenPath.close();
 
     canvas
-      ..drawPath(
-        screenPath,
-        Paint()..color = _accent.withValues(alpha: 0.10),
-      )
+      ..drawPath(screenPath, Paint()..color = _accent.withValues(alpha: 0.10))
       ..drawPath(
         screenPath,
         Paint()
@@ -212,8 +205,7 @@ class CanvasOverlayPainter extends CustomPainter {
       if (c.dy < minY) minY = c.dy;
       if (c.dy > maxY) maxY = c.dy;
     }
-    final Rect screenRect =
-        Rect.fromLTRB(minX, minY, maxX, maxY).inflate(6);
+    final Rect screenRect = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(6);
 
     canvas
       ..drawRRect(

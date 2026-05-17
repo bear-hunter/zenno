@@ -5,28 +5,19 @@ void main() {
   group('flowmodoroBreak', () {
     test('scales the stretch by the ratio when inside the clamp', () {
       // 50 min * 0.2 = 10 min, comfortably within [2, 30].
-      final result = flowmodoroBreak(
-        const Duration(minutes: 50),
-        0.2,
-      );
+      final result = flowmodoroBreak(const Duration(minutes: 50), 0.2);
       expect(result, const Duration(minutes: 10));
     });
 
     test('clamps up to the minimum for a short stretch', () {
       // 4 min * 0.2 = 48 s, below the 2 min floor.
-      final result = flowmodoroBreak(
-        const Duration(minutes: 4),
-        0.2,
-      );
+      final result = flowmodoroBreak(const Duration(minutes: 4), 0.2);
       expect(result, const Duration(minutes: 2));
     });
 
     test('clamps down to the maximum for a marathon stretch', () {
       // 4 h * 0.2 = 48 min, above the 30 min ceiling.
-      final result = flowmodoroBreak(
-        const Duration(hours: 4),
-        0.2,
-      );
+      final result = flowmodoroBreak(const Duration(hours: 4), 0.2);
       expect(result, const Duration(minutes: 30));
     });
 
@@ -36,10 +27,7 @@ void main() {
     });
 
     test('returns the minimum for a non-positive stretch', () {
-      final result = flowmodoroBreak(
-        const Duration(minutes: -10),
-        0.2,
-      );
+      final result = flowmodoroBreak(const Duration(minutes: -10), 0.2);
       expect(result, const Duration(minutes: 2));
     });
 
@@ -75,10 +63,7 @@ void main() {
     });
 
     test('a zero ratio always yields the minimum', () {
-      final result = flowmodoroBreak(
-        const Duration(hours: 2),
-        0,
-      );
+      final result = flowmodoroBreak(const Duration(hours: 2), 0);
       expect(result, const Duration(minutes: 2));
     });
   });

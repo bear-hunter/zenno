@@ -68,19 +68,19 @@ class RevisionRepository {
     // both still surface.
     final query =
         _db.select(_db.boards).join([
-          leftOuterJoin(
-            _db.boardColumns,
-            _db.boardColumns.boardId.equalsExp(_db.boards.id),
-          ),
-          leftOuterJoin(
-            _db.boardCards,
-            _db.boardCards.columnId.equalsExp(_db.boardColumns.id),
-          ),
-          leftOuterJoin(
-            _db.revisionCardDetails,
-            _db.revisionCardDetails.cardId.equalsExp(_db.boardCards.id),
-          ),
-        ])
+            leftOuterJoin(
+              _db.boardColumns,
+              _db.boardColumns.boardId.equalsExp(_db.boards.id),
+            ),
+            leftOuterJoin(
+              _db.boardCards,
+              _db.boardCards.columnId.equalsExp(_db.boardColumns.id),
+            ),
+            leftOuterJoin(
+              _db.revisionCardDetails,
+              _db.revisionCardDetails.cardId.equalsExp(_db.boardCards.id),
+            ),
+          ])
           ..where(_db.boards.boardType.equalsValue(BoardType.revision))
           ..orderBy([
             OrderingTerm.asc(_db.boardColumns.position),
@@ -266,14 +266,14 @@ class RevisionRepository {
     final detail = await detailQuery.getSingleOrNull();
     final nextCount = (detail?.revisionCount ?? 0) + 1;
 
-    await (_db.update(_db.revisionCardDetails)
-          ..where((d) => d.cardId.equals(cardId)))
-        .write(
-          RevisionCardDetailsCompanion(
-            lastRevisedAt: Value(DateTime.now().toUtc()),
-            revisionCount: Value(nextCount),
-          ),
-        );
+    await (_db.update(
+      _db.revisionCardDetails,
+    )..where((d) => d.cardId.equals(cardId))).write(
+      RevisionCardDetailsCompanion(
+        lastRevisedAt: Value(DateTime.now().toUtc()),
+        revisionCount: Value(nextCount),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -320,8 +320,9 @@ class RevisionRepository {
 
   /// Deletes column [columnId]; its cards (and their details) cascade.
   Future<void> removeColumn(String columnId) async {
-    await (_db.delete(_db.boardColumns)..where((c) => c.id.equals(columnId)))
-        .go();
+    await (_db.delete(
+      _db.boardColumns,
+    )..where((c) => c.id.equals(columnId))).go();
   }
 
   // ---------------------------------------------------------------------------

@@ -40,11 +40,9 @@ class TemplatesPage extends ConsumerWidget {
 
   /// Opens the editor on a brand-new blank custom template.
   void _createTemplate(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const TemplateEditorPage(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const TemplateEditorPage()));
   }
 }
 
@@ -56,8 +54,14 @@ class _TemplatesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final builtins = [for (final t in templates) if (t.isBuiltin) t];
-    final customs = [for (final t in templates) if (!t.isBuiltin) t];
+    final builtins = [
+      for (final t in templates)
+        if (t.isBuiltin) t,
+    ];
+    final customs = [
+      for (final t in templates)
+        if (!t.isBuiltin) t,
+    ];
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -157,9 +161,7 @@ class _TemplatesList extends ConsumerWidget {
     );
     if (!(confirmed ?? false)) return;
     try {
-      await ref
-          .read(reflectionRepositoryProvider)
-          .deleteTemplate(template.id);
+      await ref.read(reflectionRepositoryProvider).deleteTemplate(template.id);
     } on Object catch (error) {
       messenger.showSnackBar(
         SnackBar(content: Text('Could not delete: $error')),
@@ -234,11 +236,7 @@ class _TemplatesError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 56,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 56, color: theme.colorScheme.error),
             const SizedBox(height: AppSpacing.md),
             Text(
               'Could not load templates',

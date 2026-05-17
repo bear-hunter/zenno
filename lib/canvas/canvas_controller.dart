@@ -112,12 +112,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// either keeps the controller fully in-memory (the Phase-1-and-earlier
   /// behaviour); the two are an all-or-nothing pair.
   CanvasController({CanvasRepository? repository, String? canvasId})
-      : assert(
-          (repository == null) == (canvasId == null),
-          'repository and canvasId must be supplied together, or neither.',
-        ),
-        _repository = repository,
-        _canvasId = canvasId;
+    : assert(
+        (repository == null) == (canvasId == null),
+        'repository and canvasId must be supplied together, or neither.',
+      ),
+      _repository = repository,
+      _canvasId = canvasId;
 
   /// Persistence backend, or `null` for an in-memory canvas.
   final CanvasRepository? _repository;
@@ -152,6 +152,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// guarantee every write has hit SQLite before it disposes.
   final Set<Future<void>> _pendingWrites = <Future<void>>{};
 
+  final List<Future<void> Function()> _failedWrites =
+      <Future<void> Function()>[];
+  Object? _saveError;
+
+  /// Latest persistence error, if a canvas write failed.
+  Object? get saveError => _saveError;
+
+  /// Whether there are failed writes the user can retry.
+  bool get hasSaveError => _saveError != null;
+
   /// The camera through which the world is observed.
   ViewportState viewport = ViewportState.initial;
 
@@ -177,7 +187,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// The committed canvas elements in paint order (back to front), as an
   /// unmodifiable view.
-  List<CanvasElement> get elements => List<CanvasElement>.unmodifiable(_elements);
+  List<CanvasElement> get elements =>
+      List<CanvasElement>.unmodifiable(_elements);
 
   /// The spatial index over the committed elements, for viewport culling.
   ///
@@ -223,8 +234,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final PdfRasterService _pdfRasterService = PdfRasterService();
 
   /// Picks media files (image / PDF) and stages them for the canvas.
-  late final CanvasImporter _importer =
-      CanvasImporter(pdfRasterService: _pdfRasterService);
+  late final CanvasImporter _importer = CanvasImporter(
+    pdfRasterService: _pdfRasterService,
+  );
 
   /// Size of the canvas viewport in logical pixels, kept in sync by the view.
   ///
@@ -328,9 +340,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// The committed elements that are currently selected, in paint order.
   List<CanvasElement> get selectedElements => <CanvasElement>[
-        for (final CanvasElement e in _elements)
-          if (_selectedIds.contains(e.id)) e,
-      ];
+    for (final CanvasElement e in _elements)
+      if (_selectedIds.contains(e.id)) e,
+  ];
 
   /// World-space bounding box enclosing every selected element, or `null` when
   /// nothing is selected. Reflects any in-progress [selectionDragDelta].
@@ -482,7 +494,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_hydrating || repo == null || canvasId == null) {
       return;
     }
-    _track(repo.upsertElement(canvasId, element));
+    _track(() => repo.upsertElement(canvasId, element));
   }
 
   /// Deletes the element [id] via the repository, if persistence is enabled.
@@ -495,7 +507,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_hydrating || repo == null) {
       return;
     }
-    _track(repo.deleteElement(id));
+    _track(() => repo.deleteElement(id));
   }
 
   /// Schedules a debounced save of the current [viewport].
@@ -518,19 +530,44 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     _viewportSaveTimer = null;
-    _track(repo.saveViewport(canvasId, viewport));
+    _track(() => repo.saveViewport(canvasId, viewport));
+  }
+
+  /// Retries failed persistence writes.
+  Future<void> retryFailedWrites() async {
+    final retries = List<Future<void> Function()>.of(_failedWrites);
+    _failedWrites.clear();
+    _saveError = null;
+    notifyListeners();
+    for (final retry in retries) {
+      _track(retry);
+    }
+    await flush();
+  }
+
+  /// Dismisses the visible save error without dropping retry information.
+  void dismissSaveError() {
+    _saveError = null;
+    notifyListeners();
   }
 
   /// Registers [write] in [_pendingWrites] until it completes.
   ///
   /// [flush] awaits this set, so a write in flight when the page disposes is
-  /// still finished. A failed write is swallowed — a dropped persistence write
-  /// must never crash the canvas UI — and removed from the set either way.
-  void _track(Future<void> write) {
+  /// still finished. A failed write is surfaced and retained for retry.
+  void _track(Future<void> Function() write) {
     late final Future<void> tracked;
-    tracked = write.catchError((Object _) {}).whenComplete(() {
-      _pendingWrites.remove(tracked);
-    });
+    tracked = write()
+        .catchError((Object error) {
+          _saveError = error;
+          _failedWrites.add(write);
+          if (!_disposed) {
+            notifyListeners();
+          }
+        })
+        .whenComplete(() {
+          _pendingWrites.remove(tracked);
+        });
     _pendingWrites.add(tracked);
   }
 
@@ -918,10 +955,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       }
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
-        stroke: element.stroke,
-        eraserPath: path,
-        radius: worldRadius,
-      );
+            stroke: element.stroke,
+            eraserPath: path,
+            radius: worldRadius,
+          );
       // Untouched: one fragment identical to the original — nothing to do.
       if (fragments.length == 1 &&
           fragments.single.length == element.stroke.points.length) {
@@ -960,8 +997,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return const <CanvasElement>[];
     }
     final double worldRadius = eraserRadius / viewport.scale;
-    final Rect area =
-        CanvasGeometry.boundsOfPoints(path).inflate(worldRadius);
+    final Rect area = CanvasGeometry.boundsOfPoints(path).inflate(worldRadius);
     final Set<String> candidateIds = _spatialIndex.query(area).toSet();
     if (candidateIds.isEmpty) {
       return const <CanvasElement>[];
@@ -1134,9 +1170,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void setSelection(Iterable<String> ids) {
     _selectedIds
       ..clear()
-      ..addAll(ids.where(
-        (String id) => _elements.any((CanvasElement e) => e.id == id),
-      ));
+      ..addAll(
+        ids.where(
+          (String id) => _elements.any((CanvasElement e) => e.id == id),
+        ),
+      );
     notifyListeners();
   }
 
@@ -1315,9 +1353,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       tool: StrokeToolKind.pen,
     );
     _runCommand(
-      AddElementCommand(
-        InkElement.fromStroke(stroke, zIndex: _nextZIndex),
-      ),
+      AddElementCommand(InkElement.fromStroke(stroke, zIndex: _nextZIndex)),
     );
   }
 
@@ -1453,18 +1489,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     final double regionEdge = worldRegion.longestSide;
-    final double viewEdge =
-        size.shortestSide * fillFraction;
+    final double viewEdge = size.shortestSide * fillFraction;
     final double scale = regionEdge <= 0
         ? viewport.scale
         : CanvasTransform.clampScale(viewEdge / regionEdge);
     // With rotation 0 the screen position of a world point w is w*scale + t,
     // so to put the region centre at the viewport centre: t = c - centre*scale.
-    final Offset translation = Offset(size.width / 2, size.height / 2) -
-        worldRegion.center * scale;
-    setViewport(
-      ViewportState(translation: translation, scale: scale),
-    );
+    final Offset translation =
+        Offset(size.width / 2, size.height / 2) - worldRegion.center * scale;
+    setViewport(ViewportState(translation: translation, scale: scale));
   }
 
   // ---------------------------------------------------------------------------
@@ -1489,8 +1522,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return null;
     }
     final Bookmark bookmark = Bookmark(name: trimmed, viewport: viewport);
-    final int existing =
-        _bookmarks.indexWhere((Bookmark b) => b.name == trimmed);
+    final int existing = _bookmarks.indexWhere(
+      (Bookmark b) => b.name == trimmed,
+    );
     if (existing >= 0) {
       _bookmarks[existing] = bookmark;
     } else {
@@ -1591,10 +1625,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       for (final PdfPageInfo page in imported.pages) {
         final Rect rect = _fitRect(
           intrinsicSize: page.size,
-          center: Offset(
-            firstRect.center.dx,
-            cursorTop + firstRect.height / 2,
-          ),
+          center: Offset(firstRect.center.dx, cursorTop + firstRect.height / 2),
           maxEdge: firstRect.longestSide,
         );
         pageElements.add(
@@ -1632,13 +1663,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Aspect ratio is preserved.
   Rect _placementRect(Size intrinsicSize) {
     final Rect visible = _visibleWorldRect;
-    final double fitLimit = 0.8 *
-        (visible.width < visible.height ? visible.width : visible.height);
+    final double fitLimit =
+        0.8 * (visible.width < visible.height ? visible.width : visible.height);
     final double maxEdge = fitLimit <= 0
         ? _importDefaultWorldSize
         : (_importDefaultWorldSize < fitLimit
-            ? _importDefaultWorldSize
-            : fitLimit);
+              ? _importDefaultWorldSize
+              : fitLimit);
     return _fitRect(
       intrinsicSize: intrinsicSize,
       center: visible.center,
@@ -1656,11 +1687,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     final double w = intrinsicSize.width <= 0 ? 1.0 : intrinsicSize.width;
     final double h = intrinsicSize.height <= 0 ? 1.0 : intrinsicSize.height;
     final double scale = w >= h ? maxEdge / w : maxEdge / h;
-    return Rect.fromCenter(
-      center: center,
-      width: w * scale,
-      height: h * scale,
-    );
+    return Rect.fromCenter(center: center, width: w * scale, height: h * scale);
   }
 
   // ---------------------------------------------------------------------------
@@ -1681,10 +1708,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_disposed) {
       return;
     }
-    final Set<String> visibleIds =
-        _spatialIndex.query(_visibleWorldRect).toSet();
-    final int wantBucket =
-        PdfRasterService.bucketForScale(viewport.scale);
+    final Set<String> visibleIds = _spatialIndex
+        .query(_visibleWorldRect)
+        .toSet();
+    final int wantBucket = PdfRasterService.bucketForScale(viewport.scale);
     for (final CanvasElement element in _elements) {
       if (!visibleIds.contains(element.id)) {
         continue;
@@ -1702,8 +1729,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           // (Re-)rasterise when no raster exists, or when the user has zoomed
           // into a higher resolution bucket than the cached page was rendered
           // for — a simple zoom-bucket comparison, no per-frame churn.
-          final bool needsRaster = element.raster == null ||
-              element.rasterScaleBucket < wantBucket;
+          final bool needsRaster =
+              element.raster == null || element.rasterScaleBucket < wantBucket;
           if (needsRaster) {
             _loadPdfRaster(element, wantBucket);
           }
@@ -1729,8 +1756,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _imageRasterInFlight.add(element.id);
     final int epoch = _rasterEpoch;
     try {
-      final ui.Image? image =
-          await _decodeImageFile(element.sourceFilePath);
+      final ui.Image? image = await _decodeImageFile(element.sourceFilePath);
       if (image == null) {
         return;
       }
@@ -1764,10 +1790,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Decodes the image file at [path] into a `ui.Image`, or `null` on failure.
   static Future<ui.Image?> _decodeImageFile(String path) async {
     try {
-      final ui.ImmutableBuffer buffer =
-          await ui.ImmutableBuffer.fromFilePath(path);
-      final ui.ImageDescriptor descriptor =
-          await ui.ImageDescriptor.encoded(buffer);
+      final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromFilePath(
+        path,
+      );
+      final ui.ImageDescriptor descriptor = await ui.ImageDescriptor.encoded(
+        buffer,
+      );
       final ui.Codec codec = await descriptor.instantiateCodec();
       final ui.FrameInfo frame = await codec.getNextFrame();
       codec.dispose();
@@ -1799,8 +1827,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _pdfRasterInFlight[element.id] = bucket;
     final int epoch = _rasterEpoch;
     try {
-      final PdfRasterResult? result =
-          await _pdfRasterService.rasterizePage(
+      final PdfRasterResult? result = await _pdfRasterService.rasterizePage(
         filePath: element.sourceFilePath,
         pageNumber: element.pageNumber,
         scaleBucket: bucket,
@@ -1854,8 +1881,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   /// Whether an element with [id] is still present in the store.
-  bool _containsId(String id) =>
-      _elements.any((CanvasElement e) => e.id == id);
+  bool _containsId(String id) => _elements.any((CanvasElement e) => e.id == id);
 
   /// Replaces the element with [id] in place via [update], keeping z-order.
   ///
@@ -1906,11 +1932,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_rasterBytesInUse <= _rasterBudgetBytes) {
       return;
     }
-    final Set<String> visibleIds =
-        _spatialIndex.query(_visibleWorldRect).toSet();
-    for (var i = 0;
-        i < _elements.length && _rasterBytesInUse > _rasterBudgetBytes;
-        i++) {
+    final Set<String> visibleIds = _spatialIndex
+        .query(_visibleWorldRect)
+        .toSet();
+    for (
+      var i = 0;
+      i < _elements.length && _rasterBytesInUse > _rasterBudgetBytes;
+      i++
+    ) {
       final CanvasElement element = _elements[i];
       if (visibleIds.contains(element.id)) {
         continue;

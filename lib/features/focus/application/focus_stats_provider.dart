@@ -27,9 +27,7 @@ FocusStats focusStats(Ref ref) {
       .toList();
   if (completed.isEmpty) return FocusStats.empty;
 
-  return FocusStats.from([
-    for (final detail in completed) _toInput(detail),
-  ]);
+  return FocusStats.from([for (final detail in completed) _toInput(detail)]);
 }
 
 /// Folds one [FocusSessionDetail] into the aggregator's input shape.

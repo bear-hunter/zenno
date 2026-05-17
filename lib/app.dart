@@ -17,22 +17,18 @@ class ZennoApp extends ConsumerWidget {
   const ZennoApp({super.key});
 
   /// Maps the persisted [ThemeModeSetting] to Flutter's [ThemeMode].
-  static ThemeMode _toThemeMode(ThemeModeSetting setting) =>
-      switch (setting) {
-        ThemeModeSetting.system => ThemeMode.system,
-        ThemeModeSetting.light => ThemeMode.light,
-        ThemeModeSetting.dark => ThemeMode.dark,
-      };
+  static ThemeMode _toThemeMode(ThemeModeSetting setting) => switch (setting) {
+    ThemeModeSetting.system => ThemeMode.system,
+    ThemeModeSetting.light => ThemeMode.light,
+    ThemeModeSetting.dark => ThemeMode.dark,
+  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Fall back to the dark-first default until the setting resolves (and on
     // any error) — `value` is null in both the loading and error states.
-    final themeMode = ref
-            .watch(appSettingsProvider)
-            .value
-            ?.themeMode
-            .let(_toThemeMode) ??
+    final themeMode =
+        ref.watch(appSettingsProvider).value?.themeMode.let(_toThemeMode) ??
         ThemeMode.dark;
 
     return MaterialApp.router(

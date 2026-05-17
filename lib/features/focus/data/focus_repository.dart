@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
 import 'package:zenno/core/util/id.dart';
+import 'package:zenno/features/focus/domain/timer_engine.dart' as timer;
 
 /// A focus session bundled with its captured distractions and ritual-check
 /// snapshot — the shape the History and Review screens render.
@@ -71,6 +72,12 @@ class FocusRepository {
             flowBreakRatio: Value(flowBreakRatio),
             linkedCanvasId: Value(linkedCanvasId),
             status: FocusSessionStatus.inProgress,
+            runtimeStatus: Value(timer.TimerStatus.running.index),
+            runtimePhase: Value(timer.TimerPhase.work.index),
+            runtimePhaseStartedAt: Value(startedAt),
+            runtimeCarriedPhaseSecs: const Value(0),
+            runtimePhaseTargetSecs: Value(pomodoroWorkSecs),
+            runtimeBankedFocusSecs: const Value(0),
           ),
         );
     return id;
@@ -86,18 +93,52 @@ class FocusRepository {
     int? actualFocusSecs,
     int? cyclesCompleted,
   }) async {
-    await (_db.update(_db.focusSessions)
-          ..where((s) => s.id.equals(sessionId)))
-        .write(
-          FocusSessionsCompanion(
-            actualFocusSecs: actualFocusSecs == null
-                ? const Value.absent()
-                : Value(actualFocusSecs),
-            cyclesCompleted: cyclesCompleted == null
-                ? const Value.absent()
-                : Value(cyclesCompleted),
-          ),
-        );
+    await (_db.update(
+      _db.focusSessions,
+    )..where((s) => s.id.equals(sessionId))).write(
+      FocusSessionsCompanion(
+        actualFocusSecs: actualFocusSecs == null
+            ? const Value.absent()
+            : Value(actualFocusSecs),
+        cyclesCompleted: cyclesCompleted == null
+            ? const Value.absent()
+            : Value(cyclesCompleted),
+      ),
+    );
+  }
+
+  /// Returns the latest in-progress session, if one exists.
+  Future<FocusSession?> readLatestInProgressSession() {
+    return (_db.select(_db.focusSessions)
+          ..where((s) => s.status.equals(FocusSessionStatus.inProgress.index))
+          ..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.startedAt, mode: OrderingMode.desc),
+          ])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  /// Persists enough timer runtime to restore the live session after restart.
+  Future<void> updateRuntime({
+    required String sessionId,
+    required timer.TimerEngineRuntimeSnapshot runtime,
+    required int actualFocusSecs,
+  }) async {
+    await (_db.update(
+      _db.focusSessions,
+    )..where((s) => s.id.equals(sessionId))).write(
+      FocusSessionsCompanion(
+        actualFocusSecs: Value(actualFocusSecs),
+        cyclesCompleted: Value(runtime.cyclesCompleted),
+        runtimeStatus: Value(runtime.status.index),
+        runtimePhase: Value(runtime.phase.index),
+        runtimePhaseStartedAt: Value(runtime.phaseStartedAt),
+        runtimeCarriedPhaseSecs: Value(runtime.carried.inSeconds),
+        runtimePhaseTargetSecs: Value(runtime.phaseTarget?.inSeconds),
+        runtimeBankedFocusSecs: Value(runtime.bankedFocus.inSeconds),
+      ),
+    );
   }
 
   /// Closes a session: stamps `ended_at`, sets the final [status], and writes
@@ -113,16 +154,17 @@ class FocusRepository {
     required int actualFocusSecs,
     required int cyclesCompleted,
   }) async {
-    await (_db.update(_db.focusSessions)
-          ..where((s) => s.id.equals(sessionId)))
-        .write(
-          FocusSessionsCompanion(
-            endedAt: Value(endedAt),
-            status: Value(status),
-            actualFocusSecs: Value(actualFocusSecs),
-            cyclesCompleted: Value(cyclesCompleted),
-          ),
-        );
+    await (_db.update(
+      _db.focusSessions,
+    )..where((s) => s.id.equals(sessionId))).write(
+      FocusSessionsCompanion(
+        endedAt: Value(endedAt),
+        status: Value(status),
+        actualFocusSecs: Value(actualFocusSecs),
+        cyclesCompleted: Value(cyclesCompleted),
+        runtimeStatus: const Value.absent(),
+      ),
+    );
   }
 
   /// Writes the post-session Review fields and marks the session
@@ -134,15 +176,15 @@ class FocusRepository {
     required int postEnergy,
     String? notes,
   }) async {
-    await (_db.update(_db.focusSessions)
-          ..where((s) => s.id.equals(sessionId)))
-        .write(
-          FocusSessionsCompanion(
-            postEnergy: Value(postEnergy),
-            notes: Value(notes),
-            status: const Value(FocusSessionStatus.completed),
-          ),
-        );
+    await (_db.update(
+      _db.focusSessions,
+    )..where((s) => s.id.equals(sessionId))).write(
+      FocusSessionsCompanion(
+        postEnergy: Value(postEnergy),
+        notes: Value(notes),
+        status: const Value(FocusSessionStatus.completed),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -212,9 +254,9 @@ class FocusRepository {
 
   /// Reads the ritual-check snapshot for [sessionId].
   Future<List<FocusSessionRitualCheck>> ritualChecks(String sessionId) {
-    return (_db.select(_db.focusSessionRitualChecks)
-          ..where((c) => c.sessionId.equals(sessionId)))
-        .get();
+    return (_db.select(
+      _db.focusSessionRitualChecks,
+    )..where((c) => c.sessionId.equals(sessionId))).get();
   }
 
   // ---------------------------------------------------------------------------
@@ -223,16 +265,16 @@ class FocusRepository {
 
   /// Reads a single session by [sessionId], or `null` if it does not exist.
   Future<FocusSession?> session(String sessionId) {
-    return (_db.select(_db.focusSessions)
-          ..where((s) => s.id.equals(sessionId)))
-        .getSingleOrNull();
+    return (_db.select(
+      _db.focusSessions,
+    )..where((s) => s.id.equals(sessionId))).getSingleOrNull();
   }
 
   /// Watches all focus sessions, most recent first.
   Stream<List<FocusSession>> watchHistory() {
-    return (_db.select(_db.focusSessions)
-          ..orderBy([(s) => OrderingTerm.desc(s.startedAt)]))
-        .watch();
+    return (_db.select(
+      _db.focusSessions,
+    )..orderBy([(s) => OrderingTerm.desc(s.startedAt)])).watch();
   }
 
   /// Watches the full session history as [FocusSessionDetail] bundles, each

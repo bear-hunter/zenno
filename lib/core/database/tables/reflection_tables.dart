@@ -29,8 +29,11 @@ class ReflectionEntries extends Table {
       text().references(BoardCards, #id, onDelete: KeyAction.cascade)();
 
   /// Restrict deletion of a template while filled entries reference it.
-  TextColumn get templateId => text()
-      .references(ReflectionTemplates, #id, onDelete: KeyAction.restrict)();
+  TextColumn get templateId => text().references(
+    ReflectionTemplates,
+    #id,
+    onDelete: KeyAction.restrict,
+  )();
 
   /// The template name as it read when this entry was created.
   TextColumn get templateNameSnapshot => text()();

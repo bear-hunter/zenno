@@ -30,7 +30,5 @@ Stream<List<ReflectionTemplateView>> reflectionTemplates(Ref ref) {
 /// hand-written model class.
 @riverpod
 Stream<List<ReflectionEntryView>> cardReflections(Ref ref, String cardId) {
-  return ref
-      .watch(reflectionRepositoryProvider)
-      .watchEntriesForCard(cardId);
+  return ref.watch(reflectionRepositoryProvider).watchEntriesForCard(cardId);
 }

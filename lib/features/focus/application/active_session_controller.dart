@@ -1,12 +1,19 @@
 import 'dart:async';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
 import 'package:zenno/features/focus/application/focus_providers.dart';
+import 'package:zenno/features/focus/application/focus_wakelock_service.dart';
 import 'package:zenno/features/focus/domain/focus_session_config.dart';
 import 'package:zenno/features/focus/domain/timer_engine.dart';
+import 'package:zenno/features/settings/application/settings_providers.dart';
 
 part 'active_session_controller.g.dart';
+
+/// Injectable clock for deterministic active-session controller tests.
+@Riverpod(keepAlive: true)
+DateTime focusClock(Ref ref) => DateTime.now().toUtc();
 
 /// The live state of an in-progress focus session, as the Active screen and
 /// the global shell pill render it.
@@ -17,6 +24,7 @@ class ActiveSessionState {
   /// Creates an active-session state.
   const ActiveSessionState({
     required this.sessionId,
+    required this.startedAt,
     required this.config,
     required this.snapshot,
   });
@@ -24,12 +32,16 @@ class ActiveSessionState {
   /// The "no session running" state.
   static const ActiveSessionState none = ActiveSessionState(
     sessionId: null,
+    startedAt: null,
     config: null,
     snapshot: null,
   );
 
   /// Id of the `focus_sessions` row, or `null` when nothing is running.
   final String? sessionId;
+
+  /// Session wall-clock start time, used for distraction timing.
+  final DateTime? startedAt;
 
   /// The configuration the running session was started with.
   final FocusSessionConfig? config;
@@ -65,12 +77,17 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// Seconds of `actual_focus_secs` last written to the DB — lets the tally
   /// write be skipped when nothing changed.
   int _lastPersistedFocusSecs = -1;
+  int _secondsSinceRuntimePersist = 0;
 
   @override
   ActiveSessionState build() {
     // The ticker holds a resource; tear it down if the provider is ever
     // disposed (it is keepAlive, so in practice only at app shutdown).
-    ref.onDispose(_stopTicker);
+    ref.onDispose(() {
+      _stopTicker();
+      unawaited(_setWakelock(false));
+    });
+    Future<void>.microtask(_restoreLatestInProgressSession);
     return ActiveSessionState.none;
   }
 
@@ -98,7 +115,7 @@ class ActiveSessionController extends _$ActiveSessionController {
         : TimerKind.flowmodoro;
 
     final sessionId = await repo.createSession(
-      startedAt: DateTime.now().toUtc(),
+      startedAt: ref.read(focusClockProvider),
       goalText: config.goalText,
       preEnergy: config.preEnergy,
       timerKind: timerKind,
@@ -120,28 +137,33 @@ class ActiveSessionController extends _$ActiveSessionController {
       items: checkedRitualItems,
     );
 
-    final engine = config.buildEngine()..start();
+    final engine = _buildEngine(config)..start();
     _engine = engine;
     _lastPersistedFocusSecs = 0;
 
     state = ActiveSessionState(
       sessionId: sessionId,
+      startedAt: ref.read(focusClockProvider),
       config: config,
       snapshot: engine.snapshot(),
     );
     _startTicker();
+    await _syncWakelockWithSettings();
+    await _persistRuntime();
   }
 
   /// Pauses the running timer.
-  void pause() {
+  Future<void> pause() async {
     _engine?.pause();
     _emit();
+    await _persistRuntime();
   }
 
   /// Resumes the paused timer.
-  void resume() {
+  Future<void> resume() async {
     _engine?.resume();
     _emit();
+    await _persistRuntime();
   }
 
   /// Ends the current Flowmodoro work stretch and starts a proportional break.
@@ -150,13 +172,14 @@ class ActiveSessionController extends _$ActiveSessionController {
   Future<void> endStretch() async {
     _engine?.endStretch();
     _emit();
-    await _persistTally();
+    await _persistRuntime();
   }
 
   /// Skips the current break and starts the next work phase.
-  void skipBreak() {
+  Future<void> skipBreak() async {
     _engine?.skipBreak();
     _emit();
+    await _persistRuntime();
   }
 
   /// Records a distraction against the running session.
@@ -172,15 +195,20 @@ class ActiveSessionController extends _$ActiveSessionController {
     final engine = _engine;
     if (sessionId == null || engine == null) return;
 
+    final startedAt = state.startedAt;
+    final now = ref.read(focusClockProvider);
+    final wallSecs = startedAt == null
+        ? engine.accumulatedFocus.inSeconds
+        : now.difference(startedAt).inSeconds;
+
     await ref
         .read(focusRepositoryProvider)
         .addDistraction(
           sessionId: sessionId,
-          capturedAt: DateTime.now().toUtc(),
+          capturedAt: now,
           kind: kind,
           note: note,
-          elapsedSecs:
-              elapsedSecs ?? engine.accumulatedFocus.inSeconds,
+          elapsedSecs: elapsedSecs ?? wallSecs.clamp(0, 1 << 31),
         );
   }
 
@@ -215,7 +243,7 @@ class ActiveSessionController extends _$ActiveSessionController {
         .read(focusRepositoryProvider)
         .finishSession(
           sessionId: sessionId,
-          endedAt: DateTime.now().toUtc(),
+          endedAt: ref.read(focusClockProvider),
           status: status,
           actualFocusSecs: engine.accumulatedFocus.inSeconds,
           cyclesCompleted: engine.cyclesCompleted,
@@ -225,6 +253,7 @@ class ActiveSessionController extends _$ActiveSessionController {
     // A finished session keeps its state so the Review screen can use it.
     if (status == FocusSessionStatus.abandoned) {
       _clear();
+      await _setWakelock(false);
     }
   }
 
@@ -233,10 +262,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   ///
   /// Called from the Review screen after the user has already [stop]ped the
   /// timer. A no-op if there is no held session.
-  Future<void> submitReview({
-    required int postEnergy,
-    String? notes,
-  }) async {
+  Future<void> submitReview({required int postEnergy, String? notes}) async {
     final sessionId = state.sessionId;
     if (sessionId == null) return;
 
@@ -245,11 +271,10 @@ class ActiveSessionController extends _$ActiveSessionController {
         .completeReview(
           sessionId: sessionId,
           postEnergy: postEnergy.clamp(1, 5),
-          notes: (notes != null && notes.trim().isEmpty)
-              ? null
-              : notes?.trim(),
+          notes: (notes != null && notes.trim().isEmpty) ? null : notes?.trim(),
         );
     _clear();
+    await _setWakelock(false);
   }
 
   /// Discards the held session without writing a Review.
@@ -257,8 +282,9 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// Used if the user backs out of the Review screen — the session row is
   /// already closed by [stop]; this just releases the controller so a new
   /// session can begin.
-  void discard() {
+  Future<void> discard() async {
     _clear();
+    await _setWakelock(false);
   }
 
   // ---------------------------------------------------------------------------
@@ -283,8 +309,9 @@ class ActiveSessionController extends _$ActiveSessionController {
     if (engine == null) return;
     final advanced = engine.advanceIfPhaseComplete();
     _emit();
-    if (advanced) {
-      await _persistTally();
+    _secondsSinceRuntimePersist += 1;
+    if (advanced || _secondsSinceRuntimePersist >= 15) {
+      await _persistRuntime();
     }
   }
 
@@ -298,29 +325,129 @@ class ActiveSessionController extends _$ActiveSessionController {
     if (engine == null) return;
     state = ActiveSessionState(
       sessionId: state.sessionId,
+      startedAt: state.startedAt,
       config: state.config,
       snapshot: engine.snapshot(),
     );
   }
 
-  /// Writes `actual_focus_secs` / `cycles_completed` to the DB if the focus
-  /// tally has moved since the last write — cheap idempotent durability.
-  Future<void> _persistTally() async {
+  Future<void> _persistRuntime() async {
     final sessionId = state.sessionId;
     final engine = _engine;
     if (sessionId == null || engine == null) return;
-
-    final focusSecs = engine.accumulatedFocus.inSeconds;
-    if (focusSecs == _lastPersistedFocusSecs) return;
-    _lastPersistedFocusSecs = focusSecs;
-
+    _secondsSinceRuntimePersist = 0;
+    _lastPersistedFocusSecs = engine.accumulatedFocus.inSeconds;
     await ref
         .read(focusRepositoryProvider)
-        .updateProgress(
+        .updateRuntime(
           sessionId: sessionId,
-          actualFocusSecs: focusSecs,
-          cyclesCompleted: engine.cyclesCompleted,
+          runtime: engine.runtimeSnapshot,
+          actualFocusSecs: _lastPersistedFocusSecs,
         );
+  }
+
+  Future<void> _restoreLatestInProgressSession() async {
+    if (state.hasSession) return;
+    final session = await ref
+        .read(focusRepositoryProvider)
+        .readLatestInProgressSession();
+    if (session == null || state.hasSession) return;
+
+    final config = _configFromSession(session);
+    final runtime = _runtimeFromSession(session);
+    final engine = TimerEngine.fromRuntime(
+      mode: config.mode,
+      runtime: runtime,
+      clock: () => ref.read(focusClockProvider),
+      pomodoroWork: config.pomodoroWork,
+      pomodoroBreak: config.pomodoroBreak,
+      flowBreakRatio: config.flowBreakRatio,
+    );
+    _engine = engine;
+    _lastPersistedFocusSecs = engine.accumulatedFocus.inSeconds;
+    state = ActiveSessionState(
+      sessionId: session.id,
+      startedAt: session.startedAt,
+      config: config,
+      snapshot: engine.snapshot(),
+    );
+    _startTicker();
+    await _syncWakelockWithSettings();
+    await _persistRuntime();
+  }
+
+  Future<void> _syncWakelockWithSettings() async {
+    final settings = await ref.read(settingsRepositoryProvider).readSettings();
+    await _setWakelock(settings.keepScreenOnInFocus);
+  }
+
+  Future<void> _setWakelock(bool enabled) {
+    return ref.read(focusWakelockServiceProvider).setEnabled(enabled);
+  }
+
+  TimerEngine _buildEngine(FocusSessionConfig config) {
+    return TimerEngine(
+      mode: config.mode,
+      clock: () => ref.read(focusClockProvider),
+      pomodoroWork: config.pomodoroWork,
+      pomodoroBreak: config.pomodoroBreak,
+      flowBreakRatio: config.flowBreakRatio,
+    );
+  }
+
+  FocusSessionConfig _configFromSession(FocusSession session) {
+    return FocusSessionConfig(
+      mode: session.timerKind == TimerKind.pomodoro
+          ? TimerMode.pomodoro
+          : TimerMode.flowmodoro,
+      goalText: session.goalText,
+      preEnergy: session.preEnergy,
+      plannedDuration: Duration(seconds: session.plannedDurationSecs),
+      pomodoroWork: Duration(seconds: session.pomodoroWorkSecs ?? 1500),
+      pomodoroBreak: Duration(seconds: session.pomodoroBreakSecs ?? 300),
+      flowBreakRatio: session.flowBreakRatio ?? 0.2,
+      linkedCanvasId: session.linkedCanvasId,
+    );
+  }
+
+  TimerEngineRuntimeSnapshot _runtimeFromSession(FocusSession session) {
+    final status = _enumAt(
+      TimerStatus.values,
+      session.runtimeStatus,
+      TimerStatus.paused,
+    );
+    final phase = _enumAt(
+      TimerPhase.values,
+      session.runtimePhase,
+      TimerPhase.work,
+    );
+    final phaseTargetSecs =
+        session.runtimePhaseTargetSecs ??
+        (session.timerKind == TimerKind.pomodoro
+            ? session.pomodoroWorkSecs
+            : null);
+    return TimerEngineRuntimeSnapshot(
+      status: status == TimerStatus.idle ? TimerStatus.paused : status,
+      phase: phase,
+      phaseStartedAt: session.runtimePhaseStartedAt,
+      carried: Duration(
+        seconds: session.runtimeCarriedPhaseSecs == 0
+            ? session.actualFocusSecs
+            : session.runtimeCarriedPhaseSecs,
+      ),
+      phaseTarget: phaseTargetSecs == null
+          ? null
+          : Duration(seconds: phaseTargetSecs),
+      bankedFocus: Duration(seconds: session.runtimeBankedFocusSecs),
+      cyclesCompleted: session.cyclesCompleted,
+    );
+  }
+
+  T _enumAt<T>(List<T> values, int? index, T fallback) {
+    if (index == null || index < 0 || index >= values.length) {
+      return fallback;
+    }
+    return values[index];
   }
 
   /// Tears down the timer and resets to [ActiveSessionState.none].
@@ -328,6 +455,7 @@ class ActiveSessionController extends _$ActiveSessionController {
     _stopTicker();
     _engine = null;
     _lastPersistedFocusSecs = -1;
+    _secondsSinceRuntimePersist = 0;
     state = ActiveSessionState.none;
   }
 }

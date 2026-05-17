@@ -21,10 +21,10 @@ void main() {
       index.insert('d', const Rect.fromLTWH(500, 500, 40, 40));
 
       // A viewport that overlaps only 'a' and 'b'.
-      expect(
-        sortedQuery(index, const Rect.fromLTWH(5, 5, 110, 110)),
-        <String>['a', 'b'],
-      );
+      expect(sortedQuery(index, const Rect.fromLTWH(5, 5, 110, 110)), <String>[
+        'a',
+        'b',
+      ]);
 
       // A viewport around 'c' only.
       expect(
@@ -49,10 +49,9 @@ void main() {
       final SpatialIndex index = SpatialIndex();
       index.insert('touch', const Rect.fromLTWH(0, 0, 10, 10));
       // A viewport whose left edge exactly meets the element's right edge.
-      expect(
-        sortedQuery(index, const Rect.fromLTWH(10, 0, 10, 10)),
-        <String>['touch'],
-      );
+      expect(sortedQuery(index, const Rect.fromLTWH(10, 0, 10, 10)), <String>[
+        'touch',
+      ]);
     });
 
     test('query reports length, isEmpty and boundsOf', () {
@@ -96,10 +95,9 @@ void main() {
       index.insert('a', const Rect.fromLTWH(0, 0, 10, 10));
       index.remove('does-not-exist');
       expect(index.length, 1);
-      expect(
-        sortedQuery(index, const Rect.fromLTWH(-5, -5, 50, 50)),
-        <String>['a'],
-      );
+      expect(sortedQuery(index, const Rect.fromLTWH(-5, -5, 50, 50)), <String>[
+        'a',
+      ]);
     });
   });
 
@@ -111,10 +109,7 @@ void main() {
       index.clear();
       expect(index.isEmpty, isTrue);
       expect(index.length, 0);
-      expect(
-        index.query(const Rect.fromLTWH(-100, -100, 1000, 1000)),
-        isEmpty,
-      );
+      expect(index.query(const Rect.fromLTWH(-100, -100, 1000, 1000)), isEmpty);
     });
 
     test('rebuild replaces all entries', () {
@@ -139,10 +134,7 @@ void main() {
 
       expect(index.length, 1);
       // No longer at the old location.
-      expect(
-        index.query(const Rect.fromLTWH(-5, -5, 30, 30)),
-        isEmpty,
-      );
+      expect(index.query(const Rect.fromLTWH(-5, -5, 30, 30)), isEmpty);
       // Found at the new location.
       expect(
         sortedQuery(index, const Rect.fromLTWH(990, 990, 50, 50)),
@@ -202,10 +194,11 @@ void main() {
 
       // Remove one cell and confirm it drops out.
       index.remove('r0c0');
-      expect(
-        sortedQuery(index, const Rect.fromLTWH(0, 0, 120, 120)),
-        <String>['r0c1', 'r1c0', 'r1c1'],
-      );
+      expect(sortedQuery(index, const Rect.fromLTWH(0, 0, 120, 120)), <String>[
+        'r0c1',
+        'r1c0',
+        'r1c1',
+      ]);
     });
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:zenno/config/router/routes.dart';
 import 'package:zenno/config/theme/app_colors.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
-import 'package:zenno/core/database/database.dart';
+import 'package:zenno/core/database/database.dart' hide Image;
 import 'package:zenno/core/util/relative_time.dart';
 import 'package:zenno/features/library/application/library_providers.dart';
 
@@ -66,8 +68,7 @@ class CanvasCard extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             child: const Text('Rename'),
           ),
         ],
@@ -76,10 +77,9 @@ class CanvasCard extends ConsumerWidget {
     controller.dispose();
 
     if (newTitle != null && newTitle.isNotEmpty && newTitle != canvas.title) {
-      await ref.read(libraryRepositoryProvider).renameCanvas(
-            canvas.id,
-            newTitle,
-          );
+      await ref
+          .read(libraryRepositoryProvider)
+          .renameCanvas(canvas.id, newTitle);
     }
   }
 
@@ -99,9 +99,7 @@ class CanvasCard extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.flagRed,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.flagRed),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),
@@ -126,20 +124,7 @@ class CanvasCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Placeholder thumbnail area. A real preview lands once the canvas
-            // engine writes a snapshot to `thumbnail_path` on close.
-            Expanded(
-              child: ColoredBox(
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: Center(
-                  child: Icon(
-                    Icons.draw_outlined,
-                    size: 40,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
+            Expanded(child: _CanvasThumbnail(path: canvas.thumbnailPath)),
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.md,
@@ -196,6 +181,39 @@ class CanvasCard extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CanvasThumbnail extends StatelessWidget {
+  const _CanvasThumbnail({required this.path});
+
+  final String? path;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final filePath = path;
+    if (filePath != null && File(filePath).existsSync()) {
+      return Image.file(
+        File(filePath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _placeholder(theme),
+      );
+    }
+    return _placeholder(theme);
+  }
+
+  Widget _placeholder(ThemeData theme) {
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Icons.draw_outlined,
+          size: 40,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
     );

@@ -18,12 +18,7 @@ String _schemaJson(
   List<({String key, String label, String hint, bool multiline})> prompts,
 ) => jsonEncode([
   for (final p in prompts)
-    {
-      'key': p.key,
-      'label': p.label,
-      'hint': p.hint,
-      'multiline': p.multiline,
-    },
+    {'key': p.key, 'label': p.label, 'hint': p.hint, 'multiline': p.multiline},
 ]);
 
 /// Idempotently seeds builtin data: the settings singleton, the four builtin
@@ -46,10 +41,7 @@ Future<void> seedDatabase(ZennoDatabase db) async {
     // unique even if a partial earlier seed left a stale row behind.
     await db
         .into(db.appSettings)
-        .insert(
-          const AppSettingsCompanion(),
-          mode: InsertMode.insertOrReplace,
-        );
+        .insert(const AppSettingsCompanion(), mode: InsertMode.insertOrReplace);
 
     // --- Builtin reflection templates --------------------------------------
     await _seedTemplates(db, now);

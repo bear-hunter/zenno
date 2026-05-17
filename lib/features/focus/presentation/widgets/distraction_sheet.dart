@@ -52,12 +52,9 @@ class _DistractionSheetState extends State<DistractionSheet> {
   }
 
   void _capture() {
-    Navigator.of(context).pop(
-      DistractionCapture(
-        kind: _kind,
-        note: _noteController.text.trim(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).pop(DistractionCapture(kind: _kind, note: _noteController.text.trim()));
   }
 
   @override

@@ -66,16 +66,14 @@ class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
                 const SizedBox(height: AppSpacing.md),
                 EnergyRatingSelector(
                   value: _postEnergy,
-                  onChanged: (value) =>
-                      setState(() => _postEnergy = value),
+                  onChanged: (value) => setState(() => _postEnergy = value),
                 ),
                 const SizedBox(height: AppSpacing.xl),
 
                 // --- Distractions -------------------------------------
                 const _SectionTitle('Distractions'),
                 const SizedBox(height: AppSpacing.sm),
-                if (sessionId != null)
-                  _DistractionReview(sessionId: sessionId),
+                if (sessionId != null) _DistractionReview(sessionId: sessionId),
                 const SizedBox(height: AppSpacing.xl),
 
                 // --- Ritual upkeep ------------------------------------
@@ -153,8 +151,7 @@ class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text),
+            onPressed: () => Navigator.of(context).pop(controller.text),
             child: const Text('Add'),
           ),
         ],
@@ -172,10 +169,7 @@ class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
     final navigator = Navigator.of(context);
     await ref
         .read(activeSessionControllerProvider.notifier)
-        .submitReview(
-          postEnergy: _postEnergy,
-          notes: _noteController.text,
-        );
+        .submitReview(postEnergy: _postEnergy, notes: _noteController.text);
     if (!navigator.mounted) return;
     navigator.popUntil((route) => route.isFirst);
   }
@@ -295,9 +289,6 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.titleMedium,
-    );
+    return Text(text, style: Theme.of(context).textTheme.titleMedium);
   }
 }

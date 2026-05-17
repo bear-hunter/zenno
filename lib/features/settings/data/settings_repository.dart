@@ -41,9 +41,6 @@ class SettingsModel {
   final Duration sessionLength;
 
   /// Whether the screen is kept awake during a Focus session.
-  ///
-  /// Stored only — applying it to the platform is out of this feature's
-  /// scope (no `wakelock` dependency is added here).
   final bool keepScreenOnInFocus;
 
   /// Default sort order for the canvas library.
@@ -85,14 +82,14 @@ class SettingsModel {
 
   @override
   int get hashCode => Object.hash(
-        themeMode,
-        pomodoroWork,
-        pomodoroBreak,
-        flowBreakRatio,
-        sessionLength,
-        keepScreenOnInFocus,
-        librarySort,
-      );
+    themeMode,
+    pomodoroWork,
+    pomodoroBreak,
+    flowBreakRatio,
+    sessionLength,
+    keepScreenOnInFocus,
+    librarySort,
+  );
 }
 
 /// Data layer for app settings.
@@ -183,9 +180,9 @@ class SettingsRepository {
 
   /// Applies [companion] to the singleton settings row.
   Future<void> _writeCompanion(AppSettingsCompanion companion) {
-    return (_db.update(_db.appSettings)
-          ..where((s) => s.id.equals('singleton')))
-        .write(companion);
+    return (_db.update(
+      _db.appSettings,
+    )..where((s) => s.id.equals('singleton'))).write(companion);
   }
 
   /// Maps a Drift [AppSetting] row to the hand-written [SettingsModel].

@@ -102,10 +102,7 @@ class CanvasImporter {
 
     return ImportedImage(
       storedPath: storedPath,
-      intrinsicSize: ui.Size(
-        image.width.toDouble(),
-        image.height.toDouble(),
-      ),
+      intrinsicSize: ui.Size(image.width.toDouble(), image.height.toDouble()),
       raster: image,
     );
   }

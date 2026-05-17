@@ -74,10 +74,7 @@ class GoalBoardController implements KanbanController {
   }
 
   @override
-  Future<void> renameColumn({
-    required String columnId,
-    required String name,
-  }) {
+  Future<void> renameColumn({required String columnId, required String name}) {
     return _repository.renameColumn(columnId: columnId, name: name);
   }
 
@@ -136,10 +133,7 @@ class GoalBoardController implements KanbanController {
   }
 
   /// Sets (or, with a `null` [note], clears) the goal's status note.
-  Future<void> setStatusNote({
-    required String cardId,
-    required String? note,
-  }) {
+  Future<void> setStatusNote({required String cardId, required String? note}) {
     return _repository.setStatusNote(cardId: cardId, note: note);
   }
 }

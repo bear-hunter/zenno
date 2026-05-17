@@ -80,11 +80,7 @@ final class InkElement extends CanvasElement {
   /// Creates an ink element from [stroke], taking its [id] from the stroke and
   /// placing it at [zIndex] in the canvas paint order.
   factory InkElement.fromStroke(Stroke stroke, {required int zIndex}) {
-    return InkElement(
-      id: stroke.id,
-      zIndex: zIndex,
-      stroke: stroke,
-    );
+    return InkElement(id: stroke.id, zIndex: zIndex, stroke: stroke);
   }
 
   /// The ink geometry and style this element renders.
@@ -134,7 +130,8 @@ final class InkElement extends CanvasElement {
       id: id ?? this.id,
       zIndex: zIndex ?? this.zIndex,
       stroke: nextStroke,
-      worldBounds: worldBounds ??
+      worldBounds:
+          worldBounds ??
           (stroke == null ? _worldBounds : computeBounds(nextStroke)),
     );
   }
@@ -176,12 +173,7 @@ final class InkElement extends CanvasElement {
     }
 
     final double pad = stroke.width / 2;
-    return Rect.fromLTRB(
-      minX - pad,
-      minY - pad,
-      maxX + pad,
-      maxY + pad,
-    );
+    return Rect.fromLTRB(minX - pad, minY - pad, maxX + pad, maxY + pad);
   }
 
   @override
@@ -411,8 +403,9 @@ final class PdfElement extends CanvasElement {
       pageNumber: pageNumber ?? this.pageNumber,
       pageSize: pageSize ?? this.pageSize,
       raster: clearRaster ? null : (raster ?? this.raster),
-      rasterScaleBucket:
-          clearRaster ? 0 : (rasterScaleBucket ?? this.rasterScaleBucket),
+      rasterScaleBucket: clearRaster
+          ? 0
+          : (rasterScaleBucket ?? this.rasterScaleBucket),
     );
   }
 
@@ -439,13 +432,13 @@ final class PdfElement extends CanvasElement {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        zIndex,
-        _worldBounds,
-        sourceFilePath,
-        pageNumber,
-        pageSize,
-      );
+    id,
+    zIndex,
+    _worldBounds,
+    sourceFilePath,
+    pageNumber,
+    pageSize,
+  );
 
   @override
   String toString() =>
@@ -473,10 +466,7 @@ final class PdfElement extends CanvasElement {
 class LinkTarget {
   /// Creates a link target pointing at the canvas [targetCanvasId], optionally
   /// framing [targetViewport] on arrival.
-  const LinkTarget({
-    required this.targetCanvasId,
-    this.targetViewport,
-  });
+  const LinkTarget({required this.targetCanvasId, this.targetViewport});
 
   /// Identifier of the destination canvas document (a `canvases.id` value).
   ///
@@ -510,8 +500,9 @@ class LinkTarget {
     );
     return LinkTarget(
       targetCanvasId: targetCanvasId ?? this.targetCanvasId,
-      targetViewport:
-          clearViewport ? null : (targetViewport ?? this.targetViewport),
+      targetViewport: clearViewport
+          ? null
+          : (targetViewport ?? this.targetViewport),
     );
   }
 
@@ -527,7 +518,8 @@ class LinkTarget {
   int get hashCode => Object.hash(targetCanvasId, targetViewport);
 
   @override
-  String toString() => 'LinkTarget(canvas: $targetCanvasId, '
+  String toString() =>
+      'LinkTarget(canvas: $targetCanvasId, '
       'viewport: $targetViewport)';
 }
 

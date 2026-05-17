@@ -82,10 +82,7 @@ class TemplateTile extends StatelessWidget {
             ),
           ),
         ),
-        trailing: _TemplateMenu(
-          onDuplicate: onDuplicate,
-          onDelete: onDelete,
-        ),
+        trailing: _TemplateMenu(onDuplicate: onDuplicate, onDelete: onDelete),
         onTap: onOpen,
       ),
     );

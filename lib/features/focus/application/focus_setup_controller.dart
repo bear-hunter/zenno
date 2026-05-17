@@ -149,23 +149,17 @@ class FocusSetupController extends _$FocusSetupController {
 
   /// Sets the Pomodoro work-interval length (minimum one minute).
   void setPomodoroWork(Duration value) {
-    state = state.copyWith(
-      pomodoroWork: _atLeastOneMinute(value),
-    );
+    state = state.copyWith(pomodoroWork: _atLeastOneMinute(value));
   }
 
   /// Sets the Pomodoro break-interval length (minimum one minute).
   void setPomodoroBreak(Duration value) {
-    state = state.copyWith(
-      pomodoroBreak: _atLeastOneMinute(value),
-    );
+    state = state.copyWith(pomodoroBreak: _atLeastOneMinute(value));
   }
 
   /// Sets the Flowmodoro break ratio, clamped to a sensible `0.05`–`1.0`.
   void setFlowBreakRatio(double value) {
-    state = state.copyWith(
-      flowBreakRatio: value.clamp(0.05, 1.0),
-    );
+    state = state.copyWith(flowBreakRatio: value.clamp(0.05, 1.0));
   }
 
   /// Sets the target total session length (minimum five minutes).
@@ -192,7 +186,5 @@ class FocusSetupController extends _$FocusSetupController {
   }
 
   Duration _atLeastOneMinute(Duration value) =>
-      value < const Duration(minutes: 1)
-      ? const Duration(minutes: 1)
-      : value;
+      value < const Duration(minutes: 1) ? const Duration(minutes: 1) : value;
 }

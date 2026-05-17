@@ -104,10 +104,7 @@ class _SetupBody extends ConsumerWidget {
               // --- Timer type -------------------------------------------
               const _SectionTitle('Timing'),
               const SizedBox(height: AppSpacing.md),
-              TimerTypePicker(
-                value: setup.mode,
-                onChanged: controller.setMode,
-              ),
+              TimerTypePicker(value: setup.mode, onChanged: controller.setMode),
               const SizedBox(height: AppSpacing.lg),
               if (setup.mode == TimerMode.pomodoro)
                 _PomodoroSettings(setup: setup, controller: controller)
@@ -166,9 +163,7 @@ class _SetupBody extends ConsumerWidget {
     if (!navigator.mounted) return;
     // Replace Setup with Active so a back press from Active returns to Home.
     await navigator.pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => const FocusActivePage(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const FocusActivePage()),
     );
   }
 }
@@ -220,10 +215,7 @@ class _FlowmodoroSettings extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text(
-                'Break ratio',
-                style: theme.textTheme.bodyLarge,
-              ),
+              child: Text('Break ratio', style: theme.textTheme.bodyLarge),
             ),
             Text(
               '$percent% of focus time',
@@ -284,9 +276,7 @@ class _DurationStepper extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Text(label, style: theme.textTheme.bodyLarge),
-          ),
+          Expanded(child: Text(label, style: theme.textTheme.bodyLarge)),
           IconButton.outlined(
             tooltip: 'Decrease',
             onPressed: () => onChanged(value - step),
@@ -319,9 +309,6 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.titleMedium,
-    );
+    return Text(text, style: Theme.of(context).textTheme.titleMedium);
   }
 }
