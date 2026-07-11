@@ -665,6 +665,10 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
                         onPaletteChanged: (colors) => ref
                             .read(settingsRepositoryProvider)
                             .setInkPalette(colors),
+                        toolWheelPosition: settings?.toolWheelPosition,
+                        onToolWheelPositionChanged: (position) => ref
+                            .read(settingsRepositoryProvider)
+                            .setToolWheelPosition(position),
                       ),
                     ),
                   ],

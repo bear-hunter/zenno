@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show Offset;
 
 import 'package:drift/drift.dart';
 
@@ -31,6 +32,7 @@ class SettingsModel {
     required this.sessionLength,
     required this.keepScreenOnInFocus,
     required this.librarySort,
+    this.toolWheelPosition,
   });
 
   /// App-wide theme-mode preference (system / light / dark).
@@ -70,6 +72,12 @@ class SettingsModel {
   /// Default sort order for the canvas library.
   final LibrarySort librarySort;
 
+  /// Global normalized position of the canvas tool-wheel cluster.
+  ///
+  /// `null` keeps the toolbar's built-in default position. Non-null axes are
+  /// always normalized to the inclusive range from zero to one.
+  final Offset? toolWheelPosition;
+
   /// Returns a copy with the given fields replaced.
   SettingsModel copyWith({
     ThemeModeSetting? themeMode,
@@ -84,6 +92,7 @@ class SettingsModel {
     Duration? sessionLength,
     bool? keepScreenOnInFocus,
     LibrarySort? librarySort,
+    Offset? toolWheelPosition,
   }) {
     return SettingsModel(
       themeMode: themeMode ?? this.themeMode,
@@ -98,6 +107,7 @@ class SettingsModel {
       sessionLength: sessionLength ?? this.sessionLength,
       keepScreenOnInFocus: keepScreenOnInFocus ?? this.keepScreenOnInFocus,
       librarySort: librarySort ?? this.librarySort,
+      toolWheelPosition: toolWheelPosition ?? this.toolWheelPosition,
     );
   }
 
@@ -116,7 +126,8 @@ class SettingsModel {
             other.flowBreakRatio == flowBreakRatio &&
             other.sessionLength == sessionLength &&
             other.keepScreenOnInFocus == keepScreenOnInFocus &&
-            other.librarySort == librarySort;
+            other.librarySort == librarySort &&
+            other.toolWheelPosition == toolWheelPosition;
   }
 
   @override
@@ -133,6 +144,7 @@ class SettingsModel {
     sessionLength,
     keepScreenOnInFocus,
     librarySort,
+    toolWheelPosition,
   );
 }
 
@@ -172,6 +184,9 @@ class SettingsRepository {
         inkPaletteJson: Value(jsonEncode(model.inkPalette)),
         stylusMappingJson: Value(model.stylusButtonMapping.encode()),
         penProfileJson: Value(model.penProfile.encode()),
+        toolWheelPositionJson: Value(
+          _encodeToolWheelPosition(model.toolWheelPosition),
+        ),
         defaultPomodoroWorkSecs: Value(model.pomodoroWork.inSeconds),
         defaultPomodoroBreakSecs: Value(model.pomodoroBreak.inSeconds),
         defaultFlowBreakRatio: Value(model.flowBreakRatio),
@@ -216,6 +231,15 @@ class SettingsRepository {
   Future<void> setPenProfile(PenProfile profile) {
     return _writeCompanion(
       AppSettingsCompanion(penProfileJson: Value(profile.encode())),
+    );
+  }
+
+  /// Updates the app-wide normalized canvas tool-wheel position.
+  Future<void> setToolWheelPosition(Offset position) {
+    return _writeCompanion(
+      AppSettingsCompanion(
+        toolWheelPositionJson: Value(_encodeToolWheelPosition(position)),
+      ),
     );
   }
 
@@ -277,6 +301,7 @@ class SettingsRepository {
         row.stylusMappingJson,
       ),
       penProfile: PenProfile.fromJsonString(row.penProfileJson),
+      toolWheelPosition: _decodeToolWheelPosition(row.toolWheelPositionJson),
       pomodoroWork: Duration(seconds: row.defaultPomodoroWorkSecs),
       pomodoroBreak: Duration(seconds: row.defaultPomodoroBreakSecs),
       flowBreakRatio: row.defaultFlowBreakRatio,
@@ -303,6 +328,46 @@ class SettingsRepository {
       0xFFFFFFFF,
       0xFF111820,
     ]);
+  }
+
+  static String _encodeToolWheelPosition(Offset? position) {
+    if (position == null) {
+      return '{}';
+    }
+    return jsonEncode({
+      'x': _normalizePositionAxis(position.dx),
+      'y': _normalizePositionAxis(position.dy),
+    });
+  }
+
+  static Offset? _decodeToolWheelPosition(String json) {
+    try {
+      final value = jsonDecode(json);
+      if (value is Map<String, dynamic>) {
+        final x = value['x'];
+        final y = value['y'];
+        if (x is num && y is num) {
+          final dx = x.toDouble();
+          final dy = y.toDouble();
+          if (dx.isFinite && dy.isFinite) {
+            return Offset(
+              _normalizePositionAxis(dx),
+              _normalizePositionAxis(dy),
+            );
+          }
+        }
+      }
+    } catch (_) {
+      // Fall through to the toolbar's default position.
+    }
+    return null;
+  }
+
+  static double _normalizePositionAxis(double value) {
+    if (!value.isFinite) {
+      return 0;
+    }
+    return value.clamp(0.0, 1.0).toDouble();
   }
 
   static List<int> _normalizePalette(Iterable<int> colors) {

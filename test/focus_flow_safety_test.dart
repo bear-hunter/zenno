@@ -356,6 +356,7 @@ const _settings = AppSetting(
   inkPaletteJson: '[]',
   stylusMappingJson: '{}',
   penProfileJson: '{}',
+  toolWheelPositionJson: '{}',
   defaultPomodoroWorkSecs: 1500,
   defaultPomodoroBreakSecs: 300,
   defaultFlowBreakRatio: 0.2,

@@ -522,8 +522,34 @@ void main() {
     schema.close();
   });
 
-  for (var version = 1; version < 12; version++) {
-    test('v$version migrates to the exact v12 schema', () async {
+  test('v12 migrates to v13 with the default tool-wheel position', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(12);
+    schema.rawDatabase.execute('''
+      INSERT INTO app_settings (id, db_schema_seeded)
+      VALUES ('singleton', 1)
+      ''');
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    final settings = await migrated.select(migrated.appSettings).getSingle();
+    final columns = await migrated
+        .customSelect('PRAGMA table_info(app_settings)')
+        .get();
+    final columnNames = columns.map((row) => row.read<String>('name'));
+
+    expect(columnNames, contains('tool_wheel_position_json'));
+    expect(settings.toolWheelPositionJson, '{}');
+
+    await migrated.close();
+    schema.close();
+  });
+
+  for (var version = 1; version < 13; version++) {
+    test('v$version migrates to the exact v13 schema', () async {
       driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       addTearDown(() {
         driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
@@ -534,7 +560,7 @@ void main() {
 
       await verifier.migrateAndValidate(
         migrated,
-        12,
+        13,
         options: const ValidationOptions(validateDropped: true),
       );
 

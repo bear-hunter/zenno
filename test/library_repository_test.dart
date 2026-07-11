@@ -38,6 +38,54 @@ void main() {
     expect(canvas.folderId, folderId);
   });
 
+  test('moves a canvas between folders and back to unfiled', () async {
+    final sourceId = await repo.createFolder('Source');
+    final targetId = await repo.createFolder('Target');
+    final canvasId = await repo.createCanvas(
+      title: 'Movable',
+      folderId: sourceId,
+    );
+
+    await repo.moveCanvasToFolder(canvasId, targetId);
+
+    var canvas = await (db.select(
+      db.canvases,
+    )..where((row) => row.id.equals(canvasId))).getSingle();
+    expect(canvas.folderId, targetId);
+
+    await repo.moveCanvasToFolder(canvasId, null);
+
+    canvas = await (db.select(
+      db.canvases,
+    )..where((row) => row.id.equals(canvasId))).getSingle();
+    expect(canvas.folderId, isNull);
+  });
+
+  test('moving a missing canvas reports failure', () async {
+    await expectLater(
+      repo.moveCanvasToFolder('missing-canvas', null),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('invalid target leaves folder membership unchanged', () async {
+    final sourceId = await repo.createFolder('Source');
+    final canvasId = await repo.createCanvas(
+      title: 'Still safe',
+      folderId: sourceId,
+    );
+
+    await expectLater(
+      repo.moveCanvasToFolder(canvasId, 'missing-folder'),
+      throwsA(isA<SqliteException>()),
+    );
+
+    final canvas = await (db.select(
+      db.canvases,
+    )..where((row) => row.id.equals(canvasId))).getSingle();
+    expect(canvas.folderId, sourceId);
+  });
+
   test('deleting a folder moves canvases to unfiled', () async {
     final folderId = await repo.createFolder('Chemistry');
     final canvasId = await repo.createCanvas(

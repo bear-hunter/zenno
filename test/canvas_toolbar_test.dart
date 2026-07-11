@@ -16,6 +16,8 @@ Future<void> _pumpToolbar(
   WidgetTester tester,
   CanvasController controller, {
   ValueChanged<List<int>>? onPaletteChanged,
+  Offset? toolWheelPosition,
+  ValueChanged<Offset>? onToolWheelPositionChanged,
   Widget? title,
   List<int> palette = const <int>[],
   bool includeCanvas = false,
@@ -33,6 +35,8 @@ Future<void> _pumpToolbar(
             title: title,
             palette: palette,
             onPaletteChanged: onPaletteChanged,
+            toolWheelPosition: toolWheelPosition,
+            onToolWheelPositionChanged: onToolWheelPositionChanged,
           ),
         ),
       ],
@@ -51,6 +55,11 @@ Finder _presetButton(int index) => find.byKey(
 Finder _swatch(int index) => find.byKey(
   ValueKey<String>('${CanvasToolbar.swatchButtonKeyPrefix}-$index'),
 );
+
+void _expectOffsetsClose(Offset actual, Offset expected, {double epsilon = 1}) {
+  expect(actual.dx, closeTo(expected.dx, epsilon));
+  expect(actual.dy, closeTo(expected.dy, epsilon));
+}
 
 Future<void> _openMore(WidgetTester tester) async {
   await tester.tap(find.byKey(CanvasToolbar.canvasSettingsDockKey));
@@ -311,15 +320,195 @@ void main() {
     expect(wheel.right, lessThanOrEqualTo(312));
     expect(wheel.bottom, lessThanOrEqualTo(580));
 
-    Rect palette = tester.getRect(_swatch(0));
-    for (var index = 1; index < 6; index++) {
-      palette = palette.expandToInclude(tester.getRect(_swatch(index)));
-    }
+    final Rect palette = tester.getRect(
+      find.byKey(CanvasToolbar.paletteDockKey),
+    );
     expect(palette.left, greaterThanOrEqualTo(12));
     expect(palette.right, lessThanOrEqualTo(312));
     expect(palette.bottom, lessThanOrEqualTo(580));
-    expect((palette.top - wheel.bottom).abs(), lessThanOrEqualTo(8));
+    expect(wheel.overlaps(palette), isFalse);
+    expect(palette.top - wheel.bottom, greaterThanOrEqualTo(8));
     expect(find.byKey(CanvasToolbar.minimalBackKey), findsOneWidget);
+  });
+
+  testWidgets(
+    'outer favorite drag moves and persists the complete wheel cluster',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+      final reportedPositions = <Offset>[];
+      const mediaQuery = MediaQueryData(
+        size: Size(1280, 800),
+        padding: EdgeInsets.fromLTRB(24, 20, 16, 12),
+      );
+      await _pumpToolbar(
+        tester,
+        controller,
+        mediaQuery: mediaQuery,
+        onToolWheelPositionChanged: reportedPositions.add,
+      );
+
+      final Finder clusterFinder = find.byKey(CanvasToolbar.toolClusterKey);
+      final Finder wheelFinder = find.byKey(CanvasToolbar.compactDrawingPadKey);
+      final Finder sideControlsFinder = find.byKey(
+        CanvasToolbar.canvasSettingsDockKey,
+      );
+      final Finder paletteFinder = find.byKey(CanvasToolbar.paletteDockKey);
+      final Rect clusterBefore = tester.getRect(clusterFinder);
+      final Rect wheelBefore = tester.getRect(wheelFinder);
+      final Rect sideControlsBefore = tester.getRect(sideControlsFinder);
+      final Rect paletteBefore = tester.getRect(paletteFinder);
+
+      final TestGesture drag = await tester.startGesture(
+        tester.getCenter(_presetButton(1)),
+      );
+      // Cross the pan slop first, then verify the accepted gesture translates
+      // the cluster. Flutter does not guarantee that the slop-crossing delta
+      // itself is delivered to onPanUpdate.
+      await drag.moveBy(const Offset(20, 20));
+      await tester.pump();
+      await drag.moveBy(const Offset(200, 120));
+      await tester.pump();
+      expect(reportedPositions, isEmpty);
+      await drag.up();
+      await tester.pump();
+
+      final Rect clusterAfter = tester.getRect(clusterFinder);
+      final Offset translation = clusterAfter.topLeft - clusterBefore.topLeft;
+      expect(translation.dx, greaterThan(150));
+      expect(translation.dy, greaterThan(80));
+      _expectOffsetsClose(
+        tester.getRect(wheelFinder).topLeft - wheelBefore.topLeft,
+        translation,
+      );
+      _expectOffsetsClose(
+        tester.getRect(sideControlsFinder).topLeft - sideControlsBefore.topLeft,
+        translation,
+      );
+      _expectOffsetsClose(
+        tester.getRect(paletteFinder).topLeft - paletteBefore.topLeft,
+        translation,
+      );
+      expect(controller.activeToolWheelIndex, 0);
+      expect(find.text('Replace favorite 2'), findsNothing);
+      expect(reportedPositions, hasLength(1));
+      expect(reportedPositions.single.dx, inInclusiveRange(0, 1));
+      expect(reportedPositions.single.dy, inInclusiveRange(0, 1));
+
+      final Offset persistedPosition = reportedPositions.single;
+      reportedPositions.clear();
+      await _pumpToolbar(
+        tester,
+        controller,
+        mediaQuery: mediaQuery,
+        toolWheelPosition: persistedPosition,
+        onToolWheelPositionChanged: reportedPositions.add,
+      );
+      final Rect restoredCluster = tester.getRect(clusterFinder);
+      _expectOffsetsClose(restoredCluster.topLeft, clusterAfter.topLeft);
+      expect(reportedPositions, isEmpty);
+
+      await tester.tap(_presetButton(1));
+      await tester.pump();
+      expect(controller.activeToolWheelIndex, 1);
+      expect(find.text('Replace favorite 2'), findsNothing);
+
+      await tester.longPress(_presetButton(1));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace favorite 2'), findsOneWidget);
+      expect(reportedPositions, isEmpty);
+    },
+  );
+
+  testWidgets('huge wheel drags clamp the cluster inside safe insets', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    const padding = EdgeInsets.fromLTRB(12, 24, 8, 20);
+    await _pumpToolbar(
+      tester,
+      controller,
+      mediaQuery: const MediaQueryData(size: Size(320, 600), padding: padding),
+    );
+
+    void expectClusterInsideSafeArea() {
+      final Rect cluster = tester.getRect(
+        find.byKey(CanvasToolbar.toolClusterKey),
+      );
+      expect(cluster.left, greaterThanOrEqualTo(padding.left));
+      expect(cluster.top, greaterThanOrEqualTo(padding.top));
+      expect(cluster.right, lessThanOrEqualTo(320 - padding.right));
+      expect(cluster.bottom, lessThanOrEqualTo(600 - padding.bottom));
+    }
+
+    final Rect clusterBefore = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    final TestGesture dragToTopLeft = await tester.startGesture(
+      tester.getCenter(_presetButton(2)),
+    );
+    await dragToTopLeft.moveBy(const Offset(-20, -20));
+    await tester.pump();
+    await dragToTopLeft.moveBy(const Offset(-1980, -1980));
+    await dragToTopLeft.up();
+    await tester.pump();
+    expectClusterInsideSafeArea();
+    final Rect topLeftCluster = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    expect(topLeftCluster.top, lessThan(clusterBefore.top));
+
+    final TestGesture dragToBottomRight = await tester.startGesture(
+      tester.getCenter(_presetButton(2)),
+    );
+    await dragToBottomRight.moveBy(const Offset(20, 20));
+    await tester.pump();
+    await dragToBottomRight.moveBy(const Offset(1980, 1980));
+    await dragToBottomRight.up();
+    await tester.pump();
+    expectClusterInsideSafeArea();
+    final Rect bottomRightCluster = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    expect(bottomRightCluster.left, greaterThan(topLeftCluster.left));
+    expect(bottomRightCluster.top, greaterThan(topLeftCluster.top));
+    expect(controller.activeToolWheelIndex, 0);
+    expect(find.text('Replace favorite 3'), findsNothing);
+  });
+
+  testWidgets('property drag changes its value without moving the cluster', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    final reportedPositions = <Offset>[];
+    await _pumpToolbar(
+      tester,
+      controller,
+      onToolWheelPositionChanged: reportedPositions.add,
+    );
+    final Finder clusterFinder = find.byKey(CanvasToolbar.toolClusterKey);
+    final Rect clusterBefore = tester.getRect(clusterFinder);
+
+    await tester.drag(find.byTooltip('Size: 4 pt'), const Offset(48, 0));
+    await tester.pump();
+
+    expect(controller.penWidth, greaterThan(4));
+    _expectOffsetsClose(
+      tester.getRect(clusterFinder).topLeft,
+      clusterBefore.topLeft,
+      epsilon: 0.1,
+    );
+    expect(reportedPositions, isEmpty);
   });
 
   testWidgets('save failures remain actionable beside wheel and palette', (

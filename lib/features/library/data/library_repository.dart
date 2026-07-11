@@ -140,15 +140,19 @@ class LibraryRepository {
   }
 
   /// Moves a canvas into [folderId], or to unfiled when [folderId] is null.
-  Future<void> moveCanvasToFolder(String canvasId, String? folderId) {
-    return (_db.update(
-      _db.canvases,
-    )..where((c) => c.id.equals(canvasId))).write(
-      CanvasesCompanion(
-        folderId: Value(folderId),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+  Future<void> moveCanvasToFolder(String canvasId, String? folderId) async {
+    final updatedRows =
+        await (_db.update(
+          _db.canvases,
+        )..where((c) => c.id.equals(canvasId))).write(
+          CanvasesCompanion(
+            folderId: Value(folderId),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+    if (updatedRows != 1) {
+      throw StateError('Canvas $canvasId no longer exists.');
+    }
   }
 
   /// Deletes a folder without deleting its canvases.
