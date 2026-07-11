@@ -438,8 +438,25 @@ class TimerEngine {
   /// with [endStretch]).
   bool advanceIfPhaseComplete() {
     if (_status != TimerStatus.running) return false;
-    if (!isCurrentPhaseComplete) return false;
-    advancePhase();
+    final target = _phaseTarget;
+    if (target == null) return false;
+    final phaseElapsed = elapsed;
+    if (phaseElapsed < target) return false;
+
+    var overrun = phaseElapsed - target;
+    _advanceCompletedFixedPhase(target);
+    while (true) {
+      final nextTarget = _phaseTarget;
+      if (nextTarget == null || overrun < nextTarget) break;
+      overrun -= nextTarget;
+      _advanceCompletedFixedPhase(nextTarget);
+    }
+
+    // Preserve time beyond the final crossed boundary in the current phase.
+    // This lets a resumed ticker catch up across work and break intervals
+    // instead of crediting the whole suspension to the original phase.
+    _carried = overrun;
+    _phaseStartedAt = _clock();
     return true;
   }
 
@@ -495,6 +512,25 @@ class TimerEngine {
     _carried = Duration.zero;
     _phaseStartedAt = _clock();
     _status = TimerStatus.running;
+  }
+
+  void _advanceCompletedFixedPhase(Duration completedElapsed) {
+    if (_phase == TimerPhase.work) {
+      _bankedFocus += completedElapsed;
+      _cyclesCompleted += 1;
+      _phase = TimerPhase.breakTime;
+      _phaseTarget = mode == TimerMode.pomodoro
+          ? _pomodoroBreak
+          : flowmodoroBreak(
+              completedElapsed,
+              _flowBreakRatio,
+              min: _flowBreakMin,
+              max: _flowBreakMax,
+            );
+    } else {
+      _phase = TimerPhase.work;
+      _phaseTarget = mode == TimerMode.pomodoro ? _pomodoroWork : null;
+    }
   }
 
   /// On [finish] / [abandon], folds an in-progress work phase's elapsed time

@@ -71,7 +71,11 @@ void main() {
       _ink('b', const Rect.fromLTWH(3000, 0, 100, 100), zIndex: 1),
     ];
 
-    _paint(cache: cache, elements: elements, viewport: ViewportState.initial);
+    _paint(
+      cache: cache,
+      elements: elements,
+      viewport: const ViewportState(translation: Offset(-20, -20)),
+    );
     expect(cache.tileCount, 1);
 
     _paint(
@@ -101,5 +105,101 @@ void main() {
 
     expect(cache.tileCount, greaterThan(0));
     cache.dispose();
+  });
+
+  test('paints rotated text notes without throwing', () {
+    final cache = ElementsTileCache();
+    const elements = <CanvasElement>[
+      TextElement(
+        id: 'rotated-note',
+        zIndex: 0,
+        rotation: 0.7853981633974483,
+        worldBounds: Rect.fromLTWH(20, 24, 180, 90),
+        text: 'A rotated\ncanvas note',
+        color: 0xFFFFFFFF,
+        fontSize: 18,
+      ),
+    ];
+
+    _paint(cache: cache, elements: elements, viewport: ViewportState.initial);
+
+    expect(cache.tileCount, greaterThan(0));
+    cache.dispose();
+  });
+
+  test('bypasses tile cache at very low zoom without throwing', () {
+    final cache = ElementsTileCache();
+    final elements = <CanvasElement>[
+      _ink('overview', const Rect.fromLTWH(0, 0, 1000, 1000)),
+    ];
+
+    _paint(
+      cache: cache,
+      elements: elements,
+      viewport: const ViewportState(scale: 0.01),
+    );
+
+    expect(cache.tileCount, 0);
+    cache.dispose();
+  });
+
+  test('bypasses tile pictures at high zoom for quality-aware ink', () {
+    final cache = ElementsTileCache();
+    final elements = <CanvasElement>[
+      _ink('deep', const Rect.fromLTWH(0, 0, 100, 100)),
+    ];
+
+    _paint(
+      cache: cache,
+      elements: elements,
+      viewport: const ViewportState(scale: 16),
+    );
+
+    expect(cache.tileCount, 0);
+    cache.dispose();
+  });
+
+  test('revision tokens keep equivalent committed inputs from repainting', () {
+    final elements = <CanvasElement>[
+      _ink('a', const Rect.fromLTWH(0, 0, 100, 100)),
+    ];
+    final oldPainter = ElementsPainter(
+      elements: elements,
+      spatialIndex: _index(elements),
+      viewport: ViewportState.initial,
+      elementsRevision: 1,
+      selectionRevision: 0,
+      selectionPreviewRevision: 0,
+    );
+    final newPainter = ElementsPainter(
+      elements: List<CanvasElement>.of(elements),
+      spatialIndex: oldPainter.spatialIndex,
+      viewport: ViewportState.initial,
+      elementsRevision: 1,
+      selectionRevision: 0,
+      selectionPreviewRevision: 0,
+    );
+
+    expect(newPainter.shouldRepaint(oldPainter), isFalse);
+  });
+
+  test('revision tokens repaint committed inputs when content changes', () {
+    final elements = <CanvasElement>[
+      _ink('a', const Rect.fromLTWH(0, 0, 100, 100)),
+    ];
+    final oldPainter = ElementsPainter(
+      elements: elements,
+      spatialIndex: _index(elements),
+      viewport: ViewportState.initial,
+      elementsRevision: 1,
+    );
+    final newPainter = ElementsPainter(
+      elements: elements,
+      spatialIndex: oldPainter.spatialIndex,
+      viewport: ViewportState.initial,
+      elementsRevision: 2,
+    );
+
+    expect(newPainter.shouldRepaint(oldPainter), isTrue);
   });
 }

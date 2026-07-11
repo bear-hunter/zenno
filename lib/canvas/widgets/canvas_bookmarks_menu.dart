@@ -8,8 +8,8 @@ import 'package:zenno/canvas/model/canvas_bookmark.dart';
 /// Wraps a [PopupMenuButton] bound to a [CanvasController]: the menu offers
 /// "Save current view" (which prompts for a name) and then lists every saved
 /// [Bookmark] — tapping one flies the camera to it, the trailing button
-/// removes it. Bookmarks are held in memory on the controller in Phase 1; this
-/// widget is purely their UI surface.
+/// removes it. The controller writes those changes through to persistence;
+/// this widget is purely their UI surface.
 class CanvasBookmarksMenu extends StatelessWidget {
   /// Creates a bookmarks menu bound to [controller].
   const CanvasBookmarksMenu({required this.controller, super.key});

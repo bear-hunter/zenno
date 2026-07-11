@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
@@ -7,6 +9,7 @@ import 'package:zenno/features/focus/application/focus_providers.dart';
 import 'package:zenno/features/focus/application/focus_setup_controller.dart';
 import 'package:zenno/features/focus/domain/timer_engine.dart';
 import 'package:zenno/features/focus/presentation/pages/focus_active_page.dart';
+import 'package:zenno/features/focus/presentation/pages/focus_review_page.dart';
 import 'package:zenno/features/focus/presentation/widgets/energy_rating_selector.dart';
 import 'package:zenno/features/focus/presentation/widgets/ritual_checklist.dart';
 import 'package:zenno/features/focus/presentation/widgets/timer_type_picker.dart';
@@ -46,11 +49,18 @@ class FocusSetupPage extends ConsumerWidget {
 }
 
 /// The setup form, shown once the settings singleton has loaded.
-class _SetupBody extends ConsumerWidget {
+class _SetupBody extends ConsumerStatefulWidget {
   const _SetupBody();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SetupBody> createState() => _SetupBodyState();
+}
+
+class _SetupBodyState extends ConsumerState<_SetupBody> {
+  bool _starting = false;
+
+  @override
+  Widget build(BuildContext context) {
     final setup = ref.watch(focusSetupControllerProvider);
     final controller = ref.read(focusSetupControllerProvider.notifier);
     final ritualItems = ref.watch(ritualItemsProvider);
@@ -136,9 +146,14 @@ class _SetupBody extends ConsumerWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
-                onPressed: () => _start(context, ref),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Start session'),
+                onPressed: ritualItems.hasValue && !_starting ? _start : null,
+                icon: _starting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_arrow),
+                label: Text(_starting ? 'Starting…' : 'Start session'),
               ),
             ],
           ),
@@ -148,7 +163,10 @@ class _SetupBody extends ConsumerWidget {
   }
 
   /// Builds the session config + ritual snapshot and starts the session.
-  Future<void> _start(BuildContext context, WidgetRef ref) async {
+  Future<void> _start() async {
+    if (_starting) return;
+    setState(() => _starting = true);
+
     final setup = ref.read(focusSetupControllerProvider);
     final config = setup.toConfig();
 
@@ -164,14 +182,41 @@ class _SetupBody extends ConsumerWidget {
     ];
 
     final navigator = Navigator.of(context);
-    await ref
-        .read(activeSessionControllerProvider.notifier)
-        .startFrom(config, checkedRitualItems: ritualSnapshot);
+    try {
+      final started = await ref
+          .read(activeSessionControllerProvider.notifier)
+          .startFrom(config, checkedRitualItems: ritualSnapshot);
+      if (!started && !ref.read(activeSessionControllerProvider).hasSession) {
+        if (mounted) setState(() => _starting = false);
+        return;
+      }
+    } catch (error) {
+      debugPrint('Start focus session failed: $error');
+      if (mounted) {
+        setState(() => _starting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not start the session. Please try again.'),
+          ),
+        );
+      }
+      return;
+    }
 
-    if (!navigator.mounted) return;
+    if (!navigator.mounted) {
+      if (mounted) setState(() => _starting = false);
+      return;
+    }
     // Replace Setup with Active so a back press from Active returns to Home.
-    await navigator.pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const FocusActivePage()),
+    final active = ref.read(activeSessionControllerProvider);
+    unawaited(
+      navigator.pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => active.reviewPending
+              ? const FocusReviewPage()
+              : const FocusActivePage(),
+        ),
+      ),
     );
   }
 }

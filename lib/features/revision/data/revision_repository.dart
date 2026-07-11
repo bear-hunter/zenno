@@ -287,6 +287,7 @@ class RevisionRepository {
   }) async {
     await (_db.update(_db.boardColumns)..where((c) => c.id.equals(columnId)))
         .write(BoardColumnsCompanion(position: Value(newPosition)));
+    await _renormaliseBoardColumnsIfNeeded(await _boardIdForColumn(columnId));
   }
 
   /// Renames column [columnId] to [name].
@@ -372,6 +373,30 @@ class RevisionRepository {
         await (_db.update(_db.boardCards)
               ..where((c) => c.id.equals(cards[i].id)))
             .write(BoardCardsCompanion(position: Value(i.toDouble())));
+      }
+    });
+  }
+
+  Future<void> _renormaliseBoardColumnsIfNeeded(String boardId) async {
+    final columns =
+        await (_db.select(_db.boardColumns)
+              ..where((column) => column.boardId.equals(boardId))
+              ..orderBy([(column) => OrderingTerm.asc(column.position)]))
+            .get();
+    var dense = false;
+    for (var index = 1; index < columns.length; index += 1) {
+      if (columns[index].position - columns[index - 1].position <
+          _minPositionGap) {
+        dense = true;
+        break;
+      }
+    }
+    if (!dense) return;
+    await _db.transaction(() async {
+      for (var index = 0; index < columns.length; index += 1) {
+        await (_db.update(_db.boardColumns)
+              ..where((column) => column.id.equals(columns[index].id)))
+            .write(BoardColumnsCompanion(position: Value(index.toDouble())));
       }
     });
   }

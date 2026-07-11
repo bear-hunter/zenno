@@ -16,8 +16,8 @@ final focusClockProvider = FocusClockProvider._();
 /// Injectable clock for deterministic active-session controller tests.
 
 final class FocusClockProvider
-    extends $FunctionalProvider<DateTime, DateTime, DateTime>
-    with $Provider<DateTime> {
+    extends $FunctionalProvider<FocusClock, FocusClock, FocusClock>
+    with $Provider<FocusClock> {
   /// Injectable clock for deterministic active-session controller tests.
   FocusClockProvider._()
     : super(
@@ -35,24 +35,24 @@ final class FocusClockProvider
 
   @$internal
   @override
-  $ProviderElement<DateTime> $createElement($ProviderPointer pointer) =>
+  $ProviderElement<FocusClock> $createElement($ProviderPointer pointer) =>
       $ProviderElement(pointer);
 
   @override
-  DateTime create(Ref ref) {
+  FocusClock create(Ref ref) {
     return focusClock(ref);
   }
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(DateTime value) {
+  Override overrideWithValue(FocusClock value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<DateTime>(value),
+      providerOverride: $SyncValueProvider<FocusClock>(value),
     );
   }
 }
 
-String _$focusClockHash() => r'd1e4eaf4b67f06079e809be30be3c8f3a6e4e350';
+String _$focusClockHash() => r'71ce456fcded40f199fe3527b23d520df79b08c0';
 
 /// Owns the [TimerEngine] for the one in-progress focus session and persists
 /// that session's lifecycle.
@@ -133,7 +133,7 @@ final class ActiveSessionControllerProvider
 }
 
 String _$activeSessionControllerHash() =>
-    r'3dd2539ea6b53b19f46d4501ce8619ee12912a92';
+    r'f249278f1909619e27d2604281f030bc24fc8ee7';
 
 /// Owns the [TimerEngine] for the one in-progress focus session and persists
 /// that session's lifecycle.

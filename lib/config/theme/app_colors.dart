@@ -1,67 +1,67 @@
 import 'package:flutter/material.dart';
 
-/// Static color tokens for Zenno's dark-first, gold-accented design language.
+/// Zenno's quiet paper-and-ink palette.
 ///
-/// These are the raw palette values. The actual [ThemeData] / [ColorScheme] is
-/// assembled in `app_theme.dart`, which seeds from [goldAccent] and then forces
-/// the near-black surface ramp defined here.
+/// Product chrome uses one restrained terracotta accent. The additional
+/// colours below are semantic/data colours retained for study status and
+/// canvas content; they are not decorative background accents.
 abstract final class AppColors {
   const AppColors._();
 
   // --- Brand accent -------------------------------------------------------
 
-  /// Warm gold — the single brand accent. Used for [ColorScheme.primary],
-  /// selected nav-rail indicators, FABs, and other emphasis affordances.
-  static const Color goldAccent = Color(0xFFE8B84B);
+  /// Warm terracotta used for primary actions in the dark theme.
+  static const Color goldAccent = Color(0xFFD8946C);
 
-  /// A slightly deeper gold for pressed/hover states and subtle gradients.
-  static const Color goldAccentDim = Color(0xFFC99A33);
+  /// Deeper terracotta used for pressed states and the light-theme primary.
+  static const Color goldAccentDim = Color(0xFF8F4D32);
 
-  // --- Dark surface ramp --------------------------------------------------
-  // Near-black, low-chroma steps. Each step is a touch lighter than the last
-  // so elevated surfaces read without needing shadows on a dark background.
+  /// Soft terracotta container colour.
+  static const Color goldAccentSoft = Color(0xFFF0D8C8);
 
-  /// The base canvas: the darkest surface, used for [Scaffold] backgrounds.
-  static const Color surface = Color(0xFF121212);
+  /// Compatibility alias for older feature code that used an amber accent.
+  static const Color amberAccent = goldAccent;
 
-  /// One step up — cards, sheets, the nav rail at rest.
-  static const Color surfaceContainerLow = Color(0xFF181818);
+  // --- Warm light palette -------------------------------------------------
 
-  /// Default elevated container — dialogs, menus, list tiles.
-  static const Color surfaceContainer = Color(0xFF1E1E1E);
+  static const Color paper = Color(0xFFF7F3EA);
+  static const Color paperRaised = Color(0xFFFFFCF5);
+  static const Color paperSunk = Color(0xFFEFE8DB);
+  static const Color paperHigh = Color(0xFFE8E0D2);
+  static const Color paperHighest = Color(0xFFDED4C3);
+  static const Color paperOutline = Color(0xFFD6CCBB);
+  static const Color ink = Color(0xFF292620);
+  static const Color inkMuted = Color(0xFF6E675C);
 
-  /// Higher elevation — hovered cards, selected rows, popovers.
-  static const Color surfaceContainerHigh = Color(0xFF262626);
+  // --- Deep neutral dark palette -----------------------------------------
 
-  /// Highest elevation — drag feedback, top-most overlays.
-  static const Color surfaceContainerHighest = Color(0xFF2E2E2E);
+  static const Color surface = Color(0xFF111210);
+  static const Color surfaceContainerLow = Color(0xFF181A17);
+  static const Color surfaceContainer = Color(0xFF20231F);
+  static const Color surfaceContainerHigh = Color(0xFF292C27);
+  static const Color surfaceContainerHighest = Color(0xFF343832);
+  static const Color outline = Color(0xFF42463E);
 
-  /// Hairline dividers and outlines on dark surfaces.
-  static const Color outline = Color(0xFF3A3A3A);
+  /// Legacy Aurora names. [AuroraPanel] maps these to theme-aware surfaces.
+  static const Color auroraGlass = Color(0xFF181A17);
+  static const Color auroraGlassStrong = Color(0xFF20231F);
+  static const Color auroraHairline = Color(0xFF42463E);
 
   // --- Text / foreground --------------------------------------------------
 
-  /// Primary text and icons on dark surfaces — soft white, not pure white,
-  /// to reduce glare on an OLED tablet panel.
-  static const Color onSurface = Color(0xFFEDEDED);
+  static const Color onSurface = Color(0xFFF1EEE6);
+  static const Color onSurfaceMuted = Color(0xFFB1ADA3);
+  static const Color onSurfaceFaint = Color(0xFF817E76);
+  static const Color onAccent = Color(0xFF2C160D);
 
-  /// Secondary / muted text — captions, hints, relative timestamps.
-  static const Color onSurfaceMuted = Color(0xFF9A9A9A);
+  // --- Semantic and canvas colours ---------------------------------------
 
-  /// Foreground for elements painted on top of [goldAccent] (e.g. FAB icon).
-  static const Color onAccent = Color(0xFF1A1304);
+  static const Color tealAccent = Color(0xFF6F9385);
+  static const Color violetAccent = Color(0xFF8B7FA4);
+  static const Color roseAccent = Color(0xFFC87A8D);
+  static const Color blueAccent = Color(0xFF6E8EAD);
 
-  // --- Semantic mastery flags --------------------------------------------
-  // Fixed, meaning-bearing colors for the Schedule Revision board. These are
-  // intentionally NOT derived from the seed — green/yellow/red must stay
-  // recognisable regardless of theme.
-
-  /// Mastery: confident / well-revised.
-  static const Color flagGreen = Color(0xFF4CAF6D);
-
-  /// Mastery: shaky / needs another pass.
-  static const Color flagYellow = Color(0xFFE0B23C);
-
-  /// Mastery: weak / priority for revision.
-  static const Color flagRed = Color(0xFFE05B4B);
+  static const Color flagGreen = Color(0xFF718D68);
+  static const Color flagYellow = Color(0xFFC49B49);
+  static const Color flagRed = Color(0xFFB85F50);
 }

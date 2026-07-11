@@ -1,8 +1,11 @@
 import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
 
-/// Opens the on-device SQLite database backing [ZennoDatabase].
+import 'connection_native.dart'
+    if (dart.library.js_interop) 'connection_web.dart'
+    as platform_connection;
+
+/// Opens the SQLite database backing [ZennoDatabase].
 ///
-/// `driftDatabase` resolves a file named `zenno` in the platform's default
-/// app-support directory and runs all queries on a background isolate.
-QueryExecutor openZennoConnection() => driftDatabase(name: 'zenno');
+/// Native platforms use the app-support directory. Web uses sqlite3 wasm with
+/// the browser's IndexedDB-backed virtual filesystem.
+QueryExecutor openZennoConnection() => platform_connection.openConnection();

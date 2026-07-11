@@ -80,13 +80,17 @@ class CardCanvasAttachmentRepository {
     String? label,
   }) async {
     final canvasTitle = title.trim().isEmpty ? 'Untitled' : title.trim();
-    final canvasId = await _libraryRepository.createCanvas(title: canvasTitle);
-    await _insertAttachment(
-      cardId: cardId,
-      canvasId: canvasId,
-      label: _cleanLabel(label) ?? canvasTitle,
-    );
-    return canvasId;
+    return _db.transaction(() async {
+      final canvasId = await _libraryRepository.createCanvas(
+        title: canvasTitle,
+      );
+      await _insertAttachment(
+        cardId: cardId,
+        canvasId: canvasId,
+        label: _cleanLabel(label) ?? canvasTitle,
+      );
+      return canvasId;
+    });
   }
 
   /// Renames only the attachment label, leaving the canvas title untouched.

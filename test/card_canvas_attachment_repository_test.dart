@@ -41,6 +41,19 @@ void main() {
   );
 
   test(
+    'create-and-attach rolls back the canvas when attachment fails',
+    () async {
+      await expectLater(
+        repo.createAndAttach(cardId: 'missing-card', title: 'Orphan risk'),
+        throwsA(anything),
+      );
+
+      expect(await db.select(db.canvases).get(), isEmpty);
+      expect(await db.select(db.cardCanvasAttachments).get(), isEmpty);
+    },
+  );
+
+  test(
     'attach-existing, rename label, and detach without deleting canvas',
     () async {
       final canvasId = await library.createCanvas(title: 'Cardiology');

@@ -11,13 +11,34 @@ enum StrokeToolKind {
 
   /// Translucent wide ink used to emphasise underlying content.
   highlighter,
+
+  /// Softer graphite-like ink with slightly lower opacity.
+  pencil,
+
+  /// Opaque marker ink with a broader, smoother feel.
+  marker,
+
+  /// Soft spray-like ink rendered with low opacity.
+  airbrush,
+
+  /// A closed freeform boundary rendered as a solid colour field.
+  fill,
 }
 
 /// A single sampled point along a [Stroke] centerline, in world coordinates.
 @immutable
 class StrokePoint {
   /// Creates a stroke point at world position ([x], [y]) with [pressure].
-  const StrokePoint(this.x, this.y, this.pressure);
+  const StrokePoint(
+    this.x,
+    this.y,
+    this.pressure, {
+    this.tiltX = 0,
+    this.tiltY = 0,
+    this.azimuth = 0,
+    this.timestampMicros = 0,
+    this.velocity = 0,
+  });
 
   /// World-space x coordinate.
   final double x;
@@ -28,6 +49,21 @@ class StrokePoint {
   /// Normalised stylus pressure in the range `0..1`.
   final double pressure;
 
+  /// Stylus tilt on the x-axis, in radians when supplied by the platform.
+  final double tiltX;
+
+  /// Stylus tilt on the y-axis, in radians when supplied by the platform.
+  final double tiltY;
+
+  /// Stylus azimuth/orientation, in radians when supplied by the platform.
+  final double azimuth;
+
+  /// Pointer event timestamp in microseconds.
+  final int timestampMicros;
+
+  /// Cached world-units-per-second velocity between this and the prior sample.
+  final double velocity;
+
   /// This point's world position as an [Offset].
   Offset get offset => Offset(x, y);
 
@@ -37,14 +73,31 @@ class StrokePoint {
     return other is StrokePoint &&
         other.x == x &&
         other.y == y &&
-        other.pressure == pressure;
+        other.pressure == pressure &&
+        other.tiltX == tiltX &&
+        other.tiltY == tiltY &&
+        other.azimuth == azimuth &&
+        other.timestampMicros == timestampMicros &&
+        other.velocity == velocity;
   }
 
   @override
-  int get hashCode => Object.hash(x, y, pressure);
+  int get hashCode => Object.hash(
+    x,
+    y,
+    pressure,
+    tiltX,
+    tiltY,
+    azimuth,
+    timestampMicros,
+    velocity,
+  );
 
   @override
-  String toString() => 'StrokePoint($x, $y, pressure: $pressure)';
+  String toString() =>
+      'StrokePoint($x, $y, pressure: $pressure, tiltX: $tiltX, '
+      'tiltY: $tiltY, azimuth: $azimuth, timestampMicros: $timestampMicros, '
+      'velocity: $velocity)';
 }
 
 /// An immutable freehand ink stroke stored as a world-space centerline.

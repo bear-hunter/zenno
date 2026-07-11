@@ -10,12 +10,10 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 /// that [viewport], so the user can flag a diagram or a section and return to
 /// it without re-panning.
 ///
-/// In Phase 1 bookmarks live in memory on the `CanvasController`. The type is
-/// deliberately a plain immutable value — manual [==] / [hashCode], a
-/// [copyWith], no codegen — so step 1.7 can persist it directly: it maps onto
-/// the planned `bookmarks` table as `name` ← [name] and the four viewport
-/// columns ← a serialised [viewport] (the same `vp_tx/vp_ty/vp_scale/vp_rotation`
-/// shape the `canvases` table already uses for its last-viewport fields).
+/// Bookmarks are persisted by `CanvasRepository` and hydrated into the owning
+/// `CanvasController`. The type stays a plain immutable value — manual [==] /
+/// [hashCode], a [copyWith], no codegen — and maps directly to a name plus the
+/// four viewport fields.
 @immutable
 class Bookmark {
   /// Creates a bookmark named [name] capturing [viewport].

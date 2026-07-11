@@ -26,8 +26,9 @@ class RitualChecklist extends StatelessWidget {
   /// Ids of the items currently ticked.
   final Set<String> checkedItemIds;
 
-  /// Called with an item's id when its row is tapped.
-  final ValueChanged<String> onToggle;
+  /// Called with an item's id when its row is tapped. When null, rows are
+  /// presented as management-only items without checkbox affordances.
+  final ValueChanged<String>? onToggle;
 
   /// Called with `(itemId, newLabel)` when an item is renamed. The widget
   /// shows the rename dialog itself; pass a handler to persist the result.
@@ -62,7 +63,7 @@ class RitualChecklist extends StatelessWidget {
             item: item,
             checked: checkedItemIds.contains(item.id),
             editable: editable,
-            onToggle: () => onToggle(item.id),
+            onToggle: onToggle == null ? null : () => onToggle!(item.id),
             onEdit: onEdit == null ? null : () => _promptRename(context, item),
             onRetire: onRetire == null ? null : () => onRetire!(item.id),
           ),
@@ -106,7 +107,7 @@ class RitualChecklist extends StatelessWidget {
   }
 }
 
-/// One tappable ritual row.
+/// One ritual row, optionally tappable when it represents a checklist item.
 class _RitualRow extends StatelessWidget {
   const _RitualRow({
     required this.item,
@@ -120,7 +121,7 @@ class _RitualRow extends StatelessWidget {
   final RitualChecklistItem item;
   final bool checked;
   final bool editable;
-  final VoidCallback onToggle;
+  final VoidCallback? onToggle;
   final VoidCallback? onEdit;
   final VoidCallback? onRetire;
 
@@ -134,49 +135,56 @@ class _RitualRow extends StatelessWidget {
       child: InkWell(
         onTap: onToggle,
         borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-          child: Row(
-            children: [
-              Icon(
-                checked ? Icons.check_box : Icons.check_box_outline_blank,
-                color: checked ? colors.primary : colors.onSurfaceVariant,
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  item.label,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: checked ? colors.onSurface : colors.onSurfaceVariant,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: Row(
+              children: [
+                if (onToggle != null) ...[
+                  Icon(
+                    checked ? Icons.check_box : Icons.check_box_outline_blank,
+                    color: checked ? colors.primary : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                ],
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: onToggle == null || checked
+                          ? colors.onSurface
+                          : colors.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-              if (editable && (onEdit != null || onRetire != null))
-                PopupMenuButton<_RitualAction>(
-                  tooltip: 'Edit ritual item',
-                  icon: Icon(Icons.more_vert, color: colors.onSurfaceVariant),
-                  onSelected: (action) {
-                    switch (action) {
-                      case _RitualAction.rename:
-                        onEdit?.call();
-                      case _RitualAction.retire:
-                        onRetire?.call();
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    if (onEdit != null)
-                      const PopupMenuItem(
-                        value: _RitualAction.rename,
-                        child: Text('Rename'),
-                      ),
-                    if (onRetire != null)
-                      const PopupMenuItem(
-                        value: _RitualAction.retire,
-                        child: Text('Retire'),
-                      ),
-                  ],
-                ),
-            ],
+                if (editable && (onEdit != null || onRetire != null))
+                  PopupMenuButton<_RitualAction>(
+                    tooltip: 'Edit ritual item',
+                    icon: Icon(Icons.more_vert, color: colors.onSurfaceVariant),
+                    onSelected: (action) {
+                      switch (action) {
+                        case _RitualAction.rename:
+                          onEdit?.call();
+                        case _RitualAction.retire:
+                          onRetire?.call();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      if (onEdit != null)
+                        const PopupMenuItem(
+                          value: _RitualAction.rename,
+                          child: Text('Rename'),
+                        ),
+                      if (onRetire != null)
+                        const PopupMenuItem(
+                          value: _RitualAction.retire,
+                          child: Text('Retire'),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),

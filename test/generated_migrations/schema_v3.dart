@@ -34,11 +34,11 @@ class CanvasFolders extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -88,27 +88,27 @@ class Canvases extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
     'updated_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> lastOpenedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> lastOpenedAt = GeneratedColumn<String>(
     'last_opened_at',
     aliasedName,
     true,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
@@ -319,19 +319,19 @@ class CanvasElements extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
     'updated_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -973,19 +973,19 @@ class FocusSessions extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> startedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> startedAt = GeneratedColumn<String>(
     'started_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> endedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> endedAt = GeneratedColumn<String>(
     'ended_at',
     aliasedName,
     true,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
@@ -1095,14 +1095,15 @@ class FocusSessions extends Table with TableInfo {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<int> runtimePhaseStartedAt = GeneratedColumn<int>(
-    'runtime_phase_started_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
+  late final GeneratedColumn<String> runtimePhaseStartedAt =
+      GeneratedColumn<String>(
+        'runtime_phase_started_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        $customConstraints: 'NULL',
+      );
   late final GeneratedColumn<int> runtimeCarriedPhaseSecs =
       GeneratedColumn<int>(
         'runtime_carried_phase_secs',
@@ -1296,11 +1297,11 @@ class Distractions extends Table with TableInfo {
     $customConstraints:
         'NOT NULL REFERENCES focus_sessions(id)ON DELETE CASCADE',
   );
-  late final GeneratedColumn<int> capturedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> capturedAt = GeneratedColumn<String>(
     'captured_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -1389,11 +1390,11 @@ class Boards extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -1561,19 +1562,19 @@ class BoardCards extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
     'updated_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -1632,11 +1633,11 @@ class RevisionCardDetails extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> lastRevisedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> lastRevisedAt = GeneratedColumn<String>(
     'last_revised_at',
     aliasedName,
     true,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
@@ -1692,11 +1693,11 @@ class GoalCardDetails extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL REFERENCES board_cards(id)ON DELETE CASCADE',
   );
-  late final GeneratedColumn<int> targetDate = GeneratedColumn<int>(
+  late final GeneratedColumn<String> targetDate = GeneratedColumn<String>(
     'target_date',
     aliasedName,
     true,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
@@ -1778,11 +1779,11 @@ class CardCanvasAttachments extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -1871,11 +1872,11 @@ class ReflectionTemplates extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -1976,19 +1977,19 @@ class ReflectionEntries extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
     'created_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
     'updated_at',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
@@ -2422,4 +2423,7 @@ class DatabaseAtV3 extends GeneratedDatabase {
   ]);
   @override
   int get schemaVersion => 3;
+  @override
+  DriftDatabaseOptions get options =>
+      const DriftDatabaseOptions(storeDateTimeAsText: true);
 }

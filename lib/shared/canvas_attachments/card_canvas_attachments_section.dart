@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:zenno/config/router/routes.dart';
+import 'package:zenno/canvas/canvas_editor_navigation.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/shared/canvas_attachments/canvas_picker_dialog.dart';
 import 'package:zenno/shared/canvas_attachments/card_canvas_attachment_providers.dart';
 import 'package:zenno/shared/canvas_attachments/card_canvas_attachment_repository.dart';
 
 /// Shared attachment list used by revision and goal card detail sheets.
-class CardCanvasAttachmentsSection extends ConsumerWidget {
+class CardCanvasAttachmentsSection extends ConsumerStatefulWidget {
   /// Creates a card canvas attachment section.
   const CardCanvasAttachmentsSection({
     super.key,
@@ -21,8 +20,17 @@ class CardCanvasAttachmentsSection extends ConsumerWidget {
   final String defaultCanvasTitle;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final attachments = ref.watch(cardCanvasAttachmentsProvider(cardId));
+  ConsumerState<CardCanvasAttachmentsSection> createState() =>
+      _CardCanvasAttachmentsSectionState();
+}
+
+class _CardCanvasAttachmentsSectionState
+    extends ConsumerState<CardCanvasAttachmentsSection> {
+  bool _adding = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final attachments = ref.watch(cardCanvasAttachmentsProvider(widget.cardId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -35,9 +43,14 @@ class CardCanvasAttachmentsSection extends ConsumerWidget {
               ),
             ),
             TextButton.icon(
-              onPressed: () => _add(context, ref),
-              icon: const Icon(Icons.add, size: 20),
-              label: const Text('Add canvas'),
+              onPressed: _adding ? null : _add,
+              icon: _adding
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add, size: 20),
+              label: Text(_adding ? 'Adding…' : 'Add canvas'),
             ),
           ],
         ),
@@ -54,18 +67,33 @@ class CardCanvasAttachmentsSection extends ConsumerWidget {
     );
   }
 
-  Future<void> _add(BuildContext context, WidgetRef ref) async {
+  Future<void> _add() async {
+    if (_adding) return;
     final result = await showCanvasPickerDialog(
       context,
-      defaultTitle: defaultCanvasTitle,
+      defaultTitle: widget.defaultCanvasTitle,
     );
     if (result == null) return;
-    final repo = ref.read(cardCanvasAttachmentRepositoryProvider);
-    switch (result) {
-      case ExistingCanvasPicked(:final canvasId):
-        await repo.attachExisting(cardId: cardId, canvasId: canvasId);
-      case NewCanvasPicked(:final title):
-        await repo.createAndAttach(cardId: cardId, title: title);
+    setState(() => _adding = true);
+    try {
+      final repo = ref.read(cardCanvasAttachmentRepositoryProvider);
+      switch (result) {
+        case ExistingCanvasPicked(:final canvasId):
+          await repo.attachExisting(cardId: widget.cardId, canvasId: canvasId);
+        case NewCanvasPicked(:final title):
+          await repo.createAndAttach(cardId: widget.cardId, title: title);
+      }
+    } catch (error) {
+      debugPrint('Attach canvas failed: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not attach canvas. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _adding = false);
     }
   }
 }
@@ -97,14 +125,13 @@ class _AttachmentList extends ConsumerWidget {
               subtitle: item.label == item.canvasTitle
                   ? null
                   : Text(item.canvasTitle),
-              onTap: () => context.push(Routes.canvasPath(item.canvasId)),
+              onTap: () => openCanvasEditor(context, item.canvasId),
               trailing: Wrap(
                 spacing: AppSpacing.xs,
                 children: [
                   IconButton(
                     tooltip: 'Open canvas',
-                    onPressed: () =>
-                        context.push(Routes.canvasPath(item.canvasId)),
+                    onPressed: () => openCanvasEditor(context, item.canvasId),
                     icon: const Icon(Icons.open_in_new),
                   ),
                   PopupMenuButton<_AttachmentAction>(
@@ -136,11 +163,24 @@ class _AttachmentList extends ConsumerWidget {
     CardCanvasAttachmentView item,
     _AttachmentAction action,
   ) async {
-    switch (action) {
-      case _AttachmentAction.rename:
-        await _rename(context, ref, item);
-      case _AttachmentAction.detach:
-        await ref.read(cardCanvasAttachmentRepositoryProvider).detach(item.id);
+    try {
+      switch (action) {
+        case _AttachmentAction.rename:
+          await _rename(context, ref, item);
+        case _AttachmentAction.detach:
+          await ref
+              .read(cardCanvasAttachmentRepositoryProvider)
+              .detach(item.id);
+      }
+    } catch (error) {
+      debugPrint('Update canvas attachment failed: $error');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not update the attachment. Please try again.'),
+          ),
+        );
+      }
     }
   }
 

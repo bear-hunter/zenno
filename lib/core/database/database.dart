@@ -15,6 +15,8 @@ part 'database.g.dart';
   tables: [
     // Canvas group.
     Canvases,
+    CanvasLayers,
+    CanvasBookmarks,
     CanvasFolders,
     CanvasElements,
     InkStrokes,
@@ -22,6 +24,7 @@ part 'database.g.dart';
     Images,
     CanvasLinks,
     CanvasTexts,
+    CanvasShapes,
     // Focus group.
     RitualChecklists,
     RitualChecklistItems,
@@ -50,7 +53,7 @@ class ZennoDatabase extends _$ZennoDatabase {
     : super(executor ?? openZennoConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 12;
 
   /// Persist `DateTime` columns as ISO-8601 TEXT (sortable, debuggable, and
   /// export-friendly) rather than Unix timestamp integers.
@@ -74,9 +77,74 @@ class ZennoDatabase extends _$ZennoDatabase {
       }
       if (from < 3) {
         await m.createTable(cardCanvasAttachments);
+        await m.createIndex(idxCardCanvasAttachmentsCardPosition);
+        await m.createIndex(idxCardCanvasAttachmentsCanvasId);
       }
       if (from < 4) {
         await m.createTable(canvasTexts);
+      }
+      if (from < 5) {
+        await m.addColumn(appSettings, appSettings.accentColor);
+        await m.addColumn(appSettings, appSettings.backgroundColor);
+        await m.addColumn(canvases, canvases.rotationLocked);
+      }
+      if (from < 6) {
+        await m.addColumn(appSettings, appSettings.inkPaletteJson);
+        // SQLite validates this boolean CHECK against existing rows. Add it
+        // before the other defaulted canvas columns; adding it last can fail
+        // on non-empty v5 databases with a spurious NOT NULL violation.
+        await m.addColumn(canvases, canvases.pressureEnabled);
+        await m.addColumn(canvases, canvases.canvasBackgroundColor);
+        await m.addColumn(canvases, canvases.gridColor);
+        await m.addColumn(canvases, canvases.gridSpacing);
+        await m.addColumn(canvases, canvases.gridOpacity);
+        await m.addColumn(canvases, canvases.graphMajorInterval);
+        await m.addColumn(canvases, canvases.activePenColor);
+        await m.addColumn(canvases, canvases.activePenWidth);
+        await m.addColumn(canvases, canvases.activePenTool);
+        await m.createTable(canvasShapes);
+      }
+      if (from < 7) {
+        await m.addColumn(appSettings, appSettings.stylusMappingJson);
+        await m.addColumn(appSettings, appSettings.penProfileJson);
+      }
+      if (from >= 6 && from < 7) {
+        await m.addColumn(canvasShapes, canvasShapes.arrowBodyKind);
+        await m.addColumn(canvasShapes, canvasShapes.arrowStartHead);
+        await m.addColumn(canvasShapes, canvasShapes.arrowEndHead);
+        await m.addColumn(canvasShapes, canvasShapes.arrowHeadScale);
+        await m.addColumn(canvasShapes, canvasShapes.controlPointsJson);
+        await m.addColumn(canvasShapes, canvasShapes.arrowLegacy);
+      }
+      if (from < 8) {
+        await m.createTable(canvasLayers);
+        await m.createIndex(idxCanvasLayersCanvasId);
+        await m.createIndex(idxCanvasLayersCanvasIdPosition);
+        await m.addColumn(canvasElements, canvasElements.layerId);
+        await customStatement('''
+          INSERT OR IGNORE INTO canvas_layers (
+            id, canvas_id, name, position, visible, locked, opacity,
+            blend_mode, kind, created_at, updated_at
+          )
+          SELECT id || ':content', id, 'Notes', 0, 1, 0, 1.0, 'srcOver', 0,
+            created_at, updated_at
+          FROM canvases
+          ''');
+        await customStatement('''
+          UPDATE canvas_elements
+          SET layer_id = canvas_id || ':content'
+          WHERE layer_id IS NULL
+          ''');
+      }
+      if (from < 9) {
+        await m.addColumn(canvases, canvases.activePenWidthMode);
+      }
+      if (from < 10) {
+        await m.createTable(canvasBookmarks);
+        await m.createIndex(idxCanvasBookmarksCanvasPosition);
+      }
+      if (from < 12) {
+        await m.addColumn(canvases, canvases.toolWheelJson);
       }
     },
     beforeOpen: (details) async {

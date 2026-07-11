@@ -9,6 +9,20 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+/// Maps a visual drop slot from the original list onto the list after the
+/// dragged item has been removed.
+int normalizeKanbanDropIndex({
+  required int rawIndex,
+  required int draggedIndex,
+  required int remainingItemCount,
+}) {
+  var normalized = rawIndex;
+  if (draggedIndex >= 0 && rawIndex > draggedIndex) {
+    normalized -= 1;
+  }
+  return normalized.clamp(0, remainingItemCount);
+}
+
 /// A whole Kanban board: an ordered set of [columns].
 @immutable
 class KanbanBoardData {

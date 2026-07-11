@@ -47,6 +47,7 @@ class EnergyRatingSelector extends StatelessWidget {
                   child: _EnergyPip(
                     level: level,
                     filled: level <= value,
+                    selected: level == value,
                     onTap: () => onChanged(level),
                   ),
                 ),
@@ -81,11 +82,13 @@ class _EnergyPip extends StatelessWidget {
   const _EnergyPip({
     required this.level,
     required this.filled,
+    required this.selected,
     required this.onTap,
   });
 
   final int level;
   final bool filled;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
@@ -96,7 +99,7 @@ class _EnergyPip extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Energy level $level of 5',
-      selected: filled,
+      selected: selected,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),

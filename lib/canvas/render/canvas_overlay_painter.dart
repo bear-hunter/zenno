@@ -1,16 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart';
 
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/render/selection_overlay_geometry.dart';
 
 /// Paints transient canvas chrome that sits above the ink layers.
 ///
 /// This is the top compositing layer: it draws non-persisted feedback —
 /// the tool hover ring, the eraser footprint and its swept trail, the
 /// in-progress lasso loop, and the bounding box around a lasso selection.
-/// Everything is projected through [viewport]; world-anchored radii and the
-/// selection box scale with the camera, while purely cosmetic strokes (the
-/// lasso outline, the selection border) keep a constant on-screen weight.
+/// Everything is projected through [viewport]; tool chrome such as hover
+/// rings, lasso outlines and selection borders keeps a constant on-screen
+/// weight.
 class CanvasOverlayPainter extends CustomPainter {
   /// Creates an overlay painter for the given [viewport].
   const CanvasOverlayPainter({
@@ -30,7 +33,7 @@ class CanvasOverlayPainter extends CustomPainter {
   /// World-space position of the hover indicator, or `null` to draw nothing.
   final Offset? hoverPointWorld;
 
-  /// World-space radius of the hover ring, in logical pixels at `scale == 1`.
+  /// Screen-space radius of the hover ring.
   final double hoverRadius;
 
   /// Whether the hover ring represents the eraser (drawn as a dashed-feel
@@ -44,7 +47,7 @@ class CanvasOverlayPainter extends CustomPainter {
   /// drag has covered.
   final List<Offset>? eraserPath;
 
-  /// World-space radius of the eraser footprint, in logical px at `scale == 1`.
+  /// Screen-space radius of the eraser footprint.
   final double eraserRadius;
 
   /// World-space vertices of the in-progress lasso loop, or `null`.
@@ -64,7 +67,7 @@ class CanvasOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _paintSelectionBox(canvas);
+    _paintSelectionBox(canvas, size);
     _paintLasso(canvas);
     _paintEraserTrail(canvas);
     _paintHoverRing(canvas);
@@ -83,7 +86,7 @@ class CanvasOverlayPainter extends CustomPainter {
     }
 
     final Offset center = CanvasTransform.toScreen(viewport, hoverPoint);
-    final double radius = hoverRadius * viewport.scale;
+    final double radius = hoverRadius;
     if (radius <= 0) {
       return;
     }
@@ -110,7 +113,7 @@ class CanvasOverlayPainter extends CustomPainter {
       for (final Offset world in path)
         CanvasTransform.toScreen(viewport, world),
     ];
-    final double screenRadius = eraserRadius * viewport.scale;
+    final double screenRadius = eraserRadius;
 
     // Faint trail along the drag.
     if (screenPath.length > 1) {
@@ -180,32 +183,19 @@ class CanvasOverlayPainter extends CustomPainter {
       );
   }
 
-  /// Draws the bounding box around a committed lasso selection.
-  void _paintSelectionBox(Canvas canvas) {
+  /// Draws the interactive frame around a committed lasso selection.
+  void _paintSelectionBox(Canvas canvas, Size size) {
     final Rect? bounds = selectionBounds;
     if (bounds == null || bounds.isEmpty) {
       return;
     }
-
-    // Project the four world corners; rotation means the screen-space box is
-    // the bounds of the (possibly skewed) projected corners.
-    final List<Offset> corners = <Offset>[
-      CanvasTransform.toScreen(viewport, bounds.topLeft),
-      CanvasTransform.toScreen(viewport, bounds.topRight),
-      CanvasTransform.toScreen(viewport, bounds.bottomRight),
-      CanvasTransform.toScreen(viewport, bounds.bottomLeft),
-    ];
-    double minX = corners.first.dx;
-    double maxX = corners.first.dx;
-    double minY = corners.first.dy;
-    double maxY = corners.first.dy;
-    for (final Offset c in corners) {
-      if (c.dx < minX) minX = c.dx;
-      if (c.dx > maxX) maxX = c.dx;
-      if (c.dy < minY) minY = c.dy;
-      if (c.dy > maxY) maxY = c.dy;
-    }
-    final Rect screenRect = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(6);
+    final SelectionOverlayGeometry geometry =
+        SelectionOverlayGeometry.fromWorldBounds(
+          bounds: bounds,
+          viewport: viewport,
+          canvasSize: size,
+        );
+    final Rect screenRect = geometry.frameRect;
 
     canvas
       ..drawRRect(
@@ -220,25 +210,96 @@ class CanvasOverlayPainter extends CustomPainter {
           ..color = _accent,
       );
 
-    // Corner ticks — a light affordance that the box can be grabbed.
-    const double tick = 7;
-    final Paint tickPaint = Paint()
+    final Paint connectorPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..color = _accent.withValues(alpha: 0.85);
+    canvas.drawLine(
+      screenRect.topCenter,
+      geometry.rotationCenter,
+      connectorPaint,
+    );
+
+    final Paint handleFill = Paint()..color = const Color(0xFF181820);
+    final Paint handleBorder = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = _accent;
+    for (final SelectionOverlayTarget target in geometry.scaleTargets) {
+      final Offset center = geometry.centerFor(target);
+      canvas
+        ..drawCircle(
+          center,
+          SelectionOverlayGeometry.cornerVisualRadius,
+          handleFill,
+        )
+        ..drawCircle(
+          center,
+          SelectionOverlayGeometry.cornerVisualRadius,
+          handleBorder,
+        );
+    }
+
+    _paintRotationHandle(
+      canvas,
+      geometry.rotationCenter,
+      handleFill,
+      handleBorder,
+    );
+    _paintDoneHandle(canvas, geometry.doneCenter, handleFill, handleBorder);
+  }
+
+  void _paintRotationHandle(
+    Canvas canvas,
+    Offset center,
+    Paint fill,
+    Paint border,
+  ) {
+    const double radius = SelectionOverlayGeometry.actionVisualRadius;
+    canvas
+      ..drawCircle(center, radius, fill)
+      ..drawCircle(center, radius, border);
+    final Rect arcRect = Rect.fromCircle(center: center, radius: 5.5);
+    final Paint glyph = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..color = _accent;
+    canvas.drawArc(arcRect, -math.pi * 0.15, math.pi * 1.45, false, glyph);
+    final Offset arrow = center + const Offset(5.4, -2.2);
+    canvas
+      ..drawLine(arrow, arrow + const Offset(-3.2, -0.4), glyph)
+      ..drawLine(arrow, arrow + const Offset(-0.5, 3.1), glyph);
+  }
+
+  void _paintDoneHandle(
+    Canvas canvas,
+    Offset center,
+    Paint fill,
+    Paint border,
+  ) {
+    const double radius = SelectionOverlayGeometry.actionVisualRadius;
+    canvas
+      ..drawCircle(center, radius, fill)
+      ..drawCircle(center, radius, border);
+    final Paint glyph = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round
       ..color = _accent;
-    for (final Offset corner in <Offset>[
-      screenRect.topLeft,
-      screenRect.topRight,
-      screenRect.bottomLeft,
-      screenRect.bottomRight,
-    ]) {
-      final double sx = corner.dx < screenRect.center.dx ? 1 : -1;
-      final double sy = corner.dy < screenRect.center.dy ? 1 : -1;
-      canvas
-        ..drawLine(corner, corner + Offset(tick * sx, 0), tickPaint)
-        ..drawLine(corner, corner + Offset(0, tick * sy), tickPaint);
-    }
+    const double extent = 3.5;
+    canvas
+      ..drawLine(
+        center - const Offset(extent, extent),
+        center + const Offset(extent, extent),
+        glyph,
+      )
+      ..drawLine(
+        center + const Offset(extent, -extent),
+        center + const Offset(-extent, extent),
+        glyph,
+      );
   }
 
   @override

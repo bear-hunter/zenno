@@ -6,9 +6,12 @@ import 'package:flutter/rendering.dart';
 
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
+import 'package:zenno/canvas/engine/stroke_builder.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
+import 'package:zenno/canvas/model/selection_transform.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/render/shape_painter.dart';
 
 /// Paints the committed [elements] layer, culled to the visible viewport.
 ///
@@ -49,6 +52,7 @@ class ElementsTileCache {
   static const double tileSize = 2048.0;
 
   final Map<_TileKey, _TilePicture> _pictures = <_TileKey, _TilePicture>{};
+  final StrokePathCache strokePathCache = StrokePathCache();
   int _revision = 0;
   int _tick = 0;
 
@@ -61,13 +65,18 @@ class ElementsTileCache {
       picture.picture.dispose();
     }
     _pictures.clear();
+    strokePathCache.clear();
   }
 
   /// Releases native picture resources.
   void dispose() => clear();
 
-  void _syncRevision(List<CanvasElement> elements) {
-    final int nextRevision = Object.hashAll(elements.map(_elementRevisionPart));
+  void _syncRevision({
+    required List<CanvasElement> elements,
+    required int? revision,
+  }) {
+    final int nextRevision =
+        revision ?? Object.hashAll(elements.map(_elementRevisionPart));
     if (nextRevision == _revision) {
       return;
     }
@@ -78,7 +87,8 @@ class ElementsTileCache {
   ui.Picture _pictureFor({
     required _TileKey key,
     required Rect tileRect,
-    required List<CanvasElement> elements,
+    required Map<String, CanvasElement> elementsById,
+    required Map<String, int> paintOrderById,
     required SpatialIndex spatialIndex,
     required void Function(Canvas canvas, CanvasElement element) paintElement,
   }) {
@@ -92,11 +102,16 @@ class ElementsTileCache {
     final canvas = Canvas(recorder);
     canvas.clipRect(tileRect);
 
-    final Set<String> tileIds = spatialIndex.query(tileRect).toSet();
-    for (final element in elements) {
-      if (tileIds.contains(element.id)) {
-        paintElement(canvas, element);
-      }
+    final List<CanvasElement> tileElements =
+        <CanvasElement>[
+          for (final String id in spatialIndex.query(tileRect))
+            if (elementsById[id] != null) elementsById[id]!,
+        ]..sort(
+          (CanvasElement a, CanvasElement b) =>
+              paintOrderById[a.id]!.compareTo(paintOrderById[b.id]!),
+        );
+    for (final element in tileElements) {
+      paintElement(canvas, element);
     }
 
     final picture = recorder.endRecording();
@@ -138,6 +153,32 @@ class ElementsTileCache {
         color,
         fontSize,
       ),
+      ShapeElement(
+        :final shapeKind,
+        :final start,
+        :final end,
+        :final color,
+        :final strokeWidth,
+        :final arrowBody,
+        :final arrowStartHead,
+        :final arrowEndHead,
+        :final arrowHeadScale,
+        :final controlPoints,
+        :final legacyArrow,
+      ) =>
+        Object.hashAll(<Object?>[
+          shapeKind,
+          start,
+          end,
+          color,
+          strokeWidth,
+          arrowBody,
+          arrowStartHead,
+          arrowEndHead,
+          arrowHeadScale,
+          Object.hashAll(controlPoints),
+          legacyArrow,
+        ]),
       _ => 0,
     };
     return Object.hash(
@@ -150,6 +191,71 @@ class ElementsTileCache {
       element.hashCode,
       rasterPart,
     );
+  }
+}
+
+class StrokePathCacheKey {
+  const StrokePathCacheKey({
+    required this.strokeId,
+    required this.revision,
+    required this.scaleBucket,
+    required this.quality,
+    required this.isComplete,
+  });
+
+  final String strokeId;
+  final int revision;
+  final int scaleBucket;
+  final StrokeRenderQuality quality;
+  final bool isComplete;
+
+  @override
+  bool operator ==(Object other) {
+    return other is StrokePathCacheKey &&
+        other.strokeId == strokeId &&
+        other.revision == revision &&
+        other.scaleBucket == scaleBucket &&
+        other.quality == quality &&
+        other.isComplete == isComplete;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(strokeId, revision, scaleBucket, quality, isComplete);
+}
+
+class StrokePathCache {
+  StrokePathCache({this.maxEntries = 2048});
+
+  final int maxEntries;
+  final Map<StrokePathCacheKey, Path> _paths = <StrokePathCacheKey, Path>{};
+
+  void clear() => _paths.clear();
+
+  Path pathFor({
+    required StrokePathCacheKey key,
+    required Stroke stroke,
+    required double viewportScale,
+  }) {
+    final cached = _paths.remove(key);
+    if (cached != null) {
+      _paths[key] = cached;
+      return cached;
+    }
+    final path = stroke.tool == StrokeToolKind.fill
+        ? buildFillBoundaryPath(stroke.points)
+        : buildStrokeOutline(
+            stroke.points,
+            size: stroke.width,
+            viewportScale: viewportScale,
+            quality: key.quality,
+            isComplete: key.isComplete,
+          );
+    _paths[key] = path;
+    while (_paths.length > maxEntries) {
+      _paths.remove(_paths.keys.first);
+    }
+    return path;
   }
 }
 
@@ -189,19 +295,27 @@ class ElementsPainter extends CustomPainter {
   ///
   /// [spatialIndex] must be the index the controller keeps in sync with
   /// [elements]; it is used purely to cull off-screen elements. [selectedIds]
-  /// are the ids of lasso-selected elements; while [selectionDragDelta] is
-  /// non-zero those elements are painted shifted by it for live drag feedback.
+  /// are the ids of lasso-selected elements; while [selectionDragDelta] or
+  /// [selectionTransformPreview] is active those elements are painted as live
+  /// previews before the edit is committed.
   const ElementsPainter({
     required this.elements,
     required this.spatialIndex,
     required this.viewport,
+    this.elementsRevision,
+    this.selectionRevision,
+    this.selectionPreviewRevision,
     this.tileCache,
     this.selectedIds = const <String>{},
     this.selectionDragDelta = Offset.zero,
+    this.selectionTransformPreview,
   });
 
   /// The committed elements, in paint order (ascending z-index).
   final List<CanvasElement> elements;
+
+  /// Monotonic token bumped when committed element content changes.
+  final int? elementsRevision;
 
   /// Viewport-culling index over [elements], keyed by element id.
   final SpatialIndex spatialIndex;
@@ -219,13 +333,29 @@ class ElementsPainter extends CustomPainter {
   /// the move previews before it is committed.
   final Set<String> selectedIds;
 
+  /// Monotonic token bumped when [selectedIds] changes.
+  final int? selectionRevision;
+
   /// Live world-space offset applied to selected elements during a drag.
   ///
   /// [Offset.zero] when no selection drag is in progress.
   final Offset selectionDragDelta;
 
+  /// Live transform applied to selected elements during a pinch/rotate gesture.
+  ///
+  /// This transform is preview-only; the controller commits actual geometry once
+  /// on pointer-up so the whole gesture is one undoable edit.
+  final SelectionTransformPreview? selectionTransformPreview;
+
+  /// Monotonic token bumped when [selectionTransformPreview] changes.
+  final int? selectionPreviewRevision;
+
   /// Opacity applied to highlighter ink so it reads as a translucent marker.
   static const double _highlighterOpacity = 0.35;
+
+  static const double _pencilOpacity = 0.72;
+  static const double _markerOpacity = 0.78;
+  static const double _airbrushOpacity = 0.42;
 
   /// Accent colour for the selected-element halo (gold, matching the theme).
   static const Color _selectionHalo = Color(0x55E8B84B);
@@ -248,6 +378,8 @@ class ElementsPainter extends CustomPainter {
   /// Whether a selection drag is currently in progress.
   bool get _dragging => selectionDragDelta != Offset.zero;
 
+  bool get _transforming => selectionTransformPreview != null;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (elements.isEmpty || size.isEmpty) {
@@ -257,53 +389,114 @@ class ElementsPainter extends CustomPainter {
     // The set of element ids whose world bounds intersect the visible region.
     final Rect visibleWorldRect = _visibleWorldRect(size);
     final Set<String> visibleIds = spatialIndex.query(visibleWorldRect).toSet();
-    // Fast path: nothing visible and no drag that could pull an off-screen
-    // selected element into view — there is nothing to paint.
-    if (visibleIds.isEmpty && !_dragging) {
+    // Fast path: nothing visible and no selection preview that could pull an
+    // off-screen selected element into view — there is nothing to paint.
+    if (visibleIds.isEmpty && !_dragging && !_transforming) {
       return;
     }
 
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
+    tileCache?._syncRevision(elements: elements, revision: elementsRevision);
 
-    if (!_dragging && selectedIds.isEmpty && tileCache != null) {
-      _paintCachedTiles(canvas, visibleWorldRect);
-      canvas.restore();
-      return;
+    if (_canUseTileCache(visibleWorldRect)) {
+      final ElementsTileCache cache = tileCache!;
+      // At overview zoom one screen can cover hundreds or thousands of
+      // fixed-size world tiles. Recording all of those pictures is slower than
+      // one culled element pass and causes visible browser jank while zooming.
+      if (_visibleTileCount(visibleWorldRect) <= cache.maxTiles) {
+        _paintCachedTiles(canvas, visibleWorldRect);
+        canvas.restore();
+        return;
+      }
     }
 
+    _paintVisibleElements(canvas, visibleIds);
+    canvas.restore();
+  }
+
+  bool _canUseTileCache(Rect visibleWorldRect) {
+    if (_dragging ||
+        _transforming ||
+        selectedIds.isNotEmpty ||
+        tileCache == null) {
+      return false;
+    }
+    return strokeRenderQualityForScale(viewport.scale) !=
+        StrokeRenderQuality.highZoom;
+  }
+
+  void _paintVisibleElements(Canvas canvas, Set<String> visibleIds) {
     // Iterate `elements` (already z-ordered) and skip the culled ones, so the
     // surviving elements are still painted back-to-front. A selected element
-    // mid-drag is never culled — its dragged copy can leave the culled bounds.
+    // mid-preview is never culled — its preview copy can leave the original
+    // culled bounds.
     for (final CanvasElement element in elements) {
       final bool selected = selectedIds.contains(element.id);
-      if (!visibleIds.contains(element.id) && !(selected && _dragging)) {
+      if (!visibleIds.contains(element.id) &&
+          !(selected && (_dragging || _transforming))) {
         continue;
       }
-      // While dragging, selected elements render at the live offset.
-      final CanvasElement drawn = (selected && _dragging)
-          ? element.translated(selectionDragDelta)
-          : element;
-      switch (drawn) {
-        case InkElement():
-          _paintInk(canvas, drawn, selected: selected);
-        case ImageElement():
-          _paintImage(canvas, drawn, selected: selected);
-        case PdfElement():
-          _paintPdf(canvas, drawn, selected: selected);
-        case LinkElement():
-          _paintLink(canvas, drawn, selected: selected);
-        case TextElement():
-          _paintText(canvas, drawn, selected: selected);
+      final SelectionTransformPreview? transform = selectionTransformPreview;
+      if (selected && transform != null) {
+        canvas.save();
+        transform.applyToCanvas(canvas);
+        _paintElement(canvas, element, selected: selected);
+        canvas.restore();
+        continue;
       }
+      if (selected && _dragging) {
+        canvas.save();
+        canvas.translate(selectionDragDelta.dx, selectionDragDelta.dy);
+        _paintElement(canvas, element, selected: selected);
+        canvas.restore();
+        continue;
+      }
+      _paintElement(canvas, element, selected: selected);
     }
+  }
 
-    canvas.restore();
+  void _paintElement(
+    Canvas canvas,
+    CanvasElement element, {
+    required bool selected,
+  }) {
+    switch (element) {
+      case InkElement():
+        _paintInk(canvas, element, selected: selected);
+      case ImageElement():
+        _paintImage(canvas, element, selected: selected);
+      case PdfElement():
+        _paintPdf(canvas, element, selected: selected);
+      case LinkElement():
+        _paintLink(canvas, element, selected: selected);
+      case TextElement():
+        _paintText(canvas, element, selected: selected);
+      case ShapeElement():
+        _paintShape(canvas, element, selected: selected);
+    }
+  }
+
+  int _visibleTileCount(Rect visibleRect) {
+    final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
+    final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();
+    final int minY = (visibleRect.top / ElementsTileCache.tileSize).floor();
+    final int maxY = (visibleRect.bottom / ElementsTileCache.tileSize).floor();
+    if (maxX < minX || maxY < minY) {
+      return 0;
+    }
+    return (maxX - minX + 1) * (maxY - minY + 1);
   }
 
   void _paintCachedTiles(Canvas canvas, Rect visibleRect) {
     final ElementsTileCache cache = tileCache!;
-    cache._syncRevision(elements);
+    final Map<String, CanvasElement> elementsById = <String, CanvasElement>{};
+    final Map<String, int> paintOrderById = <String, int>{};
+    for (var i = 0; i < elements.length; i += 1) {
+      final CanvasElement element = elements[i];
+      elementsById[element.id] = element;
+      paintOrderById[element.id] = i;
+    }
 
     final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
     final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();
@@ -316,7 +509,8 @@ class ElementsPainter extends CustomPainter {
         final picture = cache._pictureFor(
           key: key,
           tileRect: key.rect,
-          elements: elements,
+          elementsById: elementsById,
+          paintOrderById: paintOrderById,
           spatialIndex: spatialIndex,
           paintElement: _paintUnselectedElement,
         );
@@ -337,7 +531,22 @@ class ElementsPainter extends CustomPainter {
         _paintLink(canvas, element, selected: false);
       case TextElement():
         _paintText(canvas, element, selected: false);
+      case ShapeElement():
+        _paintShape(canvas, element, selected: false);
     }
+  }
+
+  void _paintShape(
+    Canvas canvas,
+    ShapeElement element, {
+    required bool selected,
+  }) {
+    paintShapeElement(
+      canvas,
+      element,
+      selected: selected,
+      selectionHalo: _selectionHalo,
+    );
   }
 
   /// Paints a single [element]'s ink stroke onto the world-space [canvas].
@@ -349,7 +558,14 @@ class ElementsPainter extends CustomPainter {
   /// outline is built once per move — acceptable for a small selection.)
   void _paintInk(Canvas canvas, InkElement element, {required bool selected}) {
     final Stroke stroke = element.stroke;
-    final Path path = element.outlinePath;
+    if (stroke.tool != StrokeToolKind.fill &&
+        !selected &&
+        strokeRenderQualityForScale(viewport.scale) ==
+            StrokeRenderQuality.overview) {
+      _paintInkOverview(canvas, element);
+      return;
+    }
+    final Path path = _strokePathFor(element);
 
     if (selected) {
       canvas.drawPath(
@@ -364,14 +580,125 @@ class ElementsPainter extends CustomPainter {
 
     final Paint paint = Paint()..style = PaintingStyle.fill;
     final Color color = Color(stroke.color);
-    if (stroke.tool == StrokeToolKind.highlighter) {
-      paint
-        ..color = color.withValues(alpha: _highlighterOpacity)
-        ..blendMode = BlendMode.multiply;
-    } else {
-      paint.color = color;
+    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
+    switch (stroke.tool) {
+      case StrokeToolKind.highlighter:
+        paint
+          ..color = color.withValues(alpha: _highlighterOpacity * userOpacity)
+          ..blendMode = BlendMode.multiply;
+      case StrokeToolKind.pencil:
+        paint.color = color.withValues(alpha: _pencilOpacity * userOpacity);
+      case StrokeToolKind.marker:
+        paint.color = color.withValues(alpha: _markerOpacity * userOpacity);
+      case StrokeToolKind.airbrush:
+        paint.color = color.withValues(alpha: _airbrushOpacity * userOpacity);
+      case StrokeToolKind.fill:
+        paint.color = color;
+      case StrokeToolKind.pen:
+        paint.color = color;
     }
 
+    canvas.drawPath(path, paint);
+  }
+
+  Path _strokePathFor(InkElement element) {
+    if (element.stroke.tool == StrokeToolKind.fill) {
+      return element.outlinePath;
+    }
+    final StrokeRenderQuality quality = strokeRenderQualityForScale(
+      viewport.scale,
+    );
+    if (quality != StrokeRenderQuality.highZoom) {
+      return element.outlinePath;
+    }
+    final Stroke stroke = element.stroke;
+    final key = StrokePathCacheKey(
+      strokeId: stroke.id,
+      revision: _strokeRevision(stroke),
+      scaleBucket: strokeScaleBucket(viewport.scale),
+      quality: quality,
+      isComplete: true,
+    );
+    final StrokePathCache? cache = tileCache?.strokePathCache;
+    if (cache == null) {
+      return buildStrokeOutline(
+        stroke.points,
+        size: stroke.width,
+        viewportScale: viewport.scale,
+        quality: quality,
+        isComplete: true,
+      );
+    }
+    return cache.pathFor(
+      key: key,
+      stroke: stroke,
+      viewportScale: viewport.scale,
+    );
+  }
+
+  int _strokeRevision(Stroke stroke) {
+    final StrokePoint? first = stroke.points.isEmpty
+        ? null
+        : stroke.points.first;
+    final StrokePoint? last = stroke.points.isEmpty ? null : stroke.points.last;
+    // Committed strokes are immutable by contract; edits replace the points
+    // list, so the list identity plus endpoints avoids hashing every sample.
+    return Object.hashAll(<Object?>[
+      stroke.id,
+      stroke.width,
+      stroke.tool,
+      stroke.points.length,
+      identityHashCode(stroke.points),
+      first,
+      last,
+    ]);
+  }
+
+  /// Cheap low-zoom stroke rendering for overview/deep-map navigation.
+  void _paintInkOverview(Canvas canvas, InkElement element) {
+    final Stroke stroke = element.stroke;
+    final double screenWidth = stroke.width * viewport.scale;
+    if (screenWidth < 0.2 &&
+        element.worldBounds.width * viewport.scale < 0.75 &&
+        element.worldBounds.height * viewport.scale < 0.75) {
+      return;
+    }
+    final List<StrokePoint> points = stroke.points;
+    if (points.isEmpty) {
+      return;
+    }
+    if (stroke.tool == StrokeToolKind.fill) {
+      canvas.drawPath(
+        buildFillBoundaryPath(points),
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = Color(stroke.color),
+      );
+      return;
+    }
+    final Path path = Path()..moveTo(points.first.x, points.first.y);
+    for (var i = 1; i < points.length; i += 1) {
+      path.lineTo(points[i].x, points[i].y);
+    }
+    final Color color = Color(stroke.color);
+    final double opacity = switch (stroke.tool) {
+      StrokeToolKind.highlighter => _highlighterOpacity,
+      StrokeToolKind.pencil => _pencilOpacity,
+      StrokeToolKind.marker => _markerOpacity,
+      StrokeToolKind.airbrush => _airbrushOpacity,
+      StrokeToolKind.fill => 1,
+      StrokeToolKind.pen => 1,
+    };
+    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
+    final Paint paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke.width
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = color.withValues(alpha: opacity * userOpacity);
+    if (stroke.tool == StrokeToolKind.highlighter) {
+      paint.blendMode = BlendMode.multiply;
+    }
     canvas.drawPath(path, paint);
   }
 
@@ -388,15 +715,17 @@ class ElementsPainter extends CustomPainter {
     required bool selected,
   }) {
     final ui.Image? raster = element.raster;
-    final Rect dst = element.worldBounds;
-    if (raster == null) {
-      _paintPlaceholder(canvas, dst);
-    } else {
-      _blitImage(canvas, raster, dst);
-    }
-    if (selected) {
-      _paintSelectionOutline(canvas, dst);
-    }
+    final Rect dst = element.placementBounds;
+    _paintRotatedRect(canvas, dst, element.rotation, () {
+      if (raster == null) {
+        _paintPlaceholder(canvas, dst);
+      } else {
+        _blitImage(canvas, raster, dst);
+      }
+      if (selected) {
+        _paintSelectionOutline(canvas, dst);
+      }
+    });
   }
 
   /// Paints a PDF [element]'s rendered page into its world rectangle.
@@ -406,18 +735,20 @@ class ElementsPainter extends CustomPainter {
   /// is still being rasterised on the background path.
   void _paintPdf(Canvas canvas, PdfElement element, {required bool selected}) {
     final ui.Image? raster = element.raster;
-    final Rect dst = element.worldBounds;
-    if (raster == null) {
-      _paintPlaceholder(canvas, dst);
-    } else {
-      // A PDF page has an opaque white background; paint one so a page with
-      // transparency does not show the canvas grid through it.
-      canvas.drawRect(dst, Paint()..color = const Color(0xFFFFFFFF));
-      _blitImage(canvas, raster, dst);
-    }
-    if (selected) {
-      _paintSelectionOutline(canvas, dst);
-    }
+    final Rect dst = element.placementBounds;
+    _paintRotatedRect(canvas, dst, element.rotation, () {
+      if (raster == null) {
+        _paintPlaceholder(canvas, dst);
+      } else {
+        // A PDF page has an opaque white background; paint one so a page with
+        // transparency does not show the canvas grid through it.
+        canvas.drawRect(dst, Paint()..color = const Color(0xFFFFFFFF));
+        _blitImage(canvas, raster, dst);
+      }
+      if (selected) {
+        _paintSelectionOutline(canvas, dst);
+      }
+    });
   }
 
   /// Paints a [LinkElement] as a rounded gold chip in its world rectangle.
@@ -433,71 +764,76 @@ class ElementsPainter extends CustomPainter {
     LinkElement element, {
     required bool selected,
   }) {
-    final Rect rect = element.worldBounds;
+    final Rect rect = element.placementBounds;
     if (rect.isEmpty) {
       return;
     }
-    final double radius = (rect.shortestSide * 0.32).clamp(4.0, 28.0);
-    final RRect chip = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    _paintRotatedRect(canvas, rect, element.rotation, () {
+      final double radius = (rect.shortestSide * 0.32).clamp(4.0, 28.0);
+      final RRect chip = RRect.fromRectAndRadius(rect, Radius.circular(radius));
 
-    // Fill, then border.
-    canvas
-      ..drawRRect(chip, Paint()..color = _linkChipFill)
-      ..drawRRect(
-        chip,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = (rect.shortestSide * 0.035).clamp(1.0, 3.0)
-          ..color = _accent,
-      );
+      // Fill, then border.
+      canvas
+        ..drawRRect(chip, Paint()..color = _linkChipFill)
+        ..drawRRect(
+          chip,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = (rect.shortestSide * 0.035).clamp(1.0, 3.0)
+            ..color = _accent,
+        );
 
-    // The link glyph sits at the leading edge, vertically centred; the label
-    // fills the remaining width. Both are sized relative to the chip height so
-    // a chip placed at any zoom keeps its proportions.
-    final double pad = rect.shortestSide * 0.28;
-    final double iconSize = (rect.height - pad).clamp(8.0, rect.height);
-    final TextPainter icon = TextPainter(
-      textDirection: TextDirection.ltr,
-      text: TextSpan(
-        text: String.fromCharCode(Icons.link.codePoint),
-        style: TextStyle(
-          fontSize: iconSize,
-          fontFamily: Icons.link.fontFamily,
-          package: Icons.link.fontPackage,
-          color: _accent,
-        ),
-      ),
-    )..layout();
-    icon.paint(
-      canvas,
-      Offset(rect.left + pad / 2, rect.center.dy - icon.height / 2),
-    );
-
-    final double labelLeft = rect.left + pad / 2 + icon.width + pad / 3;
-    final double labelWidth = rect.right - pad / 2 - labelLeft;
-    if (labelWidth > 0) {
-      final String text = element.label.trim().isEmpty
-          ? _linkFallbackLabel
-          : element.label;
-      final TextPainter label = TextPainter(
+      // The link glyph sits at the leading edge, vertically centred; the label
+      // fills the remaining width. Both are sized relative to the chip height so
+      // a chip placed at any zoom keeps its proportions.
+      final double pad = rect.shortestSide * 0.28;
+      final double iconSize = (rect.height - pad).clamp(8.0, rect.height);
+      final TextPainter icon = TextPainter(
         textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: '…',
         text: TextSpan(
-          text: text,
+          text: String.fromCharCode(Icons.link.codePoint),
           style: TextStyle(
-            fontSize: (rect.height * 0.34).clamp(8.0, rect.height),
+            fontSize: iconSize,
+            fontFamily: Icons.link.fontFamily,
+            package: Icons.link.fontPackage,
             color: _accent,
-            fontWeight: FontWeight.w600,
           ),
         ),
-      )..layout(maxWidth: labelWidth);
-      label.paint(canvas, Offset(labelLeft, rect.center.dy - label.height / 2));
-    }
+      )..layout();
+      icon.paint(
+        canvas,
+        Offset(rect.left + pad / 2, rect.center.dy - icon.height / 2),
+      );
 
-    if (selected) {
-      _paintSelectionOutline(canvas, rect);
-    }
+      final double labelLeft = rect.left + pad / 2 + icon.width + pad / 3;
+      final double labelWidth = rect.right - pad / 2 - labelLeft;
+      if (labelWidth > 0) {
+        final String text = element.label.trim().isEmpty
+            ? _linkFallbackLabel
+            : element.label;
+        final TextPainter label = TextPainter(
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+          ellipsis: '…',
+          text: TextSpan(
+            text: text,
+            style: TextStyle(
+              fontSize: (rect.height * 0.34).clamp(8.0, rect.height),
+              color: _accent,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        )..layout(maxWidth: labelWidth);
+        label.paint(
+          canvas,
+          Offset(labelLeft, rect.center.dy - label.height / 2),
+        );
+      }
+
+      if (selected) {
+        _paintSelectionOutline(canvas, rect);
+      }
+    });
   }
 
   /// Paints a [TextElement] as plain multiline text in its world rectangle.
@@ -506,47 +842,67 @@ class ElementsPainter extends CustomPainter {
     TextElement element, {
     required bool selected,
   }) {
-    final Rect rect = element.worldBounds;
+    final Rect rect = element.placementBounds;
     if (rect.isEmpty || element.text.trim().isEmpty) {
       return;
     }
+    _paintRotatedRect(canvas, rect, element.rotation, () {
+      final double pad = (element.fontSize * 0.35).clamp(4.0, 14.0);
+      final Rect inner = rect.deflate(pad);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+        Paint()..color = const Color(0x1AFFFFFF),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = const Color(0x22FFFFFF),
+      );
 
-    final double pad = (element.fontSize * 0.35).clamp(4.0, 14.0);
-    final Rect inner = rect.deflate(pad);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-      Paint()..color = const Color(0x1AFFFFFF),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = const Color(0x22FFFFFF),
-    );
-
-    if (inner.width > 0 && inner.height > 0) {
-      final TextPainter painter = TextPainter(
-        textDirection: TextDirection.ltr,
-        maxLines: null,
-        text: TextSpan(
-          text: element.text,
-          style: TextStyle(
-            color: Color(element.color),
-            fontSize: element.fontSize,
-            height: 1.25,
+      if (inner.width > 0 && inner.height > 0) {
+        final TextPainter painter = TextPainter(
+          textDirection: TextDirection.ltr,
+          maxLines: null,
+          text: TextSpan(
+            text: element.text,
+            style: TextStyle(
+              color: Color(element.color),
+              fontSize: element.fontSize,
+              height: 1.25,
+            ),
           ),
-        ),
-      )..layout(maxWidth: inner.width);
-      canvas.save();
-      canvas.clipRect(inner);
-      painter.paint(canvas, inner.topLeft);
-      canvas.restore();
-    }
+        )..layout(maxWidth: inner.width);
+        canvas.save();
+        canvas.clipRect(inner);
+        painter.paint(canvas, inner.topLeft);
+        canvas.restore();
+      }
 
-    if (selected) {
-      _paintSelectionOutline(canvas, rect);
+      if (selected) {
+        _paintSelectionOutline(canvas, rect);
+      }
+    });
+  }
+
+  /// Runs [paint] with [rect] visually rotated around its centre.
+  void _paintRotatedRect(
+    Canvas canvas,
+    Rect rect,
+    double radians,
+    void Function() paint,
+  ) {
+    if (radians == 0 || rect.isEmpty) {
+      paint();
+      return;
     }
+    canvas.save();
+    canvas.translate(rect.center.dx, rect.center.dy);
+    canvas.rotate(radians);
+    canvas.translate(-rect.center.dx, -rect.center.dy);
+    paint();
+    canvas.restore();
   }
 
   /// Blits [image] into the world-space [dst] rectangle.
@@ -624,11 +980,26 @@ class ElementsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(ElementsPainter oldDelegate) =>
-      !identical(oldDelegate.elements, elements) ||
-      oldDelegate.elements.length != elements.length ||
-      !identical(oldDelegate.spatialIndex, spatialIndex) ||
-      oldDelegate.viewport != viewport ||
-      !setEquals(oldDelegate.selectedIds, selectedIds) ||
-      oldDelegate.selectionDragDelta != selectionDragDelta;
+  bool shouldRepaint(ElementsPainter oldDelegate) {
+    final bool elementsChanged =
+        oldDelegate.elementsRevision != null || elementsRevision != null
+        ? oldDelegate.elementsRevision != elementsRevision
+        : !identical(oldDelegate.elements, elements) ||
+              oldDelegate.elements.length != elements.length;
+    final bool selectionChanged =
+        oldDelegate.selectionRevision != null || selectionRevision != null
+        ? oldDelegate.selectionRevision != selectionRevision
+        : !setEquals(oldDelegate.selectedIds, selectedIds);
+    final bool previewChanged =
+        oldDelegate.selectionPreviewRevision != null ||
+            selectionPreviewRevision != null
+        ? oldDelegate.selectionPreviewRevision != selectionPreviewRevision
+        : oldDelegate.selectionTransformPreview != selectionTransformPreview;
+    return elementsChanged ||
+        !identical(oldDelegate.spatialIndex, spatialIndex) ||
+        oldDelegate.viewport != viewport ||
+        selectionChanged ||
+        oldDelegate.selectionDragDelta != selectionDragDelta ||
+        previewChanged;
+  }
 }

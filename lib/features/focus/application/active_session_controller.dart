@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
@@ -11,9 +12,13 @@ import 'package:zenno/features/settings/application/settings_providers.dart';
 
 part 'active_session_controller.g.dart';
 
+/// Injectable wall clock for deterministic active-session controller tests.
+typedef FocusClock = DateTime Function();
+
 /// Injectable clock for deterministic active-session controller tests.
 @Riverpod(keepAlive: true)
-DateTime focusClock(Ref ref) => DateTime.now().toUtc();
+FocusClock focusClock(Ref ref) =>
+    () => DateTime.now().toUtc();
 
 /// The live state of an in-progress focus session, as the Active screen and
 /// the global shell pill render it.
@@ -27,6 +32,8 @@ class ActiveSessionState {
     required this.startedAt,
     required this.config,
     required this.snapshot,
+    this.reviewPending = false,
+    this.isRestoring = false,
   });
 
   /// The "no session running" state.
@@ -35,6 +42,15 @@ class ActiveSessionState {
     startedAt: null,
     config: null,
     snapshot: null,
+  );
+
+  /// Startup state while persisted live/review-pending work is being checked.
+  static const ActiveSessionState restoring = ActiveSessionState(
+    sessionId: null,
+    startedAt: null,
+    config: null,
+    snapshot: null,
+    isRestoring: true,
   );
 
   /// Id of the `focus_sessions` row, or `null` when nothing is running.
@@ -48,6 +64,12 @@ class ActiveSessionState {
 
   /// The latest timer-engine snapshot, or `null` when nothing is running.
   final TimerSnapshot? snapshot;
+
+  /// Whether the timer is finished and the post-session Review is still due.
+  final bool reviewPending;
+
+  /// Whether startup restoration is still reading the database.
+  final bool isRestoring;
 
   /// Whether a session is currently active (running, paused, or just-ended but
   /// not yet reviewed).
@@ -73,22 +95,26 @@ class ActiveSessionState {
 class ActiveSessionController extends _$ActiveSessionController {
   TimerEngine? _engine;
   Timer? _ticker;
+  bool _starting = false;
+  Future<void> _restoreFuture = Future<void>.value();
 
-  /// Seconds of `actual_focus_secs` last written to the DB — lets the tally
-  /// write be skipped when nothing changed.
-  int _lastPersistedFocusSecs = -1;
   int _secondsSinceRuntimePersist = 0;
 
   @override
   ActiveSessionState build() {
+    final wakelockService = ref.read(focusWakelockServiceProvider);
     // The ticker holds a resource; tear it down if the provider is ever
     // disposed (it is keepAlive, so in practice only at app shutdown).
     ref.onDispose(() {
       _stopTicker();
-      unawaited(_setWakelock(false));
+      unawaited(
+        wakelockService.setEnabled(false).catchError((Object error) {
+          debugPrint('Could not disable focus wakelock: $error');
+        }),
+      );
     });
-    Future<void>.microtask(_restoreLatestInProgressSession);
-    return ActiveSessionState.none;
+    _restoreFuture = Future<void>.microtask(_restoreAtStartup);
+    return ActiveSessionState.restoring;
   }
 
   // ---------------------------------------------------------------------------
@@ -102,54 +128,65 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// [checkedRitualItems] is the ritual as it stood on the Setup screen — each
   /// `(itemId, label, wasChecked)` tuple is snapshotted verbatim. A session
   /// already in progress is left untouched.
-  Future<void> startFrom(
+  Future<bool> startFrom(
     FocusSessionConfig config, {
     required List<({String itemId, String label, bool wasChecked})>
     checkedRitualItems,
   }) async {
-    if (state.hasSession) return;
+    await _restoreFuture;
+    if (state.hasSession || _starting) return false;
+    _starting = true;
 
-    final repo = ref.read(focusRepositoryProvider);
-    final timerKind = config.mode == TimerMode.pomodoro
-        ? TimerKind.pomodoro
-        : TimerKind.flowmodoro;
+    try {
+      final repo = ref.read(focusRepositoryProvider);
+      final timerKind = config.mode == TimerMode.pomodoro
+          ? TimerKind.pomodoro
+          : TimerKind.flowmodoro;
+      final startedAt = ref.read(focusClockProvider)();
 
-    final sessionId = await repo.createSession(
-      startedAt: ref.read(focusClockProvider),
-      goalText: config.goalText,
-      preEnergy: config.preEnergy,
-      timerKind: timerKind,
-      plannedDurationSecs: config.plannedDuration.inSeconds,
-      pomodoroWorkSecs: config.mode == TimerMode.pomodoro
-          ? config.pomodoroWork.inSeconds
-          : null,
-      pomodoroBreakSecs: config.mode == TimerMode.pomodoro
-          ? config.pomodoroBreak.inSeconds
-          : null,
-      flowBreakRatio: config.mode == TimerMode.flowmodoro
-          ? config.flowBreakRatio
-          : null,
-      linkedCanvasId: config.linkedCanvasId,
-    );
+      final sessionId = await repo.createSession(
+        startedAt: startedAt,
+        goalText: config.goalText,
+        preEnergy: config.preEnergy,
+        timerKind: timerKind,
+        plannedDurationSecs: config.plannedDuration.inSeconds,
+        pomodoroWorkSecs: config.mode == TimerMode.pomodoro
+            ? config.pomodoroWork.inSeconds
+            : null,
+        pomodoroBreakSecs: config.mode == TimerMode.pomodoro
+            ? config.pomodoroBreak.inSeconds
+            : null,
+        flowBreakRatio: config.mode == TimerMode.flowmodoro
+            ? config.flowBreakRatio
+            : null,
+        linkedCanvasId: config.linkedCanvasId,
+        ritualItems: checkedRitualItems,
+      );
 
-    await repo.snapshotRitualChecks(
-      sessionId: sessionId,
-      items: checkedRitualItems,
-    );
+      final engine = _buildEngine(config)..start();
+      _engine = engine;
 
-    final engine = _buildEngine(config)..start();
-    _engine = engine;
-    _lastPersistedFocusSecs = 0;
-
-    state = ActiveSessionState(
-      sessionId: sessionId,
-      startedAt: ref.read(focusClockProvider),
-      config: config,
-      snapshot: engine.snapshot(),
-    );
-    _startTicker();
-    await _syncWakelockWithSettings();
-    await _persistRuntime();
+      state = ActiveSessionState(
+        sessionId: sessionId,
+        startedAt: startedAt,
+        config: config,
+        snapshot: engine.snapshot(),
+      );
+      _startTicker();
+      try {
+        await _syncWakelockWithSettings();
+      } catch (error) {
+        debugPrint('Could not enable focus wakelock: $error');
+      }
+      try {
+        await _persistRuntime();
+      } catch (error) {
+        debugPrint('Could not persist initial focus runtime: $error');
+      }
+      return true;
+    } finally {
+      _starting = false;
+    }
   }
 
   /// Pauses the running timer.
@@ -196,7 +233,7 @@ class ActiveSessionController extends _$ActiveSessionController {
     if (sessionId == null || engine == null) return;
 
     final startedAt = state.startedAt;
-    final now = ref.read(focusClockProvider);
+    final now = ref.read(focusClockProvider)();
     final wallSecs = startedAt == null
         ? engine.accumulatedFocus.inSeconds
         : now.difference(startedAt).inSeconds;
@@ -215,7 +252,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// Stops the timer and closes the session row with the given lifecycle
   /// [status].
   ///
-  /// - [FocusSessionStatus.completed] (the default) is used when the user
+  /// - [FocusSessionStatus.reviewPending] (the default) is used when the user
   ///   finishes normally and proceeds to the Review screen — the controller
   ///   keeps holding the session id so Review can attach the post-energy
   ///   rating and note via [submitReview].
@@ -225,7 +262,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// Either way the engine banks any in-progress work time before stopping, so
   /// `actual_focus_secs` reflects the focus actually done.
   Future<void> stop({
-    FocusSessionStatus status = FocusSessionStatus.completed,
+    FocusSessionStatus status = FocusSessionStatus.reviewPending,
   }) async {
     final sessionId = state.sessionId;
     final engine = _engine;
@@ -243,7 +280,7 @@ class ActiveSessionController extends _$ActiveSessionController {
         .read(focusRepositoryProvider)
         .finishSession(
           sessionId: sessionId,
-          endedAt: ref.read(focusClockProvider),
+          endedAt: ref.read(focusClockProvider)(),
           status: status,
           actualFocusSecs: engine.accumulatedFocus.inSeconds,
           cyclesCompleted: engine.cyclesCompleted,
@@ -253,7 +290,16 @@ class ActiveSessionController extends _$ActiveSessionController {
     // A finished session keeps its state so the Review screen can use it.
     if (status == FocusSessionStatus.abandoned) {
       _clear();
-      await _setWakelock(false);
+      await _disableWakelockBestEffort();
+    } else {
+      state = ActiveSessionState(
+        sessionId: state.sessionId,
+        startedAt: state.startedAt,
+        config: state.config,
+        snapshot: engine.snapshot(),
+        reviewPending: true,
+      );
+      await _disableWakelockBestEffort();
     }
   }
 
@@ -274,7 +320,7 @@ class ActiveSessionController extends _$ActiveSessionController {
           notes: (notes != null && notes.trim().isEmpty) ? null : notes?.trim(),
         );
     _clear();
-    await _setWakelock(false);
+    await _disableWakelockBestEffort();
   }
 
   /// Discards the held session without writing a Review.
@@ -283,8 +329,12 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// already closed by [stop]; this just releases the controller so a new
   /// session can begin.
   Future<void> discard() async {
+    final sessionId = state.sessionId;
+    if (sessionId != null && state.reviewPending) {
+      await ref.read(focusRepositoryProvider).discardReview(sessionId);
+    }
     _clear();
-    await _setWakelock(false);
+    await _disableWakelockBestEffort();
   }
 
   // ---------------------------------------------------------------------------
@@ -311,7 +361,13 @@ class ActiveSessionController extends _$ActiveSessionController {
     _emit();
     _secondsSinceRuntimePersist += 1;
     if (advanced || _secondsSinceRuntimePersist >= 15) {
-      await _persistRuntime();
+      try {
+        await _persistRuntime();
+      } catch (error) {
+        // Keep the wall-clock timer alive and retry on the next tick. The
+        // counter resets only after a successful write.
+        debugPrint('Could not checkpoint focus runtime: $error');
+      }
     }
   }
 
@@ -328,6 +384,7 @@ class ActiveSessionController extends _$ActiveSessionController {
       startedAt: state.startedAt,
       config: state.config,
       snapshot: engine.snapshot(),
+      reviewPending: state.reviewPending,
     );
   }
 
@@ -335,36 +392,41 @@ class ActiveSessionController extends _$ActiveSessionController {
     final sessionId = state.sessionId;
     final engine = _engine;
     if (sessionId == null || engine == null) return;
-    _secondsSinceRuntimePersist = 0;
-    _lastPersistedFocusSecs = engine.accumulatedFocus.inSeconds;
+    final actualFocusSecs = engine.accumulatedFocus.inSeconds;
     await ref
         .read(focusRepositoryProvider)
         .updateRuntime(
           sessionId: sessionId,
           runtime: engine.runtimeSnapshot,
-          actualFocusSecs: _lastPersistedFocusSecs,
+          actualFocusSecs: actualFocusSecs,
         );
+    _secondsSinceRuntimePersist = 0;
   }
 
   Future<void> _restoreLatestInProgressSession() async {
     if (state.hasSession) return;
-    final session = await ref
-        .read(focusRepositoryProvider)
-        .readLatestInProgressSession();
-    if (session == null || state.hasSession) return;
+    final repository = ref.read(focusRepositoryProvider);
+    final session = await repository.readLatestInProgressSession();
+    if (session == null) {
+      final pending = await repository.readPendingReviewSession();
+      if (pending != null && !state.hasSession) {
+        _restorePendingReview(pending);
+      }
+      return;
+    }
+    if (state.hasSession) return;
 
     final config = _configFromSession(session);
     final runtime = _runtimeFromSession(session);
     final engine = TimerEngine.fromRuntime(
       mode: config.mode,
       runtime: runtime,
-      clock: () => ref.read(focusClockProvider),
+      clock: ref.read(focusClockProvider),
       pomodoroWork: config.pomodoroWork,
       pomodoroBreak: config.pomodoroBreak,
       flowBreakRatio: config.flowBreakRatio,
     );
     _engine = engine;
-    _lastPersistedFocusSecs = engine.accumulatedFocus.inSeconds;
     state = ActiveSessionState(
       sessionId: session.id,
       startedAt: session.startedAt,
@@ -372,8 +434,44 @@ class ActiveSessionController extends _$ActiveSessionController {
       snapshot: engine.snapshot(),
     );
     _startTicker();
-    await _syncWakelockWithSettings();
-    await _persistRuntime();
+    try {
+      await _syncWakelockWithSettings();
+    } catch (error) {
+      debugPrint('Could not restore focus wakelock: $error');
+    }
+    try {
+      await _persistRuntime();
+    } catch (error) {
+      debugPrint('Could not persist restored focus runtime: $error');
+    }
+  }
+
+  Future<void> _restoreAtStartup() async {
+    try {
+      await _restoreLatestInProgressSession();
+    } finally {
+      if (state.isRestoring) state = ActiveSessionState.none;
+    }
+  }
+
+  void _restorePendingReview(FocusSession session) {
+    final config = _configFromSession(session);
+    state = ActiveSessionState(
+      sessionId: session.id,
+      startedAt: session.startedAt,
+      config: config,
+      snapshot: TimerSnapshot(
+        status: TimerStatus.finished,
+        phase: TimerPhase.work,
+        mode: config.mode,
+        elapsed: Duration(seconds: session.actualFocusSecs),
+        remaining: Duration.zero,
+        target: config.mode == TimerMode.pomodoro ? config.pomodoroWork : null,
+        cyclesCompleted: session.cyclesCompleted,
+        accumulatedFocus: Duration(seconds: session.actualFocusSecs),
+      ),
+      reviewPending: true,
+    );
   }
 
   Future<void> _syncWakelockWithSettings() async {
@@ -385,10 +483,18 @@ class ActiveSessionController extends _$ActiveSessionController {
     return ref.read(focusWakelockServiceProvider).setEnabled(enabled);
   }
 
+  Future<void> _disableWakelockBestEffort() async {
+    try {
+      await _setWakelock(false);
+    } catch (error) {
+      debugPrint('Could not disable focus wakelock: $error');
+    }
+  }
+
   TimerEngine _buildEngine(FocusSessionConfig config) {
     return TimerEngine(
       mode: config.mode,
-      clock: () => ref.read(focusClockProvider),
+      clock: ref.read(focusClockProvider),
       pomodoroWork: config.pomodoroWork,
       pomodoroBreak: config.pomodoroBreak,
       flowBreakRatio: config.flowBreakRatio,
@@ -411,6 +517,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   }
 
   TimerEngineRuntimeSnapshot _runtimeFromSession(FocusSession session) {
+    final hasPersistedRuntime = session.runtimeStatus != null;
     final status = _enumAt(
       TimerStatus.values,
       session.runtimeStatus,
@@ -431,9 +538,9 @@ class ActiveSessionController extends _$ActiveSessionController {
       phase: phase,
       phaseStartedAt: session.runtimePhaseStartedAt,
       carried: Duration(
-        seconds: session.runtimeCarriedPhaseSecs == 0
-            ? session.actualFocusSecs
-            : session.runtimeCarriedPhaseSecs,
+        seconds: hasPersistedRuntime
+            ? session.runtimeCarriedPhaseSecs
+            : session.actualFocusSecs,
       ),
       phaseTarget: phaseTargetSecs == null
           ? null
@@ -454,7 +561,6 @@ class ActiveSessionController extends _$ActiveSessionController {
   void _clear() {
     _stopTicker();
     _engine = null;
-    _lastPersistedFocusSecs = -1;
     _secondsSinceRuntimePersist = 0;
     state = ActiveSessionState.none;
   }

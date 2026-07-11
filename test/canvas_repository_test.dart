@@ -3,15 +3,17 @@ import 'dart:ui';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
+import 'package:zenno/canvas/model/canvas_layer.dart';
+import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
-import 'package:zenno/core/database/database.dart' hide CanvasElement;
+import 'package:zenno/core/database/database.dart'
+    hide CanvasElement, CanvasLayer;
 
-/// `float32` storage in the ink BLOB keeps ~7 significant digits; reloaded
-/// stroke coordinates match only to this tolerance.
-const double _f32Tolerance = 1e-3;
+const double _pointTolerance = 1e-6;
 
 void main() {
   late ZennoDatabase db;
@@ -32,8 +34,117 @@ void main() {
   group('ensureCanvasExists', () {
     test('creates a row once, then reports it already exists', () async {
       const String fresh = 'a-brand-new-canvas';
+      expect(await repo.canvasExists(fresh), isFalse);
       expect(await repo.ensureCanvasExists(fresh), isTrue);
+      expect(await repo.canvasExists(fresh), isTrue);
       expect(await repo.ensureCanvasExists(fresh), isFalse);
+    });
+
+    test('controller load does not recreate a deleted canvas', () async {
+      const String deleted = 'deleted-canvas';
+      final controller = CanvasController(repository: repo, canvasId: deleted);
+      addTearDown(controller.dispose);
+
+      await expectLater(
+        controller.load(),
+        throwsA(isA<CanvasNotFoundException>()),
+      );
+
+      expect(await repo.canvasExists(deleted), isFalse);
+      expect(controller.isLoaded, isFalse);
+    });
+  });
+
+  group('layers', () {
+    test('ensureCanvasExists creates a default content layer', () async {
+      final layers = await repo.loadLayers(canvasId);
+
+      expect(layers, hasLength(1));
+      expect(layers.single.id, CanvasLayer.defaultContentLayerId(canvasId));
+      expect(layers.single.name, 'Notes');
+      expect(layers.single.visible, isTrue);
+      expect(layers.single.locked, isFalse);
+    });
+
+    test('custom layer assignment round-trips on an element', () async {
+      const layer = CanvasLayer(
+        id: 'layer-sketch',
+        canvasId: canvasId,
+        name: 'Sketch',
+        position: 1,
+      );
+      await repo.upsertLayer(layer);
+      const original = ImageElement(
+        id: 'layered-img',
+        zIndex: 0,
+        layerId: 'layer-sketch',
+        worldBounds: Rect.fromLTWH(0, 0, 10, 10),
+        sourceFilePath: '/m/layered.png',
+        intrinsicSize: Size(10, 10),
+      );
+
+      await repo.upsertElement(canvasId, original);
+
+      final loaded = await repo.loadElements(canvasId);
+      expect(loaded.single.layerId, 'layer-sketch');
+    });
+
+    test('updating a layer preserves its element assignments', () async {
+      const layer = CanvasLayer(
+        id: 'layer-sketch',
+        canvasId: canvasId,
+        name: 'Sketch',
+        position: 1,
+      );
+      await repo.upsertLayer(layer);
+      await repo.upsertElement(
+        canvasId,
+        const ImageElement(
+          id: 'layered-img',
+          zIndex: 0,
+          layerId: 'layer-sketch',
+          worldBounds: Rect.fromLTWH(0, 0, 10, 10),
+          sourceFilePath: '/m/layered.png',
+          intrinsicSize: Size(10, 10),
+        ),
+      );
+
+      await repo.upsertLayer(layer.copyWith(visible: false));
+
+      final row = await (db.select(
+        db.canvasElements,
+      )..where((element) => element.id.equals('layered-img'))).getSingle();
+      final loaded = await repo.loadElements(canvasId);
+      expect(row.layerId, 'layer-sketch');
+      expect(loaded.single.layerId, 'layer-sketch');
+    });
+
+    test('batch layer updates roll back together on failure', () async {
+      const layer = CanvasLayer(
+        id: 'layer-sketch',
+        canvasId: canvasId,
+        name: 'Sketch',
+        position: 1,
+      );
+      await repo.upsertLayer(layer);
+
+      await expectLater(
+        repo.upsertLayers([
+          layer.copyWith(visible: false),
+          const CanvasLayer(
+            id: 'invalid-layer',
+            canvasId: 'missing-canvas',
+            name: 'Invalid',
+            position: 2,
+          ),
+        ]),
+        throwsA(anything),
+      );
+
+      final stored = await (db.select(
+        db.canvasLayers,
+      )..where((candidate) => candidate.id.equals(layer.id))).getSingle();
+      expect(stored.visible, isTrue);
     });
   });
 
@@ -61,13 +172,56 @@ void main() {
     });
   });
 
+  test('bookmarks persist across controller reload and removal', () async {
+    final first = CanvasController(repository: repo, canvasId: canvasId);
+    await first.load();
+    first.setViewport(
+      const ViewportState(
+        translation: Offset(120, -80),
+        scale: 2.5,
+        rotation: 0.25,
+      ),
+    );
+    first.saveBookmark('Diagram');
+    await first.flush();
+    first.dispose();
+
+    final second = CanvasController(repository: repo, canvasId: canvasId);
+    await second.load();
+    expect(second.bookmarks, hasLength(1));
+    expect(second.bookmarks.single.name, 'Diagram');
+    expect(
+      second.bookmarks.single.viewport,
+      const ViewportState(
+        translation: Offset(120, -80),
+        scale: 2.5,
+        rotation: 0.25,
+      ),
+    );
+
+    second.removeBookmark(second.bookmarks.single);
+    await second.flush();
+    second.dispose();
+
+    expect(await repo.loadBookmarks(canvasId), isEmpty);
+  });
+
   group('ink element round-trip', () {
     test('save then load reconstructs the InkElement', () async {
       const stroke = Stroke(
         id: 'ink-1',
         points: <StrokePoint>[
           StrokePoint(10, 20, 0.1),
-          StrokePoint(11, 22, 0.4),
+          StrokePoint(
+            11,
+            22,
+            0.4,
+            tiltX: 0.12,
+            tiltY: 0.25,
+            azimuth: 1.2,
+            timestampMicros: 1000,
+            velocity: 42,
+          ),
           StrokePoint(15.5, 30.25, 0.95),
         ],
         color: 0xFFAB12CD,
@@ -92,17 +246,83 @@ void main() {
       for (var i = 0; i < stroke.points.length; i++) {
         expect(
           ink.stroke.points[i].x,
-          closeTo(stroke.points[i].x, _f32Tolerance),
+          closeTo(stroke.points[i].x, _pointTolerance),
         );
         expect(
           ink.stroke.points[i].y,
-          closeTo(stroke.points[i].y, _f32Tolerance),
+          closeTo(stroke.points[i].y, _pointTolerance),
         );
         expect(
           ink.stroke.points[i].pressure,
-          closeTo(stroke.points[i].pressure, _f32Tolerance),
+          closeTo(stroke.points[i].pressure, _pointTolerance),
+        );
+        expect(
+          ink.stroke.points[i].tiltX,
+          closeTo(stroke.points[i].tiltX, _pointTolerance),
+        );
+        expect(
+          ink.stroke.points[i].tiltY,
+          closeTo(stroke.points[i].tiltY, _pointTolerance),
+        );
+        expect(
+          ink.stroke.points[i].azimuth,
+          closeTo(stroke.points[i].azimuth, _pointTolerance),
+        );
+        expect(
+          ink.stroke.points[i].timestampMicros,
+          stroke.points[i].timestampMicros,
+        );
+        expect(
+          ink.stroke.points[i].velocity,
+          closeTo(stroke.points[i].velocity, _pointTolerance),
         );
       }
+    });
+
+    test('new brush families persist through the stroke tool column', () async {
+      final original = InkElement.fromStroke(
+        const Stroke(
+          id: 'ink-marker',
+          points: <StrokePoint>[
+            StrokePoint(0, 0, 0.5),
+            StrokePoint(10, 10, 0.5),
+          ],
+          color: 0xFF112233,
+          width: 8,
+          tool: StrokeToolKind.marker,
+        ),
+        zIndex: 1,
+      );
+
+      await repo.upsertElement(canvasId, original);
+      final loaded = (await repo.loadElements(canvasId)).single as InkElement;
+
+      expect(loaded.stroke.tool, StrokeToolKind.marker);
+    });
+
+    test('freeform fill persists through the stroke tool column', () async {
+      final original = InkElement.fromStroke(
+        const Stroke(
+          id: 'ink-fill',
+          points: <StrokePoint>[
+            StrokePoint(0, 0, 0.5),
+            StrokePoint(30, 0, 0.5),
+            StrokePoint(20, 20, 0.5),
+            StrokePoint(0, 0, 0.5),
+          ],
+          color: 0x88F2C94C,
+          width: 1,
+          tool: StrokeToolKind.fill,
+        ),
+        zIndex: 1,
+      );
+
+      await repo.upsertElement(canvasId, original);
+      final loaded = (await repo.loadElements(canvasId)).single as InkElement;
+
+      expect(loaded.stroke.tool, StrokeToolKind.fill);
+      expect(loaded.stroke.color, 0x88F2C94C);
+      expect(loaded.stroke.points, original.stroke.points);
     });
   });
 
@@ -239,6 +459,94 @@ void main() {
       expect(note.color, 0xFFE8B84B);
       expect(note.fontSize, 22);
     });
+
+    test('rotation round-trips without inflating placement bounds', () async {
+      const original = TextElement(
+        id: 'text-rotated',
+        zIndex: 6,
+        rotation: 0.7853981633974483,
+        worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
+        text: 'Rotated',
+        color: 0xFFE8B84B,
+        fontSize: 22,
+      );
+
+      await repo.upsertElement(canvasId, original);
+      final firstLoad =
+          (await repo.loadElements(canvasId)).single as TextElement;
+      await repo.upsertElement(canvasId, firstLoad);
+      final secondLoad =
+          (await repo.loadElements(canvasId)).single as TextElement;
+
+      expect(firstLoad.rotation, closeTo(original.rotation, 1e-12));
+      expect(firstLoad.placementBounds, original.placementBounds);
+      expect(secondLoad.placementBounds, original.placementBounds);
+      expect(secondLoad.worldBounds, original.worldBounds);
+    });
+  });
+
+  group('tool settings', () {
+    test('default pen width mode is Screen', () async {
+      final settings = await repo.loadToolSettings(canvasId);
+
+      expect(settings.penWidthMode, PenWidthMode.screen);
+    });
+
+    test('save then load preserves Canvas pen width mode', () async {
+      await repo.saveToolSettings(
+        canvasId,
+        const CanvasToolSettings(
+          penColor: 0xFFABCDEF,
+          penWidth: 12,
+          penWidthMode: PenWidthMode.canvas,
+          penKind: StrokeToolKind.marker,
+          pressureEnabled: false,
+        ),
+      );
+
+      final settings = await repo.loadToolSettings(canvasId);
+
+      expect(settings.penColor, 0xFFABCDEF);
+      expect(settings.penWidth, 12);
+      expect(settings.penWidthMode, PenWidthMode.canvas);
+      expect(settings.penKind, StrokeToolKind.marker);
+      expect(settings.pressureEnabled, isFalse);
+    });
+
+    test(
+      'save then load preserves all eight independent wheel favorites',
+      () async {
+        final presets = List<ToolWheelPreset>.of(defaultToolWheelPresets);
+        presets[0] = presets[0].copyWith(
+          color: 0xFF123456,
+          size: 7,
+          opacity: 0.6,
+          smoothing: 0.8,
+        );
+        presets[1] = defaultToolWheelPresetFor(
+          ToolWheelSlotKind.pen,
+        ).copyWith(size: 2);
+        presets[7] = defaultToolWheelPresetFor(ToolWheelSlotKind.pan);
+
+        await repo.saveToolSettings(
+          canvasId,
+          CanvasToolSettings(
+            penColor: 0x99123456,
+            penWidth: 7,
+            toolWheelPresets: presets,
+            activeToolWheelIndex: 7,
+          ),
+        );
+
+        final settings = await repo.loadToolSettings(canvasId);
+
+        expect(settings.activeToolWheelIndex, 7);
+        expect(settings.toolWheelPresets, hasLength(8));
+        expect(settings.toolWheelPresets[0], presets[0]);
+        expect(settings.toolWheelPresets[1], presets[1]);
+        expect(settings.toolWheelPresets[7].kind, ToolWheelSlotKind.pan);
+      },
+    );
   });
 
   group('mixed canvas', () {
@@ -387,7 +695,237 @@ void main() {
     });
   });
 
+  group('shape elements', () {
+    test('round-trip save then load reconstructs the ShapeElement', () async {
+      const shape = ShapeElement(
+        id: 'shape-arrow',
+        zIndex: 7,
+        shapeKind: 3,
+        start: Offset(10, 20),
+        end: Offset(110, 80),
+        color: 0xFF1E9BFF,
+        strokeWidth: 6,
+      );
+
+      await repo.upsertElement(canvasId, shape);
+
+      final loaded = await repo.loadElements(canvasId);
+      expect(loaded, hasLength(1));
+      final roundTripped = loaded.single as ShapeElement;
+      expect(roundTripped.id, shape.id);
+      expect(roundTripped.zIndex, shape.zIndex);
+      expect(roundTripped.shapeKind, shape.shapeKind);
+      expect(roundTripped.start, shape.start);
+      expect(roundTripped.end, shape.end);
+      expect(roundTripped.color, shape.color);
+      expect(roundTripped.strokeWidth, shape.strokeWidth);
+      expect(roundTripped.arrowEndHead, ArrowHeadStyle.filled);
+      expect(roundTripped.legacyArrow, isTrue);
+    });
+
+    test('styled arrow fields round-trip without legacy rendering', () async {
+      const shape = ShapeElement(
+        id: 'shape-styled-arrow',
+        zIndex: 8,
+        shapeKind: 3,
+        start: Offset(10, 20),
+        end: Offset(110, 80),
+        color: 0xFF1E9BFF,
+        strokeWidth: 6,
+        arrowBody: ArrowBodyKind.curved,
+        arrowStartHead: ArrowHeadStyle.dot,
+        arrowEndHead: ArrowHeadStyle.open,
+        arrowHeadScale: 1.5,
+        controlPoints: <Offset>[Offset(40, 100)],
+        legacyArrow: false,
+      );
+
+      await repo.upsertElement(canvasId, shape);
+
+      final loaded = await repo.loadElements(canvasId);
+      expect(loaded, hasLength(1));
+      final roundTripped = loaded.single as ShapeElement;
+      expect(roundTripped.arrowBody, ArrowBodyKind.curved);
+      expect(roundTripped.arrowStartHead, ArrowHeadStyle.dot);
+      expect(roundTripped.arrowEndHead, ArrowHeadStyle.open);
+      expect(roundTripped.arrowHeadScale, 1.5);
+      expect(roundTripped.controlPoints, const <Offset>[Offset(40, 100)]);
+      expect(roundTripped.legacyArrow, isFalse);
+    });
+  });
+
   group('loadElements', () {
+    test('upsertElements and deleteElements handle mixed batches', () async {
+      final ink = InkElement.fromStroke(
+        const Stroke(
+          id: 'batch-ink',
+          points: <StrokePoint>[
+            StrokePoint(0, 0, 0.5),
+            StrokePoint(10, 10, 0.5),
+          ],
+          color: 0xFFFFFFFF,
+          width: 4,
+        ),
+        zIndex: 0,
+      );
+      const image = ImageElement(
+        id: 'batch-image',
+        zIndex: 1,
+        worldBounds: Rect.fromLTWH(10, 20, 30, 40),
+        sourceFilePath: '/m/batch.png',
+        intrinsicSize: Size(30, 40),
+      );
+      const note = TextElement(
+        id: 'batch-note',
+        zIndex: 2,
+        worldBounds: Rect.fromLTWH(50, 60, 70, 80),
+        text: 'Batched',
+        color: 0xFFFFFFFF,
+        fontSize: 18,
+      );
+
+      await repo.upsertElements(canvasId, <CanvasElement>[ink, image, note]);
+
+      final loaded = await repo.loadElements(canvasId);
+      expect(loaded.map((CanvasElement element) => element.id), <String>[
+        'batch-ink',
+        'batch-image',
+        'batch-note',
+      ]);
+
+      await repo.deleteElements(<String>['batch-image', 'batch-note']);
+
+      final remaining = await repo.loadElements(canvasId);
+      expect(remaining.map((CanvasElement element) => element.id), <String>[
+        'batch-ink',
+      ]);
+    });
+
+    test('a failed replace batch restores the original elements', () async {
+      const original = TextElement(
+        id: 'original-note',
+        zIndex: 0,
+        worldBounds: Rect.fromLTWH(0, 0, 100, 80),
+        text: 'Original',
+        color: 0xFFFFFFFF,
+        fontSize: 18,
+      );
+      await repo.upsertElement(canvasId, original);
+
+      await expectLater(
+        repo.applyElementBatch(
+          canvasId,
+          deletes: const ['original-note'],
+          upserts: const [
+            ImageElement(
+              id: 'invalid-replacement',
+              zIndex: 1,
+              layerId: 'missing-layer',
+              worldBounds: Rect.fromLTWH(0, 0, 10, 10),
+              sourceFilePath: '/m/missing.png',
+              intrinsicSize: Size(10, 10),
+            ),
+          ],
+        ),
+        throwsA(anything),
+      );
+
+      final loaded = await repo.loadElements(canvasId);
+      expect(loaded, hasLength(1));
+      expect(loaded.single.id, original.id);
+      expect((loaded.single as TextElement).text, original.text);
+    });
+
+    test(
+      'controller command persistence batches final moved geometry',
+      () async {
+        final CanvasController controller = CanvasController(
+          repository: repo,
+          canvasId: canvasId,
+        );
+        addTearDown(controller.dispose);
+        await controller.load();
+        const image = ImageElement(
+          id: 'controller-batch-image',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(10, 20, 30, 40),
+          sourceFilePath: '/m/controller-batch.png',
+          intrinsicSize: Size(30, 40),
+        );
+        controller.addElementToStore(image);
+        await controller.flush();
+
+        controller
+          ..setSelection(<String>{'controller-batch-image'})
+          ..nudgeSelection(const Offset(5, -10));
+        await controller.flush();
+
+        final loaded = await repo.loadElements(canvasId);
+        expect(loaded, hasLength(1));
+        final moved = loaded.single as ImageElement;
+        expect(moved.placementBounds, const Rect.fromLTWH(15, 10, 30, 40));
+      },
+    );
+
+    test('dismissing a save banner does not hide unsaved writes', () async {
+      final controller = CanvasController(repository: repo, canvasId: canvasId);
+      addTearDown(controller.dispose);
+      await controller.load();
+      await db.close();
+
+      controller.addElementToStore(
+        const TextElement(
+          id: 'unsaved-note',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(0, 0, 100, 80),
+          text: 'Keep this note',
+          color: 0xFFFFFFFF,
+          fontSize: 18,
+        ),
+      );
+      await controller.flush();
+      expect(controller.hasSaveError, isTrue);
+      expect(controller.hasUnsavedWrites, isTrue);
+
+      controller.dismissSaveError();
+
+      expect(controller.hasSaveError, isFalse);
+      expect(controller.hasUnsavedWrites, isTrue);
+    });
+
+    test(
+      'retry persists the newest state instead of a stale failed write',
+      () async {
+        final failOnceRepo = _FailOnceCanvasRepository(db);
+        final controller = CanvasController(
+          repository: failOnceRepo,
+          canvasId: canvasId,
+        );
+        addTearDown(controller.dispose);
+        await controller.load();
+        const original = TextElement(
+          id: 'retry-note',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(0, 0, 100, 80),
+          text: 'Original',
+          color: 0xFFFFFFFF,
+          fontSize: 18,
+        );
+
+        controller.addElementToStore(original);
+        await controller.flush();
+        expect(controller.hasUnsavedWrites, isTrue);
+
+        controller.updateTextElement(original, 'Newest');
+        await controller.flush();
+        await controller.retryFailedWrites();
+
+        final loaded = await repo.loadElements(canvasId);
+        expect((loaded.single as TextElement).text, 'Newest');
+        expect(controller.hasUnsavedWrites, isFalse);
+      },
+    );
+
     test('does not return soft-deleted elements', () async {
       await repo.upsertElement(
         canvasId,
@@ -425,4 +963,19 @@ void main() {
       expect(await repo.loadElements(otherCanvas), hasLength(1));
     });
   });
+}
+
+class _FailOnceCanvasRepository extends CanvasRepository {
+  _FailOnceCanvasRepository(super.db);
+
+  bool _shouldFail = true;
+
+  @override
+  Future<void> upsertElement(String canvasId, CanvasElement element) {
+    if (_shouldFail) {
+      _shouldFail = false;
+      return Future<void>.error(StateError('simulated write failure'));
+    }
+    return super.upsertElement(canvasId, element);
+  }
 }

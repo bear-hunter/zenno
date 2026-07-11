@@ -2,6 +2,14 @@ import 'package:flutter/widgets.dart';
 
 import 'package:zenno/canvas/model/canvas_element.dart';
 
+CanvasElement _commandSnapshot(CanvasElement element) {
+  return switch (element) {
+    ImageElement() => element.copyWith(clearRaster: true),
+    PdfElement() => element.copyWith(clearRaster: true),
+    _ => element,
+  };
+}
+
 /// The mutation surface a [CanvasCommand] acts on.
 ///
 /// `CanvasController` implements this so commands can add and remove elements
@@ -54,7 +62,8 @@ abstract class CanvasCommand {
 /// the command produced when the user finishes drawing an ink stroke.
 class AddElementCommand extends CanvasCommand {
   /// Creates a command that adds [element].
-  const AddElementCommand(this.element);
+  AddElementCommand(CanvasElement element)
+    : element = _commandSnapshot(element);
 
   /// The element this command inserts.
   final CanvasElement element;
@@ -84,7 +93,9 @@ class RemoveElementsCommand extends CanvasCommand {
   /// The list is copied defensively so later mutation of the caller's list
   /// cannot corrupt this command's undo data.
   RemoveElementsCommand(Iterable<CanvasElement> elements)
-    : elements = List<CanvasElement>.unmodifiable(elements);
+    : elements = List<CanvasElement>.unmodifiable(
+        elements.map(_commandSnapshot),
+      );
 
   /// The elements this command removes, in their original order.
   final List<CanvasElement> elements;
@@ -130,8 +141,10 @@ class ReplaceElementsCommand extends CanvasCommand {
   ReplaceElementsCommand({
     required Iterable<CanvasElement> removed,
     required Iterable<CanvasElement> added,
-  }) : removed = List<CanvasElement>.unmodifiable(removed),
-       added = List<CanvasElement>.unmodifiable(added);
+  }) : removed = List<CanvasElement>.unmodifiable(
+         removed.map(_commandSnapshot),
+       ),
+       added = List<CanvasElement>.unmodifiable(added.map(_commandSnapshot));
 
   /// The elements this command removes (and a [revert] re-inserts).
   final List<CanvasElement> removed;
@@ -183,8 +196,10 @@ class MoveElementsCommand extends CanvasCommand {
     required Iterable<CanvasElement> originals,
     required Iterable<CanvasElement> moved,
     required this.delta,
-  }) : originals = List<CanvasElement>.unmodifiable(originals),
-       moved = List<CanvasElement>.unmodifiable(moved);
+  }) : originals = List<CanvasElement>.unmodifiable(
+         originals.map(_commandSnapshot),
+       ),
+       moved = List<CanvasElement>.unmodifiable(moved.map(_commandSnapshot));
 
   /// The elements as they were before the move.
   final List<CanvasElement> originals;
@@ -220,6 +235,60 @@ class MoveElementsCommand extends CanvasCommand {
   }
 }
 
+/// Replaces selected elements with transformed copies as one undoable edit.
+///
+/// Unlike [MoveElementsCommand], this covers transforms that cannot be
+/// described by a single translation: scaling, rotation, and future resize
+/// handles. The element ids are preserved; only geometry and transform fields
+/// change.
+class TransformElementsCommand extends CanvasCommand {
+  /// Creates a transform from [originals] to [transformed].
+  TransformElementsCommand({
+    required Iterable<CanvasElement> originals,
+    required Iterable<CanvasElement> transformed,
+    this.description = 'Transform',
+  }) : originals = List<CanvasElement>.unmodifiable(
+         originals.map(_commandSnapshot),
+       ),
+       transformed = List<CanvasElement>.unmodifiable(
+         transformed.map(_commandSnapshot),
+       );
+
+  /// The elements as they were before the transform.
+  final List<CanvasElement> originals;
+
+  /// The elements after the transform, preserving ids.
+  final List<CanvasElement> transformed;
+
+  /// Human-readable transform label.
+  final String description;
+
+  @override
+  String get label => transformed.length == 1
+      ? '$description element'
+      : '$description ${transformed.length} elements';
+
+  @override
+  void apply(ElementStore store) {
+    for (final CanvasElement element in originals) {
+      store.removeElementFromStore(element.id);
+    }
+    for (final CanvasElement element in transformed) {
+      store.addElementToStore(element);
+    }
+  }
+
+  @override
+  void revert(ElementStore store) {
+    for (final CanvasElement element in transformed) {
+      store.removeElementFromStore(element.id);
+    }
+    for (final CanvasElement element in originals) {
+      store.addElementToStore(element);
+    }
+  }
+}
+
 /// Removes every element from the canvas.
 ///
 /// Snapshots the whole element list on first [apply] so a later [revert]
@@ -236,7 +305,9 @@ class ClearCommand extends CanvasCommand {
 
   @override
   void apply(ElementStore store) {
-    _removed = List<CanvasElement>.unmodifiable(store.currentElements);
+    _removed = List<CanvasElement>.unmodifiable(
+      store.currentElements.map(_commandSnapshot),
+    );
     for (final CanvasElement element in _removed) {
       store.removeElementFromStore(element.id);
     }

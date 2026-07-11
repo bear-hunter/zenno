@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/util/id.dart';
+import 'package:zenno/core/widgets/app_dialog.dart';
 import 'package:zenno/features/goal_cycle/application/reflection_providers.dart';
 import 'package:zenno/features/goal_cycle/domain/reflection_template_schema.dart';
 
@@ -43,9 +46,18 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
 
   /// True while a save write is in flight.
   bool _saving = false;
+  bool _allowPop = false;
+  bool _discardDialogOpen = false;
+  Object? _loadError;
+  String? _initialDraftSignature;
 
   /// Whether this is a brand-new template (no [TemplateEditorPage.templateId]).
   bool get _isNew => widget.templateId == null;
+  bool get _dirty =>
+      !_loading &&
+      !_readOnly &&
+      _loadError == null &&
+      _initialDraftSignature != _draftSignature();
 
   @override
   void initState() {
@@ -65,42 +77,70 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
 
   /// Loads an existing template, or sets up a blank one.
   Future<void> _load() async {
-    final id = widget.templateId;
-    if (id == null) {
-      // New template: start with one empty prompt to anchor the editor.
+    if (mounted) {
       setState(() {
-        _prompts.add(_PromptDraft.empty());
-        _loading = false;
+        _loading = true;
+        _loadError = null;
       });
-      return;
     }
 
-    final template = await ref
-        .read(reflectionRepositoryProvider)
-        .templateById(id);
-    if (!mounted) return;
+    try {
+      final id = widget.templateId;
+      if (id == null) {
+        // New template: start with one empty prompt to anchor the editor.
+        if (!mounted) return;
+        setState(() {
+          _replacePrompts([_PromptDraft.empty()]);
+          _loading = false;
+          _initialDraftSignature = _draftSignature();
+        });
+        return;
+      }
 
-    if (template == null) {
-      // Deleted out from under us — bounce back.
-      Navigator.of(context).pop();
-      return;
-    }
+      final template = await ref
+          .read(reflectionRepositoryProvider)
+          .templateById(id);
+      if (!mounted) return;
 
-    setState(() {
-      _readOnly = template.isBuiltin;
-      _nameController.text = template.name;
-      _descriptionController.text = template.description ?? '';
-      _prompts
-        ..clear()
-        ..addAll([
+      if (template == null) {
+        setState(() {
+          _loading = false;
+          _loadError = StateError('Template no longer exists.');
+        });
+        return;
+      }
+
+      setState(() {
+        _readOnly = template.isBuiltin;
+        _nameController.text = template.name;
+        _descriptionController.text = template.description ?? '';
+        _replacePrompts([
           for (final prompt in template.schema.prompts)
             _PromptDraft.fromPrompt(prompt),
         ]);
-      if (_prompts.isEmpty && !_readOnly) {
-        _prompts.add(_PromptDraft.empty());
-      }
-      _loading = false;
-    });
+        if (_prompts.isEmpty && !_readOnly) {
+          _prompts.add(_PromptDraft.empty());
+        }
+        _loading = false;
+        _initialDraftSignature = _draftSignature();
+      });
+    } on Object catch (error) {
+      debugPrint('Load reflection template failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = error;
+      });
+    }
+  }
+
+  void _replacePrompts(List<_PromptDraft> prompts) {
+    for (final prompt in _prompts) {
+      prompt.dispose();
+    }
+    _prompts
+      ..clear()
+      ..addAll(prompts);
   }
 
   void _addPrompt() {
@@ -167,7 +207,28 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
         .replaceAll(RegExp('^_+|_+\$'), '');
   }
 
+  String _draftSignature() {
+    return jsonEncode({
+      'name': _nameController.text,
+      'description': _descriptionController.text,
+      'prompts': [
+        for (final prompt in _prompts)
+          {
+            'key': prompt.existingKey,
+            'label': prompt.labelController.text,
+            'hint': prompt.hintController.text,
+            'multiline': prompt.multiline,
+          },
+      ],
+    });
+  }
+
+  void _draftChanged() {
+    setState(() {});
+  }
+
   Future<void> _save() async {
+    if (_saving || _loading || _readOnly || !_dirty) return;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       _toast('Give the template a name.');
@@ -198,12 +259,24 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
           schema: schema,
         );
       }
-      navigator.pop();
+      _allowPop = true;
+      if (navigator.mounted) navigator.pop();
     } on Object catch (error) {
+      debugPrint('Save reflection template failed: $error');
       if (!mounted) return;
       setState(() => _saving = false);
       _toast('Could not save: $error');
     }
+  }
+
+  Future<void> _confirmLeave() async {
+    if (_saving || _discardDialogOpen) return;
+    _discardDialogOpen = true;
+    final discard = await confirmDiscardChanges(context);
+    _discardDialogOpen = false;
+    if (!discard || !mounted) return;
+    setState(() => _allowPop = true);
+    Navigator.of(context).pop();
   }
 
   void _toast(String message) {
@@ -221,110 +294,167 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
         ? 'New template'
         : 'Edit template';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        actions: [
-          if (!_readOnly && !_loading)
-            TextButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: const Icon(Icons.check),
-              label: const Text('Save'),
-            ),
-          const SizedBox(width: AppSpacing.sm),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: AppSpacing.contentMaxWidth,
-                ),
-                child: ListView(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  children: [
-                    if (_readOnly) ...[
-                      const _ReadOnlyBanner(),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
-
-                    // --- Identity --------------------------------------------
-                    TextField(
-                      controller: _nameController,
-                      readOnly: _readOnly,
-                      textCapitalization: TextCapitalization.words,
-                      style: theme.textTheme.titleMedium,
-                      decoration: const InputDecoration(
-                        labelText: 'Template name',
-                        border: OutlineInputBorder(),
-                      ),
+    return PopScope<void>(
+      canPop: _allowPop || (!_dirty && !_saving),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_saving) _confirmLeave();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(title),
+          actions: [
+            if (!_readOnly && !_loading && _loadError == null)
+              TextButton.icon(
+                onPressed: _dirty && !_saving ? _save : null,
+                icon: _saving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check),
+                label: Text(_saving ? 'Saving…' : 'Save'),
+              ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+            ? _TemplateLoadError(
+                onRetry: _load,
+                onBack: () => Navigator.of(context).pop(),
+              )
+            : AbsorbPointer(
+                absorbing: _saving,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: AppSpacing.contentMaxWidth,
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    TextField(
-                      controller: _descriptionController,
-                      readOnly: _readOnly,
-                      textCapitalization: TextCapitalization.sentences,
-                      minLines: 1,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        hintText: 'Optional',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-                    Text('Prompts', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      _readOnly
-                          ? 'The questions this framework asks, in order.'
-                          : 'Add the questions this framework asks. Drag '
-                                'the handle to reorder.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-
-                    // --- Prompt list -----------------------------------------
-                    ReorderableListView(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      buildDefaultDragHandles: false,
-                      onReorder: _reorderPrompt,
+                    child: ListView(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       children: [
-                        for (var i = 0; i < _prompts.length; i++)
-                          _PromptEditorRow(
-                            key: ValueKey(_prompts[i].id),
-                            index: i,
-                            draft: _prompts[i],
-                            readOnly: _readOnly,
-                            onRemove: _prompts.length > 1
-                                ? () => _removePrompt(_prompts[i])
-                                : null,
-                            onMultilineChanged: (value) =>
-                                setState(() => _prompts[i].multiline = value),
+                        if (_readOnly) ...[
+                          const _ReadOnlyBanner(),
+                          const SizedBox(height: AppSpacing.lg),
+                        ],
+
+                        // --- Identity --------------------------------------------
+                        TextField(
+                          controller: _nameController,
+                          readOnly: _readOnly,
+                          onChanged: (_) => _draftChanged(),
+                          textCapitalization: TextCapitalization.words,
+                          style: theme.textTheme.titleMedium,
+                          decoration: const InputDecoration(
+                            labelText: 'Template name',
+                            border: OutlineInputBorder(),
                           ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        TextField(
+                          controller: _descriptionController,
+                          readOnly: _readOnly,
+                          onChanged: (_) => _draftChanged(),
+                          textCapitalization: TextCapitalization.sentences,
+                          minLines: 1,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: 'Description',
+                            hintText: 'Optional',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.xl),
+                        Text('Prompts', style: theme.textTheme.titleMedium),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          _readOnly
+                              ? 'The questions this framework asks, in order.'
+                              : 'Add the questions this framework asks. Drag '
+                                    'the handle to reorder.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+
+                        // --- Prompt list -----------------------------------------
+                        ReorderableListView(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          buildDefaultDragHandles: false,
+                          onReorder: _reorderPrompt,
+                          children: [
+                            for (var i = 0; i < _prompts.length; i++)
+                              _PromptEditorRow(
+                                key: ValueKey(_prompts[i].id),
+                                index: i,
+                                draft: _prompts[i],
+                                readOnly: _readOnly,
+                                onChanged: _draftChanged,
+                                onRemove: _prompts.length > 1
+                                    ? () => _removePrompt(_prompts[i])
+                                    : null,
+                                onMultilineChanged: (value) => setState(
+                                  () => _prompts[i].multiline = value,
+                                ),
+                              ),
+                          ],
+                        ),
+
+                        if (!_readOnly) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          OutlinedButton.icon(
+                            onPressed: _addPrompt,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add prompt'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-
-                    if (!_readOnly) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      OutlinedButton.icon(
-                        onPressed: _addPrompt,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add prompt'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
+      ),
+    );
+  }
+}
+
+class _TemplateLoadError extends StatelessWidget {
+  const _TemplateLoadError({required this.onRetry, required this.onBack});
+
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
+            const SizedBox(height: AppSpacing.md),
+            const Text('Could not load this template.'),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(onPressed: onBack, child: const Text('Back')),
+                const SizedBox(width: AppSpacing.sm),
+                FilledButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
             ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -383,6 +513,7 @@ class _PromptEditorRow extends StatelessWidget {
     required this.index,
     required this.draft,
     required this.readOnly,
+    required this.onChanged,
     required this.onMultilineChanged,
     this.onRemove,
     super.key,
@@ -391,6 +522,7 @@ class _PromptEditorRow extends StatelessWidget {
   final int index;
   final _PromptDraft draft;
   final bool readOnly;
+  final VoidCallback onChanged;
   final ValueChanged<bool> onMultilineChanged;
 
   /// Removes this row, or `null` when it is the last remaining prompt.
@@ -440,6 +572,7 @@ class _PromptEditorRow extends StatelessWidget {
             TextField(
               controller: draft.labelController,
               readOnly: readOnly,
+              onChanged: (_) => onChanged(),
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Question / label',
@@ -450,6 +583,7 @@ class _PromptEditorRow extends StatelessWidget {
             TextField(
               controller: draft.hintController,
               readOnly: readOnly,
+              onChanged: (_) => onChanged(),
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Hint',

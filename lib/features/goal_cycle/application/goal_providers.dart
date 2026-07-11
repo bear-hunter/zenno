@@ -89,7 +89,7 @@ class GoalBoardController implements KanbanController {
   }
 
   @override
-  Future<void> addCard({
+  Future<String?> addCard({
     required String columnId,
     required String title,
     String? subtitle,
@@ -121,6 +121,23 @@ class GoalBoardController implements KanbanController {
       cardId,
       title: title,
       subtitle: Value(subtitle),
+    );
+  }
+
+  /// Saves the card text, status note, and target date atomically.
+  Future<void> saveCard({
+    required String cardId,
+    required String title,
+    required String? subtitle,
+    required String? statusNote,
+    required DateTime? targetDate,
+  }) {
+    return _repository.saveCard(
+      cardId: cardId,
+      title: title,
+      subtitle: subtitle,
+      statusNote: statusNote,
+      targetDate: targetDate,
     );
   }
 

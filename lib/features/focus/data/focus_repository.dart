@@ -24,6 +24,16 @@ class FocusSessionDetail {
   final List<FocusSessionRitualCheck> ritualChecks;
 }
 
+/// Raised when another persisted session is already live.
+class FocusSessionAlreadyActiveException implements Exception {
+  const FocusSessionAlreadyActiveException(this.sessionId);
+
+  final String sessionId;
+
+  @override
+  String toString() => 'FocusSessionAlreadyActiveException($sessionId)';
+}
+
 /// Drift-backed access to the Focus aggregate: `focus_sessions`,
 /// `focus_session_ritual_checks` and `distractions`.
 ///
@@ -55,31 +65,49 @@ class FocusRepository {
     int? pomodoroBreakSecs,
     double? flowBreakRatio,
     String? linkedCanvasId,
+    List<({String itemId, String label, bool wasChecked})> ritualItems =
+        const [],
   }) async {
     final id = newId();
-    await _db
-        .into(_db.focusSessions)
-        .insert(
-          FocusSessionsCompanion.insert(
-            id: id,
-            startedAt: startedAt,
-            goalText: goalText,
-            preEnergy: preEnergy,
-            timerKind: timerKind,
-            plannedDurationSecs: plannedDurationSecs,
-            pomodoroWorkSecs: Value(pomodoroWorkSecs),
-            pomodoroBreakSecs: Value(pomodoroBreakSecs),
-            flowBreakRatio: Value(flowBreakRatio),
-            linkedCanvasId: Value(linkedCanvasId),
-            status: FocusSessionStatus.inProgress,
-            runtimeStatus: Value(timer.TimerStatus.running.index),
-            runtimePhase: Value(timer.TimerPhase.work.index),
-            runtimePhaseStartedAt: Value(startedAt),
-            runtimeCarriedPhaseSecs: const Value(0),
-            runtimePhaseTargetSecs: Value(pomodoroWorkSecs),
-            runtimeBankedFocusSecs: const Value(0),
-          ),
-        );
+    await _db.transaction(() async {
+      final FocusSession? active =
+          await (_db.select(_db.focusSessions)
+                ..where(
+                  (session) => session.status.isIn(<int>[
+                    FocusSessionStatus.inProgress.index,
+                    FocusSessionStatus.reviewPending.index,
+                  ]),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      if (active != null) {
+        throw FocusSessionAlreadyActiveException(active.id);
+      }
+      await _db
+          .into(_db.focusSessions)
+          .insert(
+            FocusSessionsCompanion.insert(
+              id: id,
+              startedAt: startedAt,
+              goalText: goalText,
+              preEnergy: preEnergy,
+              timerKind: timerKind,
+              plannedDurationSecs: plannedDurationSecs,
+              pomodoroWorkSecs: Value(pomodoroWorkSecs),
+              pomodoroBreakSecs: Value(pomodoroBreakSecs),
+              flowBreakRatio: Value(flowBreakRatio),
+              linkedCanvasId: Value(linkedCanvasId),
+              status: FocusSessionStatus.inProgress,
+              runtimeStatus: Value(timer.TimerStatus.running.index),
+              runtimePhase: Value(timer.TimerPhase.work.index),
+              runtimePhaseStartedAt: Value(startedAt),
+              runtimeCarriedPhaseSecs: const Value(0),
+              runtimePhaseTargetSecs: Value(pomodoroWorkSecs),
+              runtimeBankedFocusSecs: const Value(0),
+            ),
+          );
+      await _insertRitualChecks(sessionId: id, items: ritualItems);
+    });
     return id;
   }
 
@@ -108,12 +136,59 @@ class FocusRepository {
   }
 
   /// Returns the latest in-progress session, if one exists.
+  ///
+  /// Older app versions could leave more than one live row after competing
+  /// starts. When found, the newest remains active and each older row is
+  /// closed as abandoned at the next session's start time. This preserves its
+  /// recorded focus tally while restoring the one-session invariant.
   Future<FocusSession?> readLatestInProgressSession() {
+    return _db.transaction(() async {
+      final List<FocusSession> active =
+          await (_db.select(_db.focusSessions)
+                ..where(
+                  (session) => session.status.equals(
+                    FocusSessionStatus.inProgress.index,
+                  ),
+                )
+                ..orderBy([
+                  (session) => OrderingTerm(
+                    expression: session.startedAt,
+                    mode: OrderingMode.desc,
+                  ),
+                ]))
+              .get();
+      for (var index = 1; index < active.length; index += 1) {
+        final FocusSession orphan = active[index];
+        final DateTime supersededAt = active[index - 1].startedAt;
+        await (_db.update(
+          _db.focusSessions,
+        )..where((session) => session.id.equals(orphan.id))).write(
+          FocusSessionsCompanion(
+            endedAt: Value(supersededAt),
+            status: const Value(FocusSessionStatus.abandoned),
+            runtimeStatus: const Value(null),
+            runtimePhase: const Value(null),
+            runtimePhaseStartedAt: const Value(null),
+            runtimePhaseTargetSecs: const Value(null),
+          ),
+        );
+      }
+      return active.isEmpty ? null : active.first;
+    });
+  }
+
+  /// Returns the most recently finished session still waiting for Review.
+  Future<FocusSession?> readPendingReviewSession() {
     return (_db.select(_db.focusSessions)
-          ..where((s) => s.status.equals(FocusSessionStatus.inProgress.index))
+          ..where(
+            (session) =>
+                session.status.equals(FocusSessionStatus.reviewPending.index),
+          )
           ..orderBy([
-            (s) =>
-                OrderingTerm(expression: s.startedAt, mode: OrderingMode.desc),
+            (session) => OrderingTerm(
+              expression: session.endedAt,
+              mode: OrderingMode.desc,
+            ),
           ])
           ..limit(1))
         .getSingleOrNull();
@@ -162,7 +237,10 @@ class FocusRepository {
         status: Value(status),
         actualFocusSecs: Value(actualFocusSecs),
         cyclesCompleted: Value(cyclesCompleted),
-        runtimeStatus: const Value.absent(),
+        runtimeStatus: const Value(null),
+        runtimePhase: const Value(null),
+        runtimePhaseStartedAt: const Value(null),
+        runtimePhaseTargetSecs: const Value(null),
       ),
     );
   }
@@ -184,6 +262,15 @@ class FocusRepository {
         notes: Value(notes),
         status: const Value(FocusSessionStatus.completed),
       ),
+    );
+  }
+
+  /// Closes a pending Review without adding post-session answers.
+  Future<void> discardReview(String sessionId) {
+    return (_db.update(
+      _db.focusSessions,
+    )..where((session) => session.id.equals(sessionId))).write(
+      const FocusSessionsCompanion(status: Value(FocusSessionStatus.completed)),
     );
   }
 
@@ -234,6 +321,13 @@ class FocusRepository {
   /// stood when the session started — the label is copied so a later rename or
   /// retirement of the source item never alters this session's history.
   Future<void> snapshotRitualChecks({
+    required String sessionId,
+    required List<({String itemId, String label, bool wasChecked})> items,
+  }) {
+    return _insertRitualChecks(sessionId: sessionId, items: items);
+  }
+
+  Future<void> _insertRitualChecks({
     required String sessionId,
     required List<({String itemId, String label, bool wasChecked})> items,
   }) async {
