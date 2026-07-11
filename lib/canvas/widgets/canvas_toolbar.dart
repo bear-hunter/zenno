@@ -13,16 +13,44 @@ import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
-const List<(CanvasTool, IconData, String)> _canvasToolOptions =
-    <(CanvasTool, IconData, String)>[
-      (CanvasTool.pan, Icons.pan_tool_alt_outlined, 'Pan'),
-      (CanvasTool.pen, Icons.draw_outlined, 'Draw'),
-      (CanvasTool.eraser, Icons.cleaning_services_outlined, 'Eraser'),
-      (CanvasTool.lasso, Icons.gesture, 'Lasso select'),
-      (CanvasTool.shape, Icons.category_outlined, 'Shapes'),
-      (CanvasTool.text, Icons.notes_outlined, 'Text note'),
-      (CanvasTool.link, Icons.add_link, 'Place a link'),
-    ];
+IconData _toolWheelSlotIcon(ToolWheelSlotKind kind) => switch (kind) {
+  ToolWheelSlotKind.pen => Icons.brush_outlined,
+  ToolWheelSlotKind.pencil => Icons.edit_outlined,
+  ToolWheelSlotKind.highlighter => Icons.highlight_outlined,
+  ToolWheelSlotKind.marker => Icons.border_color_outlined,
+  ToolWheelSlotKind.airbrush => Icons.blur_on_outlined,
+  ToolWheelSlotKind.fill => Icons.format_color_fill_outlined,
+  ToolWheelSlotKind.eraser => Icons.cleaning_services_outlined,
+  ToolWheelSlotKind.lasso => Icons.gesture,
+  ToolWheelSlotKind.shape => Icons.category_outlined,
+  ToolWheelSlotKind.text => Icons.notes_outlined,
+  ToolWheelSlotKind.link => Icons.add_link,
+  ToolWheelSlotKind.pan => Icons.pan_tool_alt_outlined,
+};
+
+String _toolWheelSlotLabel(ToolWheelSlotKind kind) => switch (kind) {
+  ToolWheelSlotKind.pen => 'Pen',
+  ToolWheelSlotKind.pencil => 'Pencil',
+  ToolWheelSlotKind.highlighter => 'Highlighter',
+  ToolWheelSlotKind.marker => 'Marker',
+  ToolWheelSlotKind.airbrush => 'Airbrush',
+  ToolWheelSlotKind.fill => 'Freeform fill',
+  ToolWheelSlotKind.eraser => 'Eraser',
+  ToolWheelSlotKind.lasso => 'Select',
+  ToolWheelSlotKind.shape => 'Shapes',
+  ToolWheelSlotKind.text => 'Text note',
+  ToolWheelSlotKind.link => 'Canvas link',
+  ToolWheelSlotKind.pan => 'Pan',
+};
+
+String _toolWheelCenterLabel(ToolWheelSlotKind kind) => switch (kind) {
+  ToolWheelSlotKind.highlighter => 'Highlight',
+  ToolWheelSlotKind.fill => 'Fill',
+  ToolWheelSlotKind.shape => 'Shape',
+  ToolWheelSlotKind.text => 'Text',
+  ToolWheelSlotKind.link => 'Link',
+  _ => _toolWheelSlotLabel(kind),
+};
 
 /// Responsive, content-first chrome for the infinite canvas editor.
 class CanvasToolbar extends StatefulWidget {
@@ -127,9 +155,7 @@ class CanvasToolbarState extends State<CanvasToolbar> {
   /// The name remains compatible with editor and stylus shortcut call sites
   /// that predate the bar-free wheel.
   void showFullControls() {
-    final page = widget.controller.hasSelection
-        ? _WheelPage.selection
-        : _WheelPage.context;
+    const page = _WheelPage.context;
     if (_wheelPage != page) {
       setState(() => _wheelPage = page);
     }
@@ -311,20 +337,63 @@ class _CanvasToolbarContent extends StatelessWidget {
                     child: _RadialWheel(
                       key: CanvasToolbar.minimalToolMenuKey,
                       actions: wheelActions,
+                      properties: _wheelPropertyActions(context),
                       activeColor: Color(controller.penColor),
                       centerIcon: _wheelCenterIcon,
                       centerLabel: _wheelCenterLabel,
                       centerTooltip: _wheelCenterTooltip,
                       centerKey: CanvasToolbar.wheelCenterKey,
-                      onCenterTap: onCenterTap,
+                      onCenterTap: _effectiveWheelPage == _WheelPage.tools
+                          ? controller.activeToolWheelPreset.kind.isInk
+                                ? () => _showActiveColorPicker(context)
+                                : () => _showToolSettings(context)
+                          : onCenterTap,
                       onCenterLongPress:
-                          _effectiveWheelPage == _WheelPage.tools ||
-                              _effectiveWheelPage == _WheelPage.context ||
-                              _effectiveWheelPage == _WheelPage.selection
+                          _effectiveWheelPage == _WheelPage.tools &&
+                              controller.activeToolWheelPreset.kind.isInk &&
+                              onPaletteChanged != null
+                          ? () => _showPaletteEditor(
+                              context,
+                              palette.isEmpty ? _defaultSwatches : palette,
+                            )
+                          : _effectiveWheelPage == _WheelPage.context ||
+                                _effectiveWheelPage == _WheelPage.selection
                           ? () => _showToolSettings(context)
                           : null,
                     ),
                   ),
+                  if (_effectiveWheelPage == _WheelPage.tools)
+                    Positioned(
+                      top: _wheelTop + 22,
+                      left: 8 + wheelSize + 4,
+                      child: Column(
+                        children: <Widget>[
+                          _WheelSideButton(
+                            icon: Icons.undo,
+                            tooltip: 'Undo',
+                            onPressed: controller.canUndo
+                                ? controller.undo
+                                : null,
+                          ),
+                          const SizedBox(height: 6),
+                          _WheelSideButton(
+                            icon: Icons.redo,
+                            tooltip: 'Redo',
+                            onPressed: controller.canRedo
+                                ? controller.redo
+                                : null,
+                          ),
+                          const SizedBox(height: 6),
+                          _WheelSideButton(
+                            key: canvasSettingsDockKey,
+                            icon: Icons.more_horiz,
+                            tooltip: 'Canvas actions',
+                            onPressed: () =>
+                                onWheelPageChanged(_WheelPage.more),
+                          ),
+                        ],
+                      ),
+                    ),
                   Positioned(
                     key: CanvasToolbar.paletteDockKey,
                     top: _wheelTop + wheelSize - 4,
@@ -334,7 +403,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                     child: _PaletteDock(
                       colors: palette.isEmpty ? _defaultSwatches : palette,
                       selectedColor: controller.penColor,
-                      onSelect: controller.setPenColor,
+                      onSelect: controller.setPenRgbColor,
                     ),
                   ),
                 ],
@@ -535,29 +604,6 @@ class _CanvasToolbarContent extends StatelessWidget {
     );
   }
 
-  (CanvasTool, IconData, String) get _activeToolOption => _canvasToolOptions
-      .firstWhere((option) => option.$1 == controller.activeTool);
-
-  String get _activeToolSummary => switch (controller.activeTool) {
-    CanvasTool.pen => '${controller.penWidth.toStringAsFixed(0)} pt',
-    CanvasTool.eraser =>
-      '${controller.eraserRadius.round()} ${controller.eraserMode == EraserMode.object ? 'whole' : 'split'}',
-    CanvasTool.lasso => switch (controller.selectionMode) {
-      SelectionMode.replace => 'Select',
-      SelectionMode.add => 'Add next',
-      SelectionMode.subtract => 'Remove next',
-    },
-    CanvasTool.shape => switch (controller.shapeKind) {
-      ShapeKind.line => 'Line',
-      ShapeKind.rectangle => 'Rectangle',
-      ShapeKind.oval => 'Oval',
-      ShapeKind.arrow => 'Arrow',
-    },
-    CanvasTool.pan => _zoomLabel(controller.viewport.scale),
-    CanvasTool.text => 'Text',
-    CanvasTool.link => 'Link',
-  };
-
   _WheelPage get _effectiveWheelPage =>
       wheelPage == _WheelPage.selection && !controller.hasSelection
       ? _WheelPage.tools
@@ -565,11 +611,11 @@ class _CanvasToolbarContent extends StatelessWidget {
 
   List<_WheelAction> _wheelActions(BuildContext context) =>
       switch (_effectiveWheelPage) {
-        _WheelPage.tools => _toolWheelActions(),
+        _WheelPage.tools => _toolWheelActions(context),
         _WheelPage.context => _contextWheelActions(context),
         _WheelPage.selection when controller.hasSelection =>
           _selectionWheelActions(),
-        _WheelPage.selection => _toolWheelActions(),
+        _WheelPage.selection => _toolWheelActions(context),
         _WheelPage.more => _moreWheelActions(context),
         _WheelPage.insert => _insertWheelActions(context),
         _WheelPage.appearance => _appearanceWheelActions(context),
@@ -577,8 +623,9 @@ class _CanvasToolbarContent extends StatelessWidget {
       };
 
   IconData get _wheelCenterIcon => switch (_effectiveWheelPage) {
-    _WheelPage.tools when controller.hasSelection => Icons.select_all,
-    _WheelPage.tools => _activeToolOption.$2,
+    _WheelPage.tools => _toolWheelSlotIcon(
+      controller.activeToolWheelPreset.kind,
+    ),
     _WheelPage.context ||
     _WheelPage.selection ||
     _WheelPage.more => Icons.apps_rounded,
@@ -588,15 +635,18 @@ class _CanvasToolbarContent extends StatelessWidget {
   };
 
   String get _wheelCenterLabel => switch (_effectiveWheelPage) {
-    _WheelPage.tools when controller.hasSelection => _selectionCountLabel,
-    _WheelPage.tools => _activeToolSummary,
+    _WheelPage.tools => _toolWheelCenterLabel(
+      controller.activeToolWheelPreset.kind,
+    ),
     _WheelPage.context || _WheelPage.selection || _WheelPage.more => 'Tools',
     _WheelPage.insert || _WheelPage.appearance || _WheelPage.view => 'More',
   };
 
   String get _wheelCenterTooltip => switch (_effectiveWheelPage) {
-    _WheelPage.tools when controller.hasSelection => 'Selection actions',
-    _WheelPage.tools => '${_activeToolOption.$3} settings',
+    _WheelPage.tools when controller.activeToolWheelPreset.kind.isInk =>
+      'Choose active tool colour',
+    _WheelPage.tools =>
+      '${_toolWheelSlotLabel(controller.activeToolWheelPreset.kind)} settings',
     _WheelPage.context ||
     _WheelPage.selection ||
     _WheelPage.more => 'Show drawing tools',
@@ -605,47 +655,189 @@ class _CanvasToolbarContent extends StatelessWidget {
     _WheelPage.view => 'Back to more actions',
   };
 
-  List<_WheelAction> _toolWheelActions() {
-    const tools = <(CanvasTool, IconData, String)>[
-      (CanvasTool.pen, Icons.draw_outlined, 'Draw'),
-      (CanvasTool.eraser, Icons.cleaning_services_outlined, 'Eraser'),
-      (CanvasTool.lasso, Icons.gesture, 'Lasso select'),
-      (CanvasTool.shape, Icons.category_outlined, 'Shapes'),
-      (CanvasTool.text, Icons.notes_outlined, 'Text note'),
-      (CanvasTool.link, Icons.add_link, 'Place a link'),
-      (CanvasTool.pan, Icons.pan_tool_alt_outlined, 'Pan'),
-    ];
+  List<_WheelAction> _toolWheelActions(BuildContext context) {
     return <_WheelAction>[
-      for (final (tool, icon, label) in tools)
+      for (var index = 0; index < controller.toolWheelPresets.length; index++)
         _WheelAction(
-          key: ValueKey<String>('$toolButtonKeyPrefix-$tool'),
-          icon: icon,
-          label: label,
-          selected: controller.activeTool == tool,
+          key: ValueKey<String>('$toolButtonKeyPrefix-preset-$index'),
+          icon: _toolWheelSlotIcon(controller.toolWheelPresets[index].kind),
+          label: _toolWheelSlotLabel(controller.toolWheelPresets[index].kind),
+          valueLabel:
+              controller.toolWheelPresets[index].kind.isInk &&
+                  controller.toolWheelPresets[index].kind !=
+                      ToolWheelSlotKind.fill
+              ? _presetSizeLabel(controller.toolWheelPresets[index].size)
+              : controller.toolWheelPresets[index].kind ==
+                    ToolWheelSlotKind.eraser
+              ? '${controller.toolWheelPresets[index].size.round()}'
+              : null,
+          swatchColor: controller.toolWheelPresets[index].kind.isInk
+              ? Color(
+                  controller.toolWheelPresets[index].color,
+                ).withValues(alpha: controller.toolWheelPresets[index].opacity)
+              : null,
+          selected: controller.activeToolWheelIndex == index,
           onTap: () {
-            if (controller.activeTool == tool) {
-              onWheelPageChanged(
-                controller.hasSelection
-                    ? _WheelPage.selection
-                    : _WheelPage.context,
-              );
+            final ToolWheelPreset preset = controller.toolWheelPresets[index];
+            if (controller.activeToolWheelIndex == index) {
+              if (preset.kind.isInk) {
+                _showBrushPicker(context, index);
+              } else {
+                _showToolSettings(context);
+              }
             } else {
-              controller.setTool(tool);
+              controller.selectToolWheelPreset(index);
             }
           },
+          onLongPress: () => _showBrushPicker(context, index),
         ),
-      _WheelAction(
-        key: canvasSettingsDockKey,
-        icon: Icons.more_horiz,
-        label: 'More canvas actions',
-        onTap: () => onWheelPageChanged(_WheelPage.more),
+    ];
+  }
+
+  List<_WheelPropertyAction> _wheelPropertyActions(BuildContext context) {
+    if (_effectiveWheelPage != _WheelPage.tools ||
+        !controller.activeToolWheelPreset.kind.isInk) {
+      return const <_WheelPropertyAction>[];
+    }
+    return <_WheelPropertyAction>[
+      if (controller.activeToolWheelPreset.kind != ToolWheelSlotKind.fill)
+        _WheelPropertyAction(
+          icon: Icons.line_weight,
+          label: 'Size',
+          valueLabel: _presetSizeLabel(controller.penWidth),
+          angle: -math.pi / 2,
+          onTap: () => _showPresetProperty(context, _PresetProperty.size),
+          onDragDelta: (delta) => controller.setPenWidth(
+            (controller.penWidth + delta / 8).clamp(0.5, 96).toDouble(),
+          ),
+        ),
+      _WheelPropertyAction(
+        icon: Icons.opacity_outlined,
+        label: 'Opacity',
+        valueLabel: '${(controller.penOpacity * 100).round()}%',
+        angle: 0,
+        onTap: () => _showPresetProperty(context, _PresetProperty.opacity),
+        onDragDelta: (delta) => controller.setPenOpacity(
+          (controller.penOpacity + delta / 140).clamp(0, 1).toDouble(),
+        ),
+      ),
+      _WheelPropertyAction(
+        icon: Icons.gesture,
+        label: 'Smoothing',
+        valueLabel: '${(controller.penProfile.smoothing * 100).round()}%',
+        angle: math.pi,
+        onTap: () => _showPresetProperty(context, _PresetProperty.smoothing),
+        onDragDelta: (delta) => controller.setPenSmoothing(
+          (controller.penProfile.smoothing + delta / 140)
+              .clamp(0, 1)
+              .toDouble(),
+        ),
       ),
     ];
   }
 
-  String get _selectionCountLabel {
-    final int count = controller.selectedIds.length;
-    return count == 1 ? '1 selected' : '$count selected';
+  Future<void> _showBrushPicker(BuildContext context, int slotIndex) async {
+    final ToolWheelSlotKind?
+    next = await showModalBottomSheet<ToolWheelSlotKind>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620, maxHeight: 520),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Replace favorite ${slotIndex + 1}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Choose a brush or utility. Each favorite remembers its own colour and properties.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: MediaQuery.sizeOf(context).width < 520
+                        ? 3
+                        : 4,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 1.55,
+                    children: <Widget>[
+                      for (final ToolWheelSlotKind kind
+                          in ToolWheelSlotKind.values)
+                        InkWell(
+                          onTap: () => Navigator.of(context).pop(kind),
+                          borderRadius: BorderRadius.circular(12),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                Icon(_toolWheelSlotIcon(kind), size: 24),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _toolWheelSlotLabel(kind),
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.labelMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (next != null) {
+      controller.replaceToolWheelPreset(slotIndex, next);
+    }
+  }
+
+  Future<void> _showActiveColorPicker(BuildContext context) async {
+    final Color? next = await showDialog<Color>(
+      context: context,
+      builder: (context) =>
+          _ActiveColorDialog(initial: Color(controller.penColor | 0xFF000000)),
+    );
+    if (next != null) {
+      controller.setPenRgbColor(next.toARGB32());
+    }
+  }
+
+  Future<void> _showPresetProperty(
+    BuildContext context,
+    _PresetProperty property,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) =>
+          _PresetPropertySheet(controller: controller, property: property),
+    );
   }
 
   List<_WheelAction> _selectionWheelActions() {
@@ -848,6 +1040,11 @@ class _CanvasToolbarContent extends StatelessWidget {
                 'Marker',
               ),
               (StrokeToolKind.airbrush, Icons.blur_on_outlined, 'Airbrush'),
+              (
+                StrokeToolKind.fill,
+                Icons.format_color_fill_outlined,
+                'Freeform fill',
+              ),
             ])
           _WheelAction(
             icon: icon,
@@ -1267,6 +1464,12 @@ class _CanvasToolbarContent extends StatelessWidget {
         selected: controller.penKind == StrokeToolKind.airbrush,
         onPressed: () => _setPenKind(StrokeToolKind.airbrush),
       ),
+      _PenKindButton(
+        icon: Icons.format_color_fill_outlined,
+        tooltip: 'Freeform fill',
+        selected: controller.penKind == StrokeToolKind.fill,
+        onPressed: () => _setPenKind(StrokeToolKind.fill),
+      ),
     ];
   }
 
@@ -1428,8 +1631,9 @@ class _CanvasToolbarContent extends StatelessWidget {
         _SwatchButton(
           key: ValueKey<String>('$swatchButtonKeyPrefix-$i'),
           color: Color(colors[i]),
-          selected: controller.penColor == colors[i],
-          onTap: () => controller.setPenColor(colors[i]),
+          selected:
+              (controller.penColor & 0x00FFFFFF) == (colors[i] & 0x00FFFFFF),
+          onTap: () => controller.setPenRgbColor(colors[i]),
         ),
       _HudButton(
         icon: Icons.palette_outlined,
@@ -1648,6 +1852,8 @@ enum _QuickMenuAction { contextSettings }
 
 enum _NudgeAction { left, up, down, right }
 
+enum _PresetProperty { size, opacity, smoothing }
+
 /// Opens the same radial tool language at a stylus side-button tap.
 Future<void> showCanvasQuickToolMenuAt({
   required BuildContext context,
@@ -1676,15 +1882,6 @@ Future<void> showCanvasQuickToolMenuAt({
         8,
         math.max(8, overlay.size.height - wheelSize - 8),
       );
-      const tools = <(CanvasTool, IconData, String)>[
-        (CanvasTool.pen, Icons.draw_outlined, 'Draw'),
-        (CanvasTool.eraser, Icons.cleaning_services_outlined, 'Eraser'),
-        (CanvasTool.lasso, Icons.gesture, 'Lasso select'),
-        (CanvasTool.shape, Icons.category_outlined, 'Shapes'),
-        (CanvasTool.text, Icons.notes_outlined, 'Text note'),
-        (CanvasTool.link, Icons.add_link, 'Place a link'),
-        (CanvasTool.pan, Icons.pan_tool_alt_outlined, 'Pan'),
-      ];
       return Stack(
         children: [
           Positioned(
@@ -1696,12 +1893,31 @@ Future<void> showCanvasQuickToolMenuAt({
               type: MaterialType.transparency,
               child: _RadialWheel(
                 actions: <_WheelAction>[
-                  for (final (tool, icon, label) in tools)
+                  for (
+                    var index = 0;
+                    index < controller.toolWheelPresets.length;
+                    index++
+                  )
                     _WheelAction(
-                      icon: icon,
-                      label: label,
-                      selected: controller.activeTool == tool,
-                      onTap: () => Navigator.of(dialogContext).pop(tool),
+                      icon: _toolWheelSlotIcon(
+                        controller.toolWheelPresets[index].kind,
+                      ),
+                      label: _toolWheelSlotLabel(
+                        controller.toolWheelPresets[index].kind,
+                      ),
+                      valueLabel:
+                          controller.toolWheelPresets[index].kind.isInk &&
+                              controller.toolWheelPresets[index].kind !=
+                                  ToolWheelSlotKind.fill
+                          ? _presetSizeLabel(
+                              controller.toolWheelPresets[index].size,
+                            )
+                          : null,
+                      swatchColor: controller.toolWheelPresets[index].kind.isInk
+                          ? Color(controller.toolWheelPresets[index].color)
+                          : null,
+                      selected: controller.activeToolWheelIndex == index,
+                      onTap: () => Navigator.of(dialogContext).pop(index),
                     ),
                 ],
                 activeColor: Color(controller.penColor),
@@ -1720,33 +1936,35 @@ Future<void> showCanvasQuickToolMenuAt({
     },
   );
   if (action != null && context.mounted) {
-    if (action is CanvasTool) {
-      controller.setTool(action);
+    if (action is int) {
+      controller.selectToolWheelPreset(action);
     } else if (action == _QuickMenuAction.contextSettings) {
       onShowFullControls();
     }
   }
 }
 
-String _zoomLabel(double scale) {
-  if (scale >= 100) {
-    return '${scale.round()}x';
+String _presetSizeLabel(double value) {
+  if (value < 10 && value != value.roundToDouble()) {
+    return value.toStringAsFixed(1);
   }
-  if (scale >= 10) {
-    return '${scale.toStringAsFixed(1)}x';
-  }
-  if (scale > 0 && scale < 0.0001) {
-    return '1:${(1 / scale).round()}';
-  }
-  final double percent = scale * 100;
-  if (percent >= 10) {
-    return '${percent.round()}%';
-  }
-  if (percent >= 1) {
-    return '${percent.toStringAsFixed(1)}%';
-  }
-  return '${percent.toStringAsFixed(2)}%';
+  return '${value.round()} pt';
 }
+
+String _propertyValueLabel(_PresetProperty property, double value) =>
+    switch (property) {
+      _PresetProperty.size => _presetSizeLabel(value),
+      _PresetProperty.opacity ||
+      _PresetProperty.smoothing => '${(value * 100).round()}%',
+    };
+
+List<double> _sizePresetsFor(ToolWheelSlotKind kind) => switch (kind) {
+  ToolWheelSlotKind.pencil => const <double>[1, 2, 4, 6],
+  ToolWheelSlotKind.highlighter => const <double>[8, 12, 18, 28],
+  ToolWheelSlotKind.marker => const <double>[4, 8, 12, 20],
+  ToolWheelSlotKind.airbrush => const <double>[12, 20, 28, 40],
+  _ => const <double>[1, 2, 4, 8],
+};
 
 class _ArrowStyleDraft {
   const _ArrowStyleDraft({
@@ -2208,6 +2426,9 @@ class _WheelAction {
     this.key,
     this.selected = false,
     this.destructive = false,
+    this.onLongPress,
+    this.swatchColor,
+    this.valueLabel,
   });
 
   final Key? key;
@@ -2216,11 +2437,33 @@ class _WheelAction {
   final VoidCallback? onTap;
   final bool selected;
   final bool destructive;
+  final VoidCallback? onLongPress;
+  final Color? swatchColor;
+  final String? valueLabel;
+}
+
+class _WheelPropertyAction {
+  const _WheelPropertyAction({
+    required this.icon,
+    required this.label,
+    required this.valueLabel,
+    required this.angle,
+    required this.onTap,
+    required this.onDragDelta,
+  });
+
+  final IconData icon;
+  final String label;
+  final String valueLabel;
+  final double angle;
+  final VoidCallback onTap;
+  final ValueChanged<double> onDragDelta;
 }
 
 class _RadialWheel extends StatelessWidget {
   const _RadialWheel({
     required this.actions,
+    this.properties = const <_WheelPropertyAction>[],
     required this.activeColor,
     required this.centerIcon,
     required this.centerLabel,
@@ -2232,6 +2475,7 @@ class _RadialWheel extends StatelessWidget {
   });
 
   final List<_WheelAction> actions;
+  final List<_WheelPropertyAction> properties;
   final Color activeColor;
   final IconData centerIcon;
   final String centerLabel;
@@ -2250,8 +2494,9 @@ class _RadialWheel extends StatelessWidget {
         );
         final Offset center = Offset(size / 2, size / 2);
         final double outerRadius = size / 2;
-        final double innerRadius = size * 40 / 176;
-        final double centerSize = size * 80 / 176;
+        final double innerRadius = size * 58 / 176;
+        final double centerSize = size * 58 / 176;
+        final double centerRadius = centerSize / 2;
         final int count = actions.length;
         final double sweep = count == 0 ? math.pi * 2 : math.pi * 2 / count;
         final double gap = math.min(0.045, sweep * 0.12);
@@ -2272,6 +2517,8 @@ class _RadialWheel extends StatelessWidget {
                     painter: _RadialWheelPainter(
                       actions: actions,
                       innerRadius: innerRadius,
+                      centerRadius: centerRadius,
+                      showPropertyRing: properties.isNotEmpty,
                       gap: gap,
                       colors: Theme.of(context).colorScheme,
                     ),
@@ -2290,6 +2537,7 @@ class _RadialWheel extends StatelessWidget {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: actions[index].onTap,
+                        onLongPress: actions[index].onLongPress,
                       ),
                     ),
                   ),
@@ -2318,18 +2566,100 @@ class _RadialWheel extends StatelessWidget {
                         key: actions[index].key,
                         behavior: HitTestBehavior.opaque,
                         onTap: actions[index].onTap,
-                        child: Icon(
-                          actions[index].icon,
-                          size: size >= 170 ? 21 : 19,
-                          color: actions[index].destructive
-                              ? Theme.of(context).colorScheme.error
-                              : actions[index].onTap == null
-                              ? Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withValues(alpha: 0.3)
-                              : actions[index].selected
-                              ? Theme.of(context).colorScheme.onPrimaryContainer
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        onLongPress: actions[index].onLongPress,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Icon(
+                              actions[index].icon,
+                              size: actions[index].valueLabel == null
+                                  ? size >= 170
+                                        ? 21
+                                        : 19
+                                  : size >= 170
+                                  ? 18
+                                  : 16,
+                              color: actions[index].destructive
+                                  ? Theme.of(context).colorScheme.error
+                                  : actions[index].onTap == null
+                                  ? Theme.of(context).colorScheme.onSurface
+                                        .withValues(alpha: 0.3)
+                                  : actions[index].swatchColor ??
+                                        (actions[index].selected
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimaryContainer
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant),
+                            ),
+                            if (actions[index].valueLabel case final label?)
+                              Text(
+                                label,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      fontSize: 7.5,
+                                      height: 1,
+                                      fontWeight: FontWeight.w700,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              for (final _WheelPropertyAction property in properties)
+                Positioned(
+                  left:
+                      center.dx +
+                      math.cos(property.angle) *
+                          ((centerRadius + innerRadius) / 2) -
+                      17,
+                  top:
+                      center.dy +
+                      math.sin(property.angle) *
+                          ((centerRadius + innerRadius) / 2) -
+                      17,
+                  width: 34,
+                  height: 34,
+                  child: Tooltip(
+                    message: '${property.label}: ${property.valueLabel}',
+                    child: Semantics(
+                      button: true,
+                      label: property.label,
+                      value: property.valueLabel,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: property.onTap,
+                        onHorizontalDragUpdate: (details) =>
+                            property.onDragDelta(details.delta.dx),
+                        onVerticalDragUpdate: (details) =>
+                            property.onDragDelta(-details.delta.dy),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Icon(
+                              property.icon,
+                              size: 13,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                            Text(
+                              property.valueLabel,
+                              maxLines: 1,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    fontSize: 6.5,
+                                    height: 1,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -2395,18 +2725,40 @@ class _RadialWheelPainter extends CustomPainter {
   const _RadialWheelPainter({
     required this.actions,
     required this.innerRadius,
+    required this.centerRadius,
+    required this.showPropertyRing,
     required this.gap,
     required this.colors,
   });
 
   final List<_WheelAction> actions;
   final double innerRadius;
+  final double centerRadius;
+  final bool showPropertyRing;
   final double gap;
   final ColorScheme colors;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (actions.isEmpty) return;
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    if (showPropertyRing) {
+      canvas.drawCircle(
+        center,
+        innerRadius,
+        Paint()..color = colors.surfaceContainerHigh.withValues(alpha: 0.97),
+      );
+      for (final double radius in <double>[innerRadius, centerRadius]) {
+        canvas.drawCircle(
+          center,
+          radius,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.8
+            ..color = colors.outlineVariant.withValues(alpha: 0.72),
+        );
+      }
+    }
     final double sweep = math.pi * 2 / actions.length;
     final double firstStart = -math.pi / 2 - sweep / 2;
     for (var index = 0; index < actions.length; index++) {
@@ -2419,7 +2771,7 @@ class _RadialWheelPainter extends CustomPainter {
       );
       canvas.drawShadow(path, Colors.black.withValues(alpha: 0.24), 3, false);
       final Color fill = action.selected
-          ? colors.primaryContainer.withValues(alpha: 0.98)
+          ? colors.primaryContainer.withValues(alpha: 1)
           : colors.surfaceContainerHigh.withValues(alpha: 0.97);
       canvas.drawPath(path, Paint()..color = fill);
       canvas.drawPath(
@@ -2436,6 +2788,8 @@ class _RadialWheelPainter extends CustomPainter {
   bool shouldRepaint(covariant _RadialWheelPainter oldDelegate) =>
       oldDelegate.actions != actions ||
       oldDelegate.innerRadius != innerRadius ||
+      oldDelegate.centerRadius != centerRadius ||
+      oldDelegate.showPropertyRing != showPropertyRing ||
       oldDelegate.gap != gap ||
       oldDelegate.colors != colors;
 }
@@ -2488,6 +2842,45 @@ Path _annularWedgePath(
     ..close();
 }
 
+class _WheelSideButton extends StatelessWidget {
+  const _WheelSideButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    super.key,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: colors.surfaceContainerHigh.withValues(alpha: 0.97),
+        shape: CircleBorder(
+          side: BorderSide(
+            color: colors.outlineVariant.withValues(alpha: 0.72),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox.square(
+          dimension: 34,
+          child: IconButton(
+            onPressed: onPressed,
+            padding: EdgeInsets.zero,
+            iconSize: 17,
+            icon: Icon(icon),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PaletteDock extends StatelessWidget {
   const _PaletteDock({
     required this.colors,
@@ -2532,11 +2925,15 @@ class _PaletteDock extends StatelessWidget {
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: Color(colors[index]),
-                            border: selectedColor == colors[index]
+                            border:
+                                (selectedColor & 0x00FFFFFF) ==
+                                    (colors[index] & 0x00FFFFFF)
                                 ? Border.all(color: scheme.primary, width: 3)
                                 : null,
                           ),
-                          child: selectedColor == colors[index]
+                          child:
+                              (selectedColor & 0x00FFFFFF) ==
+                                  (colors[index] & 0x00FFFFFF)
                               ? Icon(
                                   Icons.check,
                                   size: 14,
@@ -2879,6 +3276,188 @@ class _ToolbarValueButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PresetPropertySheet extends StatelessWidget {
+  const _PresetPropertySheet({
+    required this.controller,
+    required this.property,
+  });
+
+  final CanvasController controller;
+  final _PresetProperty property;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final double value = switch (property) {
+            _PresetProperty.size => controller.penWidth,
+            _PresetProperty.opacity => controller.penOpacity,
+            _PresetProperty.smoothing => controller.penProfile.smoothing,
+          };
+          final String title = switch (property) {
+            _PresetProperty.size => 'Brush size',
+            _PresetProperty.opacity => 'Opacity',
+            _PresetProperty.smoothing => 'Smoothing',
+          };
+          final (double min, double max, int divisions) = switch (property) {
+            _PresetProperty.size => (0.5, 48.0, 95),
+            _PresetProperty.opacity => (0.0, 1.0, 100),
+            _PresetProperty.smoothing => (0.0, 1.0, 100),
+          };
+          final List<double> presets = switch (property) {
+            _PresetProperty.size => _sizePresetsFor(
+              controller.activeToolWheelPreset.kind,
+            ),
+            _PresetProperty.opacity => const <double>[0.25, 0.5, 0.75, 1],
+            _PresetProperty.smoothing => const <double>[0, 0.35, 0.7, 1],
+          };
+          void setValue(double next) {
+            switch (property) {
+              case _PresetProperty.size:
+                controller.setPenWidth(next);
+              case _PresetProperty.opacity:
+                controller.setPenOpacity(next);
+              case _PresetProperty.smoothing:
+                controller.setPenSmoothing(next);
+            }
+          }
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const Spacer(),
+                    Text(
+                      _propertyValueLabel(property, value),
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: value.clamp(min, max).toDouble(),
+                  min: min,
+                  max: max,
+                  divisions: divisions,
+                  label: _propertyValueLabel(property, value),
+                  onChanged: setValue,
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    for (final double preset in presets)
+                      ChoiceChip(
+                        label: Text(_propertyValueLabel(property, preset)),
+                        selected: (value - preset).abs() < 0.01,
+                        onSelected: (_) => setValue(preset),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Tip: drag directly across this property on the wheel for a quick adjustment.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ActiveColorDialog extends StatefulWidget {
+  const _ActiveColorDialog({required this.initial});
+
+  final Color initial;
+
+  @override
+  State<_ActiveColorDialog> createState() => _ActiveColorDialogState();
+}
+
+class _ActiveColorDialogState extends State<_ActiveColorDialog> {
+  late Color _selected;
+  late final TextEditingController _hexController;
+  String? _hexError;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initial;
+    _hexController = TextEditingController(text: _hex(_selected));
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  void _setColor(Color color) {
+    setState(() {
+      _selected = color.withValues(alpha: 1);
+      _hexError = null;
+      final String text = _hex(_selected);
+      _hexController.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    });
+  }
+
+  void _setHex(String value) {
+    final Color? parsed = _parseHex(value);
+    setState(() {
+      _hexError = parsed == null ? 'Use #RRGGBB or #AARRGGBB' : null;
+      if (parsed != null) {
+        _selected = parsed.withValues(alpha: 1);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Tool colour'),
+      content: SizedBox(
+        width: 420,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.62,
+          ),
+          child: SingleChildScrollView(
+            child: _PaletteColorEditor(
+              color: _selected,
+              hexController: _hexController,
+              hexError: _hexError,
+              onHexChanged: _setHex,
+              onColorChanged: _setColor,
+            ),
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_selected),
+          child: const Text('Use colour'),
+        ),
+      ],
     );
   }
 }

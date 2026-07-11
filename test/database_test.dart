@@ -522,8 +522,8 @@ void main() {
     schema.close();
   });
 
-  for (var version = 1; version < 11; version++) {
-    test('v$version migrates to the exact v11 schema', () async {
+  for (var version = 1; version < 12; version++) {
+    test('v$version migrates to the exact v12 schema', () async {
       driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       addTearDown(() {
         driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
@@ -534,7 +534,7 @@ void main() {
 
       await verifier.migrateAndValidate(
         migrated,
-        11,
+        12,
         options: const ValidationOptions(validateDropped: true),
       );
 

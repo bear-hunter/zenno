@@ -38,13 +38,15 @@ class LiveStrokePathCache {
         _quality == quality) {
       return cached;
     }
-    final Path next = buildStrokeOutline(
-      stroke.points,
-      size: stroke.width,
-      viewportScale: viewportScale,
-      quality: quality,
-      isComplete: false,
-    );
+    final Path next = stroke.tool == StrokeToolKind.fill
+        ? buildFillBoundaryPath(stroke.points)
+        : buildStrokeOutline(
+            stroke.points,
+            size: stroke.width,
+            viewportScale: viewportScale,
+            quality: quality,
+            isComplete: false,
+          );
     _strokeId = stroke.id;
     _revision = revision;
     _scaleBucket = scaleBucket;
@@ -117,27 +119,32 @@ class LiveStrokePainter extends CustomPainter {
           revision: liveStrokeRevision,
           viewportScale: viewport.scale,
         ) ??
-        buildStrokeOutline(
-          stroke.points,
-          size: stroke.width,
-          viewportScale: viewport.scale,
-          quality: strokeRenderQualityForScale(viewport.scale),
-          isComplete: false,
-        );
+        (stroke.tool == StrokeToolKind.fill
+            ? buildFillBoundaryPath(stroke.points)
+            : buildStrokeOutline(
+                stroke.points,
+                size: stroke.width,
+                viewportScale: viewport.scale,
+                quality: strokeRenderQualityForScale(viewport.scale),
+                isComplete: false,
+              ));
 
     final paint = Paint()..style = PaintingStyle.fill;
     final color = Color(stroke.color);
+    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
     switch (stroke.tool) {
       case StrokeToolKind.highlighter:
         paint
-          ..color = color.withValues(alpha: _highlighterOpacity)
+          ..color = color.withValues(alpha: _highlighterOpacity * userOpacity)
           ..blendMode = BlendMode.multiply;
       case StrokeToolKind.pencil:
-        paint.color = color.withValues(alpha: _pencilOpacity);
+        paint.color = color.withValues(alpha: _pencilOpacity * userOpacity);
       case StrokeToolKind.marker:
-        paint.color = color.withValues(alpha: _markerOpacity);
+        paint.color = color.withValues(alpha: _markerOpacity * userOpacity);
       case StrokeToolKind.airbrush:
-        paint.color = color.withValues(alpha: _airbrushOpacity);
+        paint.color = color.withValues(alpha: _airbrushOpacity * userOpacity);
+      case StrokeToolKind.fill:
+        paint.color = color;
       case StrokeToolKind.pen:
         paint.color = color;
     }

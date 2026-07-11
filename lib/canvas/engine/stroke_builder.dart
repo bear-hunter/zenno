@@ -109,6 +109,53 @@ Path buildStrokeOutline(
   return path..close();
 }
 
+/// Builds the closed polygon covered by a freeform fill gesture.
+///
+/// Fill points describe the boundary itself rather than a pressure-sensitive
+/// centreline, so stroke width and pressure deliberately do not affect this
+/// path. Fewer than three points cannot enclose an area and yield an empty
+/// path.
+Path buildFillBoundaryPath(List<StrokePoint> points) {
+  if (points.length < 3) {
+    return Path();
+  }
+  final Path path = Path()
+    ..fillType = PathFillType.evenOdd
+    ..moveTo(points.first.x, points.first.y);
+  for (final StrokePoint point in points.skip(1)) {
+    path.lineTo(point.x, point.y);
+  }
+  return path..close();
+}
+
+/// Whether [points] enclose a non-degenerate freeform fill region.
+bool isValidFillBoundary(List<StrokePoint> points) {
+  if (points.length < 3) {
+    return false;
+  }
+  final Offset origin = points.first.offset;
+  StrokePoint? baselinePoint;
+  for (final StrokePoint point in points.skip(1)) {
+    if ((point.offset - origin).distanceSquared > 1) {
+      baselinePoint = point;
+      break;
+    }
+  }
+  if (baselinePoint == null) {
+    return false;
+  }
+  final Offset baseline = baselinePoint.offset - origin;
+  for (final StrokePoint point in points.skip(1)) {
+    final Offset candidate = point.offset - origin;
+    final double cross =
+        baseline.dx * candidate.dy - baseline.dy * candidate.dx;
+    if (cross.abs() > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 List<StrokePoint> _resampleForHighZoom(
   List<StrokePoint> points, {
   required double viewportScale,

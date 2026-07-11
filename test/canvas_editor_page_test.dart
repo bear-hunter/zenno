@@ -134,7 +134,7 @@ void main() {
 
     final Finder radialCenter = find.byKey(CanvasToolbar.showFullControlsKey);
     expect(radialCenter, findsOneWidget);
-    expect(tester.getSize(radialCenter), const Size(80, 80));
+    expect(tester.getSize(radialCenter).shortestSide, greaterThanOrEqualTo(44));
     expect(find.byTooltip('Eraser'), findsNWidgets(2));
     await tester.tap(find.byTooltip('Eraser').last);
     await tester.pumpAndSettle();
@@ -170,7 +170,7 @@ void main() {
     await tester.pump();
 
     expect(controller.hasSelection, isTrue);
-    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byTooltip('Done selecting'), findsOneWidget);
     final CallbackShortcuts shortcuts = tester.widget<CallbackShortcuts>(
       find.byType(CallbackShortcuts),
     );
@@ -183,7 +183,8 @@ void main() {
     expect(controller.hasSelection, isFalse);
     expect(controller.activeTool, CanvasTool.pen);
     expect(find.byType(CanvasEditorPage), findsOneWidget);
-    expect(find.byTooltip('Draw settings'), findsOneWidget);
+    expect(find.byTooltip('Done selecting'), findsNothing);
+    expect(find.byTooltip('Choose active tool colour'), findsOneWidget);
     await _disposeEditor(tester, container);
   });
 

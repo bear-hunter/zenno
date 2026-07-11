@@ -605,6 +605,18 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
         requiredDuringInsert: false,
         defaultValue: const Constant(0),
       ).withConverter<StrokeTool>($CanvasesTable.$converteractivePenTool);
+  static const VerificationMeta _toolWheelJsonMeta = const VerificationMeta(
+    'toolWheelJson',
+  );
+  @override
+  late final GeneratedColumn<String> toolWheelJson = GeneratedColumn<String>(
+    'tool_wheel_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
   static const VerificationMeta _pressureEnabledMeta = const VerificationMeta(
     'pressureEnabled',
   );
@@ -647,6 +659,7 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
     activePenWidth,
     activePenWidthMode,
     activePenTool,
+    toolWheelJson,
     pressureEnabled,
   ];
   @override
@@ -840,6 +853,15 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
         ),
       );
     }
+    if (data.containsKey('tool_wheel_json')) {
+      context.handle(
+        _toolWheelJsonMeta,
+        toolWheelJson.isAcceptableOrUnknown(
+          data['tool_wheel_json']!,
+          _toolWheelJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('pressure_enabled')) {
       context.handle(
         _pressureEnabledMeta,
@@ -962,6 +984,10 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
           data['${effectivePrefix}active_pen_tool'],
         )!,
       ),
+      toolWheelJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tool_wheel_json'],
+      )!,
       pressureEnabled: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}pressure_enabled'],
@@ -1010,6 +1036,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
   final double activePenWidth;
   final int activePenWidthMode;
   final StrokeTool activePenTool;
+  final String toolWheelJson;
   final bool pressureEnabled;
   const Canvase({
     required this.id,
@@ -1037,6 +1064,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     required this.activePenWidth,
     required this.activePenWidthMode,
     required this.activePenTool,
+    required this.toolWheelJson,
     required this.pressureEnabled,
   });
   @override
@@ -1081,6 +1109,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
         $CanvasesTable.$converteractivePenTool.toSql(activePenTool),
       );
     }
+    map['tool_wheel_json'] = Variable<String>(toolWheelJson);
     map['pressure_enabled'] = Variable<bool>(pressureEnabled);
     return map;
   }
@@ -1118,6 +1147,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       activePenWidth: Value(activePenWidth),
       activePenWidthMode: Value(activePenWidthMode),
       activePenTool: Value(activePenTool),
+      toolWheelJson: Value(toolWheelJson),
       pressureEnabled: Value(pressureEnabled),
     );
   }
@@ -1159,6 +1189,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       activePenTool: $CanvasesTable.$converteractivePenTool.fromJson(
         serializer.fromJson<int>(json['activePenTool']),
       ),
+      toolWheelJson: serializer.fromJson<String>(json['toolWheelJson']),
       pressureEnabled: serializer.fromJson<bool>(json['pressureEnabled']),
     );
   }
@@ -1195,6 +1226,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       'activePenTool': serializer.toJson<int>(
         $CanvasesTable.$converteractivePenTool.toJson(activePenTool),
       ),
+      'toolWheelJson': serializer.toJson<String>(toolWheelJson),
       'pressureEnabled': serializer.toJson<bool>(pressureEnabled),
     };
   }
@@ -1225,6 +1257,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     double? activePenWidth,
     int? activePenWidthMode,
     StrokeTool? activePenTool,
+    String? toolWheelJson,
     bool? pressureEnabled,
   }) => Canvase(
     id: id ?? this.id,
@@ -1254,6 +1287,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     activePenWidth: activePenWidth ?? this.activePenWidth,
     activePenWidthMode: activePenWidthMode ?? this.activePenWidthMode,
     activePenTool: activePenTool ?? this.activePenTool,
+    toolWheelJson: toolWheelJson ?? this.toolWheelJson,
     pressureEnabled: pressureEnabled ?? this.pressureEnabled,
   );
   Canvase copyWithCompanion(CanvasesCompanion data) {
@@ -1315,6 +1349,9 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       activePenTool: data.activePenTool.present
           ? data.activePenTool.value
           : this.activePenTool,
+      toolWheelJson: data.toolWheelJson.present
+          ? data.toolWheelJson.value
+          : this.toolWheelJson,
       pressureEnabled: data.pressureEnabled.present
           ? data.pressureEnabled.value
           : this.pressureEnabled,
@@ -1349,6 +1386,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
           ..write('activePenWidth: $activePenWidth, ')
           ..write('activePenWidthMode: $activePenWidthMode, ')
           ..write('activePenTool: $activePenTool, ')
+          ..write('toolWheelJson: $toolWheelJson, ')
           ..write('pressureEnabled: $pressureEnabled')
           ..write(')'))
         .toString();
@@ -1381,6 +1419,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     activePenWidth,
     activePenWidthMode,
     activePenTool,
+    toolWheelJson,
     pressureEnabled,
   ]);
   @override
@@ -1412,6 +1451,7 @@ class Canvase extends DataClass implements Insertable<Canvase> {
           other.activePenWidth == this.activePenWidth &&
           other.activePenWidthMode == this.activePenWidthMode &&
           other.activePenTool == this.activePenTool &&
+          other.toolWheelJson == this.toolWheelJson &&
           other.pressureEnabled == this.pressureEnabled);
 }
 
@@ -1441,6 +1481,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
   final Value<double> activePenWidth;
   final Value<int> activePenWidthMode;
   final Value<StrokeTool> activePenTool;
+  final Value<String> toolWheelJson;
   final Value<bool> pressureEnabled;
   final Value<int> rowid;
   const CanvasesCompanion({
@@ -1469,6 +1510,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     this.activePenWidth = const Value.absent(),
     this.activePenWidthMode = const Value.absent(),
     this.activePenTool = const Value.absent(),
+    this.toolWheelJson = const Value.absent(),
     this.pressureEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1498,6 +1540,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     this.activePenWidth = const Value.absent(),
     this.activePenWidthMode = const Value.absent(),
     this.activePenTool = const Value.absent(),
+    this.toolWheelJson = const Value.absent(),
     this.pressureEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1530,6 +1573,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     Expression<double>? activePenWidth,
     Expression<int>? activePenWidthMode,
     Expression<int>? activePenTool,
+    Expression<String>? toolWheelJson,
     Expression<bool>? pressureEnabled,
     Expression<int>? rowid,
   }) {
@@ -1562,6 +1606,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
       if (activePenWidthMode != null)
         'active_pen_width_mode': activePenWidthMode,
       if (activePenTool != null) 'active_pen_tool': activePenTool,
+      if (toolWheelJson != null) 'tool_wheel_json': toolWheelJson,
       if (pressureEnabled != null) 'pressure_enabled': pressureEnabled,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1593,6 +1638,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     Value<double>? activePenWidth,
     Value<int>? activePenWidthMode,
     Value<StrokeTool>? activePenTool,
+    Value<String>? toolWheelJson,
     Value<bool>? pressureEnabled,
     Value<int>? rowid,
   }) {
@@ -1623,6 +1669,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
       activePenWidth: activePenWidth ?? this.activePenWidth,
       activePenWidthMode: activePenWidthMode ?? this.activePenWidthMode,
       activePenTool: activePenTool ?? this.activePenTool,
+      toolWheelJson: toolWheelJson ?? this.toolWheelJson,
       pressureEnabled: pressureEnabled ?? this.pressureEnabled,
       rowid: rowid ?? this.rowid,
     );
@@ -1712,6 +1759,9 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
         $CanvasesTable.$converteractivePenTool.toSql(activePenTool.value),
       );
     }
+    if (toolWheelJson.present) {
+      map['tool_wheel_json'] = Variable<String>(toolWheelJson.value);
+    }
     if (pressureEnabled.present) {
       map['pressure_enabled'] = Variable<bool>(pressureEnabled.value);
     }
@@ -1749,6 +1799,7 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
           ..write('activePenWidth: $activePenWidth, ')
           ..write('activePenWidthMode: $activePenWidthMode, ')
           ..write('activePenTool: $activePenTool, ')
+          ..write('toolWheelJson: $toolWheelJson, ')
           ..write('pressureEnabled: $pressureEnabled, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -14795,6 +14846,7 @@ typedef $$CanvasesTableCreateCompanionBuilder =
       Value<double> activePenWidth,
       Value<int> activePenWidthMode,
       Value<StrokeTool> activePenTool,
+      Value<String> toolWheelJson,
       Value<bool> pressureEnabled,
       Value<int> rowid,
     });
@@ -14825,6 +14877,7 @@ typedef $$CanvasesTableUpdateCompanionBuilder =
       Value<double> activePenWidth,
       Value<int> activePenWidthMode,
       Value<StrokeTool> activePenTool,
+      Value<String> toolWheelJson,
       Value<bool> pressureEnabled,
       Value<int> rowid,
     });
@@ -15091,6 +15144,11 @@ class $$CanvasesTableFilterComposer
   get activePenTool => $composableBuilder(
     column: $table.activePenTool,
     builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get toolWheelJson => $composableBuilder(
+    column: $table.toolWheelJson,
+    builder: (column) => ColumnFilters(column),
   );
 
   ColumnFilters<bool> get pressureEnabled => $composableBuilder(
@@ -15377,6 +15435,11 @@ class $$CanvasesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get toolWheelJson => $composableBuilder(
+    column: $table.toolWheelJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get pressureEnabled => $composableBuilder(
     column: $table.pressureEnabled,
     builder: (column) => ColumnOrderings(column),
@@ -15520,6 +15583,11 @@ class $$CanvasesTableAnnotationComposer
         column: $table.activePenTool,
         builder: (column) => column,
       );
+
+  GeneratedColumn<String> get toolWheelJson => $composableBuilder(
+    column: $table.toolWheelJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get pressureEnabled => $composableBuilder(
     column: $table.pressureEnabled,
@@ -15736,6 +15804,7 @@ class $$CanvasesTableTableManager
                 Value<double> activePenWidth = const Value.absent(),
                 Value<int> activePenWidthMode = const Value.absent(),
                 Value<StrokeTool> activePenTool = const Value.absent(),
+                Value<String> toolWheelJson = const Value.absent(),
                 Value<bool> pressureEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CanvasesCompanion(
@@ -15764,6 +15833,7 @@ class $$CanvasesTableTableManager
                 activePenWidth: activePenWidth,
                 activePenWidthMode: activePenWidthMode,
                 activePenTool: activePenTool,
+                toolWheelJson: toolWheelJson,
                 pressureEnabled: pressureEnabled,
                 rowid: rowid,
               ),
@@ -15794,6 +15864,7 @@ class $$CanvasesTableTableManager
                 Value<double> activePenWidth = const Value.absent(),
                 Value<int> activePenWidthMode = const Value.absent(),
                 Value<StrokeTool> activePenTool = const Value.absent(),
+                Value<String> toolWheelJson = const Value.absent(),
                 Value<bool> pressureEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CanvasesCompanion.insert(
@@ -15822,6 +15893,7 @@ class $$CanvasesTableTableManager
                 activePenWidth: activePenWidth,
                 activePenWidthMode: activePenWidthMode,
                 activePenTool: activePenTool,
+                toolWheelJson: toolWheelJson,
                 pressureEnabled: pressureEnabled,
                 rowid: rowid,
               ),

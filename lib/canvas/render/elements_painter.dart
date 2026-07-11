@@ -242,13 +242,15 @@ class StrokePathCache {
       _paths[key] = cached;
       return cached;
     }
-    final path = buildStrokeOutline(
-      stroke.points,
-      size: stroke.width,
-      viewportScale: viewportScale,
-      quality: key.quality,
-      isComplete: key.isComplete,
-    );
+    final path = stroke.tool == StrokeToolKind.fill
+        ? buildFillBoundaryPath(stroke.points)
+        : buildStrokeOutline(
+            stroke.points,
+            size: stroke.width,
+            viewportScale: viewportScale,
+            quality: key.quality,
+            isComplete: key.isComplete,
+          );
     _paths[key] = path;
     while (_paths.length > maxEntries) {
       _paths.remove(_paths.keys.first);
@@ -556,7 +558,8 @@ class ElementsPainter extends CustomPainter {
   /// outline is built once per move — acceptable for a small selection.)
   void _paintInk(Canvas canvas, InkElement element, {required bool selected}) {
     final Stroke stroke = element.stroke;
-    if (!selected &&
+    if (stroke.tool != StrokeToolKind.fill &&
+        !selected &&
         strokeRenderQualityForScale(viewport.scale) ==
             StrokeRenderQuality.overview) {
       _paintInkOverview(canvas, element);
@@ -577,17 +580,20 @@ class ElementsPainter extends CustomPainter {
 
     final Paint paint = Paint()..style = PaintingStyle.fill;
     final Color color = Color(stroke.color);
+    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
     switch (stroke.tool) {
       case StrokeToolKind.highlighter:
         paint
-          ..color = color.withValues(alpha: _highlighterOpacity)
+          ..color = color.withValues(alpha: _highlighterOpacity * userOpacity)
           ..blendMode = BlendMode.multiply;
       case StrokeToolKind.pencil:
-        paint.color = color.withValues(alpha: _pencilOpacity);
+        paint.color = color.withValues(alpha: _pencilOpacity * userOpacity);
       case StrokeToolKind.marker:
-        paint.color = color.withValues(alpha: _markerOpacity);
+        paint.color = color.withValues(alpha: _markerOpacity * userOpacity);
       case StrokeToolKind.airbrush:
-        paint.color = color.withValues(alpha: _airbrushOpacity);
+        paint.color = color.withValues(alpha: _airbrushOpacity * userOpacity);
+      case StrokeToolKind.fill:
+        paint.color = color;
       case StrokeToolKind.pen:
         paint.color = color;
     }
@@ -596,6 +602,9 @@ class ElementsPainter extends CustomPainter {
   }
 
   Path _strokePathFor(InkElement element) {
+    if (element.stroke.tool == StrokeToolKind.fill) {
+      return element.outlinePath;
+    }
     final StrokeRenderQuality quality = strokeRenderQualityForScale(
       viewport.scale,
     );
@@ -658,6 +667,15 @@ class ElementsPainter extends CustomPainter {
     if (points.isEmpty) {
       return;
     }
+    if (stroke.tool == StrokeToolKind.fill) {
+      canvas.drawPath(
+        buildFillBoundaryPath(points),
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = Color(stroke.color),
+      );
+      return;
+    }
     final Path path = Path()..moveTo(points.first.x, points.first.y);
     for (var i = 1; i < points.length; i += 1) {
       path.lineTo(points[i].x, points[i].y);
@@ -668,14 +686,16 @@ class ElementsPainter extends CustomPainter {
       StrokeToolKind.pencil => _pencilOpacity,
       StrokeToolKind.marker => _markerOpacity,
       StrokeToolKind.airbrush => _airbrushOpacity,
+      StrokeToolKind.fill => 1,
       StrokeToolKind.pen => 1,
     };
+    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
     final Paint paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke.width
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..color = color.withValues(alpha: opacity);
+      ..color = color.withValues(alpha: opacity * userOpacity);
     if (stroke.tool == StrokeToolKind.highlighter) {
       paint.blendMode = BlendMode.multiply;
     }

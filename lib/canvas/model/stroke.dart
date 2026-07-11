@@ -20,6 +20,9 @@ enum StrokeToolKind {
 
   /// Soft spray-like ink rendered with low opacity.
   airbrush,
+
+  /// A closed freeform boundary rendered as a solid colour field.
+  fill,
 }
 
 /// A single sampled point along a [Stroke] centerline, in world coordinates.

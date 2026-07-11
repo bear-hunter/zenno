@@ -718,18 +718,24 @@ abstract final class CanvasExportService {
     if (element.stroke.points.isEmpty) {
       return;
     }
-    final double opacity = switch (element.stroke.tool) {
+    final double baseOpacity = switch (element.stroke.tool) {
       StrokeToolKind.highlighter => 0.35,
       StrokeToolKind.pencil => 0.72,
       StrokeToolKind.marker => 0.78,
       StrokeToolKind.airbrush => 0.42,
+      StrokeToolKind.fill => 1,
       StrokeToolKind.pen => 1,
     };
+    final double opacity =
+        baseOpacity * (((element.stroke.color >>> 24) & 0xFF) / 255);
     final String blend = element.stroke.tool == StrokeToolKind.highlighter
         ? ' style="mix-blend-mode:multiply"'
         : '';
+    final String fillRule = element.stroke.tool == StrokeToolKind.fill
+        ? ' fill-rule="evenodd"'
+        : '';
     out.writeln(
-      '<path data-ink-outline="true" d="${_svgPathData(element.outlinePath, region, padding, scale)}" fill="${_svgColor(element.stroke.color)}" stroke="none" opacity="${opacity.toStringAsFixed(2)}"$blend/>',
+      '<path data-ink-outline="true" d="${_svgPathData(element.outlinePath, region, padding, scale)}" fill="${_svgColor(element.stroke.color)}" stroke="none" opacity="${opacity.toStringAsFixed(2)}"$fillRule$blend/>',
     );
   }
 

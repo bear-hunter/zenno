@@ -7,7 +7,7 @@ enum BackgroundKind { blank, grid, lined, dotted, isometric, triangle }
 enum ElementKind { stroke, pdf, link, image, text, card, shape }
 
 /// The freehand drawing tool used to author an [InkStrokes] row.
-enum StrokeTool { pen, highlighter, pencil, marker, airbrush }
+enum StrokeTool { pen, highlighter, pencil, marker, airbrush, fill }
 
 /// The kind of destination a [CanvasLinks] row points at.
 enum CanvasLinkKind { web, canvas, region, bookmark }
@@ -61,6 +61,7 @@ class Canvases extends Table {
       integer().withDefault(const Constant(0))();
   IntColumn get activePenTool =>
       intEnum<StrokeTool>().withDefault(const Constant(0))();
+  TextColumn get toolWheelJson => text().withDefault(const Constant('{}'))();
   BoolColumn get pressureEnabled =>
       boolean().withDefault(const Constant(true))();
 

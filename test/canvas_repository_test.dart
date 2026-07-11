@@ -299,6 +299,31 @@ void main() {
 
       expect(loaded.stroke.tool, StrokeToolKind.marker);
     });
+
+    test('freeform fill persists through the stroke tool column', () async {
+      final original = InkElement.fromStroke(
+        const Stroke(
+          id: 'ink-fill',
+          points: <StrokePoint>[
+            StrokePoint(0, 0, 0.5),
+            StrokePoint(30, 0, 0.5),
+            StrokePoint(20, 20, 0.5),
+            StrokePoint(0, 0, 0.5),
+          ],
+          color: 0x88F2C94C,
+          width: 1,
+          tool: StrokeToolKind.fill,
+        ),
+        zIndex: 1,
+      );
+
+      await repo.upsertElement(canvasId, original);
+      final loaded = (await repo.loadElements(canvasId)).single as InkElement;
+
+      expect(loaded.stroke.tool, StrokeToolKind.fill);
+      expect(loaded.stroke.color, 0x88F2C94C);
+      expect(loaded.stroke.points, original.stroke.points);
+    });
   });
 
   group('image element round-trip', () {
@@ -487,6 +512,41 @@ void main() {
       expect(settings.penKind, StrokeToolKind.marker);
       expect(settings.pressureEnabled, isFalse);
     });
+
+    test(
+      'save then load preserves all eight independent wheel favorites',
+      () async {
+        final presets = List<ToolWheelPreset>.of(defaultToolWheelPresets);
+        presets[0] = presets[0].copyWith(
+          color: 0xFF123456,
+          size: 7,
+          opacity: 0.6,
+          smoothing: 0.8,
+        );
+        presets[1] = defaultToolWheelPresetFor(
+          ToolWheelSlotKind.pen,
+        ).copyWith(size: 2);
+        presets[7] = defaultToolWheelPresetFor(ToolWheelSlotKind.pan);
+
+        await repo.saveToolSettings(
+          canvasId,
+          CanvasToolSettings(
+            penColor: 0x99123456,
+            penWidth: 7,
+            toolWheelPresets: presets,
+            activeToolWheelIndex: 7,
+          ),
+        );
+
+        final settings = await repo.loadToolSettings(canvasId);
+
+        expect(settings.activeToolWheelIndex, 7);
+        expect(settings.toolWheelPresets, hasLength(8));
+        expect(settings.toolWheelPresets[0], presets[0]);
+        expect(settings.toolWheelPresets[1], presets[1]);
+        expect(settings.toolWheelPresets[7].kind, ToolWheelSlotKind.pan);
+      },
+    );
   });
 
   group('mixed canvas', () {

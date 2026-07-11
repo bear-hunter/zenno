@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:zenno/canvas/engine/canvas_commands.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
+import 'package:zenno/canvas/engine/stroke_builder.dart';
 import 'package:zenno/canvas/input/pen_input_processor.dart';
 import 'package:zenno/canvas/input/pen_profile.dart';
 import 'package:zenno/canvas/io/canvas_import.dart';
@@ -358,6 +359,24 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// The ink tool kind applied to new strokes.
   StrokeToolKind penKind = StrokeToolKind.pen;
+
+  final List<ToolWheelPreset> _toolWheelPresets = List<ToolWheelPreset>.of(
+    defaultToolWheelPresets,
+  );
+
+  /// Stable eight-slot preset rack shown by the canvas tool wheel.
+  List<ToolWheelPreset> get toolWheelPresets =>
+      List<ToolWheelPreset>.unmodifiable(_toolWheelPresets);
+
+  int activeToolWheelIndex = 0;
+
+  ToolWheelPreset get activeToolWheelPreset =>
+      _toolWheelPresets[activeToolWheelIndex
+          .clamp(0, _toolWheelPresets.length - 1)
+          .toInt()];
+
+  /// User-controlled opacity of the active ink preset.
+  double get penOpacity => ((penColor >>> 24) & 0xFF) / 255;
 
   /// Whether stylus pressure affects new ink width.
   bool pressureEnabled = true;
@@ -892,6 +911,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     penWidthMode = savedTool.penWidthMode;
     penKind = savedTool.penKind;
     pressureEnabled = savedTool.pressureEnabled;
+    _toolWheelPresets
+      ..clear()
+      ..addAll(savedTool.toolWheelPresets);
+    activeToolWheelIndex = savedTool.activeToolWheelIndex
+        .clamp(0, _toolWheelPresets.length - 1)
+        .toInt();
+    _applyToolWheelPresetValues(activeToolWheelPreset);
+    activeTool = _canvasToolForPreset(activeToolWheelPreset.kind);
     _isLoaded = true;
     notifyListeners();
   }
@@ -1057,6 +1084,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         penWidthMode: penWidthMode,
         penKind: penKind,
         pressureEnabled: pressureEnabled,
+        toolWheelPresets: toolWheelPresets,
+        activeToolWheelIndex: activeToolWheelIndex,
       ),
     );
   }
@@ -1280,9 +1309,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     final String? layerId = _editableActiveLayerId();
     _liveStrokeBuilder = null;
     _liveStrokeRevision += 1;
-    if (stroke != null && stroke.points.isNotEmpty && layerId != null) {
+    if (stroke != null &&
+        layerId != null &&
+        (stroke.tool == StrokeToolKind.fill
+            ? isValidFillBoundary(stroke.points)
+            : stroke.points.isNotEmpty)) {
       final Stroke committed = stroke.copyWith(
-        points: PenInputProcessor.applyTaper(stroke.points, penProfile),
+        points: stroke.tool == StrokeToolKind.fill
+            ? stroke.points
+            : PenInputProcessor.applyTaper(stroke.points, penProfile),
       );
       final InkElement element = InkElement.fromStroke(
         committed,
@@ -1487,8 +1522,75 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       _previousTool = activeTool;
     }
     activeTool = tool;
+    final int matchingPreset = _toolWheelPresets.indexWhere(
+      (ToolWheelPreset preset) =>
+          _canvasToolForPreset(preset.kind) == tool &&
+          (!preset.kind.isInk || preset.kind.strokeKind == penKind),
+    );
+    if (matchingPreset >= 0) {
+      activeToolWheelIndex = matchingPreset;
+      _saveToolSettings();
+    }
     _discardLasso(restoreSelection: true);
     notifyListeners();
+  }
+
+  /// Atomically activates one of the eight remembered wheel presets.
+  void selectToolWheelPreset(int index) {
+    if (index < 0 || index >= _toolWheelPresets.length) return;
+    final ToolWheelPreset preset = _toolWheelPresets[index];
+    final CanvasTool nextTool = _canvasToolForPreset(preset.kind);
+    if (activeTool != nextTool) {
+      _previousTool = activeTool;
+    }
+    activeToolWheelIndex = index;
+    activeTool = nextTool;
+    _discardLasso(restoreSelection: true);
+    _applyToolWheelPresetValues(preset);
+    _saveToolSettings();
+    notifyListeners();
+  }
+
+  /// Reassigns a favorite slot, then immediately activates its defaults.
+  void replaceToolWheelPreset(int index, ToolWheelSlotKind kind) {
+    if (index < 0 || index >= _toolWheelPresets.length) return;
+    _toolWheelPresets[index] = defaultToolWheelPresetFor(kind);
+    selectToolWheelPreset(index);
+  }
+
+  static CanvasTool _canvasToolForPreset(ToolWheelSlotKind kind) {
+    return switch (kind) {
+      ToolWheelSlotKind.pen ||
+      ToolWheelSlotKind.pencil ||
+      ToolWheelSlotKind.highlighter ||
+      ToolWheelSlotKind.marker ||
+      ToolWheelSlotKind.airbrush ||
+      ToolWheelSlotKind.fill => CanvasTool.pen,
+      ToolWheelSlotKind.eraser => CanvasTool.eraser,
+      ToolWheelSlotKind.lasso => CanvasTool.lasso,
+      ToolWheelSlotKind.shape => CanvasTool.shape,
+      ToolWheelSlotKind.text => CanvasTool.text,
+      ToolWheelSlotKind.link => CanvasTool.link,
+      ToolWheelSlotKind.pan => CanvasTool.pan,
+    };
+  }
+
+  void _applyToolWheelPresetValues(ToolWheelPreset preset) {
+    if (preset.kind.isInk) {
+      penKind = preset.kind.strokeKind!;
+      penColor = _argbWithOpacity(preset.color, preset.opacity);
+      penWidth = preset.size;
+      penWidthMode = preset.widthMode;
+      pressureEnabled = preset.pressureEnabled;
+      penProfile = penProfile.copyWith(smoothing: preset.smoothing);
+    } else if (preset.kind == ToolWheelSlotKind.eraser) {
+      eraserRadius = preset.size;
+    }
+  }
+
+  static int _argbWithOpacity(int color, double opacity) {
+    final int alpha = (opacity.clamp(0, 1) * 255).round();
+    return (alpha << 24) | (color & 0x00FFFFFF);
   }
 
   /// Toggles between the current tool and the last explicit tool.
@@ -1646,7 +1748,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Sets the on-screen radius of the eraser footprint.
   void setEraserRadius(double radius) {
-    eraserRadius = radius;
+    eraserRadius = radius.clamp(1, 96).toDouble();
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind == ToolWheelSlotKind.eraser) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        size: eraserRadius,
+      );
+      _saveToolSettings();
+    }
     notifyListeners();
   }
 
@@ -1673,13 +1782,51 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Sets the packed ARGB colour applied to new strokes.
   void setPenColor(int color) {
     penColor = color;
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        color: color | 0xFF000000,
+        opacity: ((color >>> 24) & 0xFF) / 255,
+      );
+    }
+    _saveToolSettings();
+    notifyListeners();
+  }
+
+  /// Changes only the RGB component, preserving this preset's opacity.
+  void setPenRgbColor(int color) {
+    penColor = (penColor & 0xFF000000) | (color & 0x00FFFFFF);
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        color: color | 0xFF000000,
+      );
+    }
+    _saveToolSettings();
+    notifyListeners();
+  }
+
+  /// Sets the active preset's opacity without changing its selected colour.
+  void setPenOpacity(double opacity) {
+    final double normalized = opacity.clamp(0, 1).toDouble();
+    penColor = _argbWithOpacity(penColor, normalized);
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        opacity: normalized,
+      );
+    }
     _saveToolSettings();
     notifyListeners();
   }
 
   /// Sets the on-screen width applied to new strokes.
   void setPenWidth(double width) {
-    penWidth = width;
+    penWidth = width.clamp(0.5, 96).toDouble();
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(size: penWidth);
+    }
     _saveToolSettings();
     notifyListeners();
   }
@@ -1690,6 +1837,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     penWidthMode = mode;
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        widthMode: mode,
+      );
+    }
     _saveToolSettings();
     notifyListeners();
   }
@@ -1697,6 +1850,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Sets the ink tool kind applied to new strokes.
   void setPenKind(StrokeToolKind kind) {
     penKind = kind;
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (activeTool == CanvasTool.pen) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        kind: ToolWheelSlotKind.fromStrokeKind(kind),
+      );
+    }
     _saveToolSettings();
     notifyListeners();
   }
@@ -1704,6 +1863,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Toggles whether captured pressure affects new strokes.
   void setPressureEnabled({required bool enabled}) {
     pressureEnabled = enabled;
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        pressureEnabled: enabled,
+      );
+    }
     _saveToolSettings();
     notifyListeners();
   }
@@ -1717,6 +1882,20 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (notify) {
       notifyListeners();
     }
+  }
+
+  /// Updates only smoothing for the active wheel preset.
+  void setPenSmoothing(double smoothing) {
+    final double normalized = smoothing.clamp(0, 1).toDouble();
+    penProfile = penProfile.copyWith(smoothing: normalized);
+    final ToolWheelPreset preset = activeToolWheelPreset;
+    if (preset.kind.isInk) {
+      _toolWheelPresets[activeToolWheelIndex] = preset.copyWith(
+        smoothing: normalized,
+      );
+    }
+    _saveToolSettings();
+    notifyListeners();
   }
 
   /// Updates the per-canvas paper style.
@@ -1759,6 +1938,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           penWidthMode: penWidthMode,
           penKind: penKind,
           pressureEnabled: pressureEnabled,
+          toolWheelPresets: toolWheelPresets,
+          activeToolWheelIndex: activeToolWheelIndex,
         ),
       ),
     );
@@ -1916,6 +2097,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         // Only ink splits; a non-ink element the eraser merely grazes survives.
         continue;
       }
+      if (element.stroke.tool == StrokeToolKind.fill) {
+        // A fill is one closed region, not a centreline that can be split into
+        // meaningful stroke fragments. Partial erase therefore removes the
+        // region as a single object instead of corrupting its boundary.
+        removed.add(element);
+        continue;
+      }
       final List<List<StrokePoint>> fragments =
           CanvasGeometry.splitStrokeByEraser(
             stroke: element.stroke,
@@ -2001,6 +2189,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   ) {
     switch (element) {
       case InkElement():
+        if (element.stroke.tool == StrokeToolKind.fill) {
+          if (path.any(element.outlinePath.contains)) {
+            return true;
+          }
+          return CanvasGeometry.polylinesWithinDistance(
+            path,
+            _closedFillBoundary(element),
+            worldRadius,
+          );
+        }
         final List<Offset> centerline = <Offset>[
           for (final StrokePoint p in element.stroke.points) p.offset,
         ];
@@ -2598,6 +2796,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   bool _pointHitsElement(Offset world, CanvasElement element, double slop) {
     switch (element) {
       case InkElement():
+        if (element.stroke.tool == StrokeToolKind.fill) {
+          return element.outlinePath.contains(world) ||
+              CanvasGeometry.circleHitsPolyline(
+                world,
+                slop,
+                _closedFillBoundary(element),
+              );
+        }
         final double reach = slop + element.stroke.width / 2;
         final List<Offset> centerline = <Offset>[
           for (final StrokePoint p in element.stroke.points) p.offset,
@@ -2638,6 +2844,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       TextElement(:final placementBounds) => placementBounds,
       _ => null,
     };
+  }
+
+  static List<Offset> _closedFillBoundary(InkElement element) {
+    final List<Offset> boundary = <Offset>[
+      for (final StrokePoint point in element.stroke.points) point.offset,
+    ];
+    if (boundary.isNotEmpty) {
+      boundary.add(boundary.first);
+    }
+    return boundary;
   }
 
   static List<Offset> _rotatedRectSamples(Rect rect, double radians) {
@@ -2759,6 +2975,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     for (final CanvasElement element in selectedElements) {
       switch (element) {
         case InkElement():
+          if (element.stroke.tool == StrokeToolKind.fill) {
+            if (element.outlinePath.contains(world) ||
+                CanvasGeometry.circleHitsPolyline(
+                  world,
+                  slop,
+                  _closedFillBoundary(element),
+                )) {
+              return true;
+            }
+            break;
+          }
           final double reach = slop + element.stroke.width / 2;
           final List<Offset> centerline = <Offset>[
             for (final StrokePoint p in element.stroke.points) p.offset,

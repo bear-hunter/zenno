@@ -1318,7 +1318,9 @@ class _CanvasViewState extends State<CanvasView> {
   }
 
   PenSample _beginPenSample(Offset world, PointerEvent event) {
-    final PenInputProcessor processor = PenInputProcessor(widget.penProfile);
+    final PenInputProcessor processor = PenInputProcessor(
+      _controller.penProfile,
+    );
     _penInputProcessor = processor;
     return processor.begin(
       world,
@@ -1332,7 +1334,7 @@ class _CanvasViewState extends State<CanvasView> {
 
   PenSample _nextPenSample(Offset world, PointerEvent event) {
     final PenInputProcessor processor =
-        _penInputProcessor ?? PenInputProcessor(widget.penProfile);
+        _penInputProcessor ?? PenInputProcessor(_controller.penProfile);
     _penInputProcessor = processor;
     return processor.next(
       world,

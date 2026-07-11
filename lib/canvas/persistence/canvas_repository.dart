@@ -633,6 +633,7 @@ class CanvasRepository {
             _penWidthModeToColumn(toolSettings.penWidthMode),
           ),
           activePenTool: Value(_strokeToolToColumn(toolSettings.penKind)),
+          toolWheelJson: Value(_encodeToolWheel(toolSettings)),
           pressureEnabled: Value(toolSettings.pressureEnabled),
           updatedAt: Value(now),
         ),
@@ -887,12 +888,22 @@ class CanvasRepository {
     if (row == null) {
       return const CanvasToolSettings();
     }
-    return CanvasToolSettings(
+    final CanvasToolSettings legacy = CanvasToolSettings(
       penColor: row.activePenColor,
       penWidth: row.activePenWidth,
       penWidthMode: _penWidthModeToModel(row.activePenWidthMode),
       penKind: _strokeToolToModel(row.activePenTool),
       pressureEnabled: row.pressureEnabled,
+    );
+    final config = _decodeToolWheel(row.toolWheelJson, legacy);
+    return CanvasToolSettings(
+      penColor: legacy.penColor,
+      penWidth: legacy.penWidth,
+      penWidthMode: legacy.penWidthMode,
+      penKind: legacy.penKind,
+      pressureEnabled: legacy.pressureEnabled,
+      toolWheelPresets: config.presets,
+      activeToolWheelIndex: config.activeIndex,
     );
   }
 
@@ -905,6 +916,7 @@ class CanvasRepository {
         activePenWidth: Value(settings.penWidth),
         activePenWidthMode: Value(_penWidthModeToColumn(settings.penWidthMode)),
         activePenTool: Value(_strokeToolToColumn(settings.penKind)),
+        toolWheelJson: Value(_encodeToolWheel(settings)),
         pressureEnabled: Value(settings.pressureEnabled),
         updatedAt: Value(DateTime.now()),
       ),
@@ -1042,6 +1054,7 @@ class CanvasRepository {
       tables.StrokeTool.pencil => StrokeToolKind.pencil,
       tables.StrokeTool.marker => StrokeToolKind.marker,
       tables.StrokeTool.airbrush => StrokeToolKind.airbrush,
+      tables.StrokeTool.fill => StrokeToolKind.fill,
     };
   }
 
@@ -1053,7 +1066,92 @@ class CanvasRepository {
       StrokeToolKind.pencil => tables.StrokeTool.pencil,
       StrokeToolKind.marker => tables.StrokeTool.marker,
       StrokeToolKind.airbrush => tables.StrokeTool.airbrush,
+      StrokeToolKind.fill => tables.StrokeTool.fill,
     };
+  }
+
+  static String _encodeToolWheel(CanvasToolSettings settings) {
+    final List<ToolWheelPreset> presets = List<ToolWheelPreset>.of(
+      settings.toolWheelPresets,
+    );
+    while (presets.length < defaultToolWheelPresets.length) {
+      presets.add(defaultToolWheelPresets[presets.length]);
+    }
+    if (presets.length > defaultToolWheelPresets.length) {
+      presets.removeRange(defaultToolWheelPresets.length, presets.length);
+    }
+    final int activeIndex = settings.activeToolWheelIndex
+        .clamp(0, presets.length - 1)
+        .toInt();
+    if (presets[activeIndex].kind.isInk) {
+      presets[activeIndex] = presets[activeIndex].copyWith(
+        kind: ToolWheelSlotKind.fromStrokeKind(settings.penKind),
+        color: settings.penColor | 0xFF000000,
+        size: settings.penWidth,
+        opacity: ((settings.penColor >>> 24) & 0xFF) / 255,
+        widthMode: settings.penWidthMode,
+        pressureEnabled: settings.pressureEnabled,
+      );
+    }
+    return jsonEncode(<String, Object>{
+      'version': 1,
+      'activeIndex': activeIndex,
+      'presets': <Map<String, Object>>[
+        for (final ToolWheelPreset preset in presets) preset.toJson(),
+      ],
+    });
+  }
+
+  static ({List<ToolWheelPreset> presets, int activeIndex}) _decodeToolWheel(
+    String raw,
+    CanvasToolSettings legacy,
+  ) {
+    try {
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is Map && decoded['presets'] is List) {
+        final List<Object?> rawPresets = List<Object?>.of(
+          decoded['presets'] as List,
+        );
+        final List<ToolWheelPreset> presets = <ToolWheelPreset>[
+          for (var index = 0; index < defaultToolWheelPresets.length; index++)
+            ToolWheelPreset.fromJson(
+                  index < rawPresets.length ? rawPresets[index] : null,
+                ) ??
+                defaultToolWheelPresets[index],
+        ];
+        final int activeIndex = ((decoded['activeIndex'] as num?)?.toInt() ?? 0)
+            .clamp(0, presets.length - 1)
+            .toInt();
+        return (
+          presets: List<ToolWheelPreset>.unmodifiable(presets),
+          activeIndex: activeIndex,
+        );
+      }
+    } catch (_) {
+      // Fall back to the legacy active-pen columns below.
+    }
+
+    final List<ToolWheelPreset> presets = List<ToolWheelPreset>.of(
+      defaultToolWheelPresets,
+    );
+    final ToolWheelSlotKind legacyKind = ToolWheelSlotKind.fromStrokeKind(
+      legacy.penKind,
+    );
+    final int activeIndex = presets.indexWhere(
+      (ToolWheelPreset preset) => preset.kind == legacyKind,
+    );
+    final int safeIndex = activeIndex < 0 ? 0 : activeIndex;
+    presets[safeIndex] = presets[safeIndex].copyWith(
+      color: legacy.penColor | 0xFF000000,
+      size: legacy.penWidth,
+      opacity: ((legacy.penColor >>> 24) & 0xFF) / 255,
+      widthMode: legacy.penWidthMode,
+      pressureEnabled: legacy.pressureEnabled,
+    );
+    return (
+      presets: List<ToolWheelPreset>.unmodifiable(presets),
+      activeIndex: safeIndex,
+    );
   }
 
   static PenWidthMode _penWidthModeToModel(int value) {

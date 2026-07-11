@@ -44,8 +44,9 @@ Future<void> _pumpToolbar(
   await tester.pumpWidget(MaterialApp(home: home));
 }
 
-Finder _toolButton(CanvasTool tool) =>
-    find.byKey(ValueKey<String>('${CanvasToolbar.toolButtonKeyPrefix}-$tool'));
+Finder _presetButton(int index) => find.byKey(
+  ValueKey<String>('${CanvasToolbar.toolButtonKeyPrefix}-preset-$index'),
+);
 
 Finder _swatch(int index) => find.byKey(
   ValueKey<String>('${CanvasToolbar.swatchButtonKeyPrefix}-$index'),
@@ -95,114 +96,98 @@ void main() {
     expect(_swatch(5), findsOneWidget);
   });
 
-  testWidgets('eight wheel sectors map to seven tools and More', (
-    tester,
-  ) async {
-    final controller = CanvasController()..setTool(CanvasTool.pan);
-    addTearDown(controller.dispose);
-    await _pumpToolbar(tester, controller);
-
-    const tools = <CanvasTool>[
-      CanvasTool.pen,
-      CanvasTool.eraser,
-      CanvasTool.lasso,
-      CanvasTool.shape,
-      CanvasTool.text,
-      CanvasTool.link,
-      CanvasTool.pan,
-    ];
-    for (final tool in tools) {
-      expect(_toolButton(tool), findsOneWidget);
-    }
-    expect(find.byKey(CanvasToolbar.canvasSettingsDockKey), findsOneWidget);
-
-    final Rect wheel = tester.getRect(
-      find.byKey(CanvasToolbar.minimalToolMenuKey),
-    );
-    final double innerRadius = wheel.width * 40 / 176;
-    final double radius = (wheel.width / 2 + innerRadius) / 2;
-    const double sweep = math.pi * 2 / 8;
-    for (var index = 0; index < tools.length; index++) {
-      final double angle = -math.pi / 2 + index * sweep;
-      await tester.tapAt(
-        wheel.center +
-            Offset(math.cos(angle) * radius, math.sin(angle) * radius),
-      );
-      await tester.pump();
-      expect(controller.activeTool, tools[index]);
-    }
-
-    const double moreAngle = -math.pi / 2 + 7 * sweep;
-    await tester.tapAt(
-      wheel.center +
-          Offset(math.cos(moreAngle) * radius, math.sin(moreAngle) * radius),
-    );
-    await tester.pump();
-    expect(find.byTooltip('Undo'), findsOneWidget);
-    expect(find.byTooltip('Insert'), findsOneWidget);
-    expect(find.byTooltip('Appearance'), findsOneWidget);
-    expect(find.byTooltip('View and gestures'), findsOneWidget);
-    expect(_swatch(0), findsOneWidget);
-  });
-
-  testWidgets('center swaps to pen context ring without hiding palette', (
+  testWidgets('eight wheel sectors are stable remembered favorites', (
     tester,
   ) async {
     final controller = CanvasController();
     addTearDown(controller.dispose);
     await _pumpToolbar(tester, controller);
 
-    await tester.tap(find.byTooltip('Draw settings'));
-    await tester.pump();
+    const kinds = <ToolWheelSlotKind>[
+      ToolWheelSlotKind.pen,
+      ToolWheelSlotKind.pencil,
+      ToolWheelSlotKind.highlighter,
+      ToolWheelSlotKind.marker,
+      ToolWheelSlotKind.airbrush,
+      ToolWheelSlotKind.fill,
+      ToolWheelSlotKind.eraser,
+      ToolWheelSlotKind.lasso,
+    ];
+    for (var index = 0; index < kinds.length; index++) {
+      expect(_presetButton(index), findsOneWidget);
+      expect(controller.toolWheelPresets[index].kind, kinds[index]);
+    }
+    expect(find.byKey(CanvasToolbar.canvasSettingsDockKey), findsOneWidget);
 
-    expect(find.byTooltip('Show drawing tools'), findsOneWidget);
-    expect(find.byTooltip('Pencil'), findsOneWidget);
-    expect(find.byTooltip('Thicker'), findsOneWidget);
-    expect(find.byTooltip('Screen width'), findsOneWidget);
-    expect(_swatch(0), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Pencil'));
+    for (var index = 1; index < kinds.length; index++) {
+      await tester.tap(_presetButton(index));
+      await tester.pump();
+      expect(controller.activeToolWheelIndex, index);
+    }
+    await tester.tap(_presetButton(0));
     await tester.pump();
-    expect(controller.penKind, StrokeToolKind.pencil);
-
-    await tester.tap(find.byTooltip('Thicker'));
-    await tester.pump();
-    expect(controller.penWidth, 8);
-
-    await tester.tap(find.byTooltip('Screen width'));
-    await tester.pump();
-    expect(controller.penWidthMode, PenWidthMode.canvas);
-
-    await tester.tap(find.byTooltip('Show drawing tools'));
-    await tester.pump();
-    expect(_toolButton(CanvasTool.eraser), findsOneWidget);
-    expect(_swatch(0), findsOneWidget);
+    expect(controller.activeToolWheelIndex, 0);
   });
 
-  testWidgets('eraser and pan settings are available in context rings', (
+  testWidgets('center edits color and inner ring edits remembered properties', (
     tester,
   ) async {
-    final controller = CanvasController()..setTool(CanvasTool.eraser);
+    final controller = CanvasController();
     addTearDown(controller.dispose);
     await _pumpToolbar(tester, controller);
 
-    await tester.tap(find.byTooltip('Eraser settings'));
+    expect(find.byTooltip('Size: 4 pt'), findsOneWidget);
+    expect(find.byTooltip('Opacity: 100%'), findsOneWidget);
+    expect(find.byTooltip('Smoothing: 35%'), findsOneWidget);
+
+    await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Tool colour'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Size: 4 pt'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '8 pt'));
     await tester.pump();
+    expect(controller.penWidth, 8);
+    await tester.tapAt(const Offset(760, 30));
+    await tester.pumpAndSettle();
+
+    await tester.tap(_presetButton(0));
+    await tester.pumpAndSettle();
+    expect(find.text('Replace favorite 1'), findsOneWidget);
+    await tester.tap(find.text('Airbrush').last);
+    await tester.pumpAndSettle();
+    expect(controller.activeToolWheelPreset.kind, ToolWheelSlotKind.airbrush);
+    expect(controller.penKind, StrokeToolKind.airbrush);
+    expect(_swatch(0), findsOneWidget);
+  });
+
+  testWidgets('utility favorites open context settings and can be replaced', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    await tester.tap(_presetButton(6));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Eraser settings'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Split strokes'));
-    await tester.tap(find.byTooltip('Eraser 32'));
     await tester.pump();
     expect(controller.eraserMode, EraserMode.partial);
-    expect(controller.eraserRadius, 32);
     expect(_swatch(0), findsOneWidget);
+    await tester.tapAt(const Offset(760, 30));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Show drawing tools'));
-    controller.setTool(CanvasTool.pan);
+    controller.replaceToolWheelPreset(7, ToolWheelSlotKind.pan);
     await tester.pump();
+    expect(controller.activeTool, CanvasTool.pan);
     await tester.tap(find.byTooltip('Pan settings'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('Zoom in'));
-    await tester.pump();
-    expect(controller.viewport.scale, greaterThan(1));
+    await tester.pumpAndSettle();
+    expect(find.text('Drag to move the canvas'), findsOneWidget);
     expect(_swatch(0), findsOneWidget);
   });
 
@@ -287,7 +272,7 @@ void main() {
         wheel.topLeft + const Offset(13, 3),
       );
 
-      final double innerRadius = wheel.width * 40 / 176;
+      final double innerRadius = wheel.width * 58 / 176;
       final double radius = (wheel.width / 2 + innerRadius) / 2;
       const double firstGapAngle = -math.pi * 3 / 8;
       await _drawStylusStroke(
@@ -500,75 +485,10 @@ void main() {
     expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
   });
 
-  testWidgets(
-    'selection count replaces every tool summary and opens eight actions',
-    (tester) async {
-      final controller = CanvasController()..setTool(CanvasTool.pen);
-      addTearDown(controller.dispose);
-      controller
-        ..addElementToStore(
-          const TextElement(
-            id: 'first-note',
-            zIndex: 0,
-            worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
-            text: 'First',
-            color: 0xFFFFFFFF,
-            fontSize: 18,
-          ),
-        )
-        ..addElementToStore(
-          const TextElement(
-            id: 'second-note',
-            zIndex: 1,
-            worldBounds: Rect.fromLTWH(80, -10, 100, 20),
-            text: 'Second',
-            color: 0xFFFFFFFF,
-            fontSize: 18,
-          ),
-        )
-        ..setSelection(<String>{'first-note', 'second-note'});
-      await _pumpToolbar(tester, controller);
-
-      for (final CanvasTool tool in CanvasTool.values) {
-        controller.setTool(tool);
-        await tester.pump();
-        expect(
-          find.descendant(
-            of: find.byKey(CanvasToolbar.wheelCenterKey),
-            matching: find.text('2 selected'),
-          ),
-          findsOneWidget,
-          reason: 'selection count hidden behind $tool summary',
-        );
-        expect(find.byTooltip('Selection actions'), findsOneWidget);
-      }
-
-      await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
-      await tester.pumpAndSettle();
-
-      const actions = <String>[
-        'Done selecting',
-        'Delete selection',
-        'Add to selection once',
-        'Remove from selection once',
-        'Rotate selection left',
-        'Rotate selection right',
-        'Scale selection down',
-        'Scale selection up',
-      ];
-      for (final action in actions) {
-        expect(find.byTooltip(action), findsAtLeastNWidgets(1));
-      }
-      expect(find.byTooltip('Show drawing tools'), findsOneWidget);
-    },
-  );
-
-  testWidgets('selection modes preserve Pen and Done restores its center', (
+  testWidgets('selection does not replace the eight favorite slots', (
     tester,
   ) async {
-    final controller = CanvasController()..setTool(CanvasTool.pen);
-    addTearDown(controller.dispose);
-    controller
+    final controller = CanvasController()
       ..addElementToStore(
         const TextElement(
           id: 'note',
@@ -580,95 +500,87 @@ void main() {
         ),
       )
       ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
     await _pumpToolbar(tester, controller);
 
-    await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
+    for (var index = 0; index < 8; index++) {
+      expect(_presetButton(index), findsOneWidget);
+    }
+    expect(
+      find.descendant(
+        of: find.byKey(CanvasToolbar.wheelCenterKey),
+        matching: find.text('Pen'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Done selecting'), findsOneWidget);
+  });
+
+  testWidgets('selection modes remain available from the Select favorite', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    await tester.tap(_presetButton(7));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Select settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Add to selection once').last);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Add to selection once'));
+    await tester.pump();
     expect(controller.selectionMode, SelectionMode.add);
-    expect(controller.activeTool, CanvasTool.pen);
 
-    await tester.tap(find.byTooltip('Remove from selection once').last);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove from selection once'));
+    await tester.pump();
     expect(controller.selectionMode, SelectionMode.subtract);
-    expect(controller.activeTool, CanvasTool.pen);
-
-    await tester.tap(find.byTooltip('Done selecting').last);
-    await tester.pumpAndSettle();
-    expect(controller.hasSelection, isFalse);
-    expect(controller.activeTool, CanvasTool.pen);
-    expect(find.byTooltip('Draw settings'), findsOneWidget);
-    expect(find.byTooltip('Selection actions'), findsNothing);
+    expect(controller.activeTool, CanvasTool.lasso);
   });
 
-  testWidgets('selection ring rotates and scales without changing tools', (
-    tester,
-  ) async {
-    final controller = CanvasController()..setTool(CanvasTool.pen);
+  testWidgets('favorites remember independent color and size', (tester) async {
+    final controller = CanvasController();
     addTearDown(controller.dispose);
-    controller
-      ..addElementToStore(
-        const TextElement(
-          id: 'note',
-          zIndex: 0,
-          worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
-          text: 'Transform',
-          color: 0xFFFFFFFF,
-          fontSize: 18,
-        ),
-      )
-      ..setSelection(<String>{'note'});
-    await _pumpToolbar(tester, controller);
+    await _pumpToolbar(
+      tester,
+      controller,
+      palette: const <int>[0xFFFF4F91, 0xFFFFFFFF],
+    );
 
-    await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
+    await tester.tap(_presetButton(2));
     await tester.pump();
-    await tester.tap(find.byTooltip('Rotate selection right'));
+    await tester.tap(_swatch(0));
+    controller.setPenWidth(24);
     await tester.pump();
 
-    var note = controller.elements.single as TextElement;
-    expect(note.rotation, greaterThan(0));
-    final double widthBefore = note.placementBounds.width;
-    await tester.tap(find.byTooltip('Scale selection up'));
+    await tester.tap(_presetButton(0));
     await tester.pump();
-    note = controller.elements.single as TextElement;
-    expect(note.placementBounds.width, greaterThan(widthBefore));
-    expect(controller.activeTool, CanvasTool.pen);
-    expect(controller.hasSelection, isTrue);
+    expect(controller.penWidth, 4);
+    expect(controller.penColor & 0x00FFFFFF, 0x00FFFFFF);
+
+    await tester.tap(_presetButton(2));
+    await tester.pump();
+    expect(controller.penWidth, 24);
+    expect(controller.penColor & 0x00FFFFFF, 0x00FF4F91);
   });
 
-  testWidgets('long-press selection center keeps fine-adjustment fallback', (
+  testWidgets('long-press favorite opens the replacement library', (
     tester,
   ) async {
-    final controller = CanvasController()..setTool(CanvasTool.pen);
+    final controller = CanvasController();
     addTearDown(controller.dispose);
-    controller
-      ..addElementToStore(
-        const TextElement(
-          id: 'note',
-          zIndex: 0,
-          worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
-          text: 'Transform',
-          color: 0xFFFFFFFF,
-          fontSize: 18,
-        ),
-      )
-      ..setSelection(<String>{'note'});
     await _pumpToolbar(tester, controller);
 
-    await tester.longPress(find.byKey(CanvasToolbar.wheelCenterKey));
+    await tester.longPress(_presetButton(1));
     await tester.pumpAndSettle();
-    final Finder rotate = find.byTooltip('Rotate selection right');
-    final Finder scale = find.byTooltip('Scale selection up');
-    expect(rotate, findsOneWidget);
-    expect(scale, findsOneWidget);
-    await tester.ensureVisible(rotate);
-    await tester.tap(rotate);
-    await tester.pump();
+    expect(find.text('Replace favorite 2'), findsOneWidget);
+    expect(find.text('Freeform fill'), findsOneWidget);
+    expect(find.text('Marker'), findsOneWidget);
+    expect(find.text('Airbrush'), findsOneWidget);
+    await tester.tap(find.text('Pen').last);
+    await tester.pumpAndSettle();
 
-    final note = controller.elements.single as TextElement;
-    expect(note.rotation, greaterThan(0));
-    expect(controller.activeTool, CanvasTool.pen);
+    expect(controller.toolWheelPresets[0].kind, ToolWheelSlotKind.pen);
+    expect(controller.toolWheelPresets[1].kind, ToolWheelSlotKind.pen);
   });
 
   testWidgets('More exposes enabled image and PDF actions', (tester) async {

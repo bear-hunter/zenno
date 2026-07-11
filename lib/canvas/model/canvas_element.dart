@@ -248,11 +248,13 @@ final class InkElement extends CanvasElement {
   /// Built on first access via [buildStrokeOutline] and cached for reuse; see
   /// [_outlinePath]. The committed-layer painter draws this path directly.
   Path get outlinePath {
-    return _outlinePath ??= buildStrokeOutline(
-      stroke.points,
-      size: stroke.width,
-      isComplete: true,
-    );
+    return _outlinePath ??= stroke.tool == StrokeToolKind.fill
+        ? buildFillBoundaryPath(stroke.points)
+        : buildStrokeOutline(
+            stroke.points,
+            size: stroke.width,
+            isComplete: true,
+          );
   }
 
   /// Returns a copy with the given fields replaced.
@@ -325,7 +327,9 @@ final class InkElement extends CanvasElement {
       if (p.y > maxY) maxY = p.y;
     }
 
-    final double pad = stroke.width / 2;
+    final double pad = stroke.tool == StrokeToolKind.fill
+        ? 0
+        : stroke.width / 2;
     return Rect.fromLTRB(minX - pad, minY - pad, maxX + pad, maxY + pad);
   }
 
