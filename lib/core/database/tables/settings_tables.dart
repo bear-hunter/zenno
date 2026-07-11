@@ -15,6 +15,18 @@ class AppSettings extends Table {
 
   IntColumn get themeMode =>
       intEnum<ThemeModeSetting>().withDefault(const Constant(0))();
+  IntColumn get accentColor =>
+      integer().withDefault(const Constant(0xFFE8B84B))();
+  IntColumn get backgroundColor =>
+      integer().withDefault(const Constant(0xFF121212))();
+  TextColumn get inkPaletteJson => text().withDefault(
+    const Constant(
+      '[4294922129,4291316008,4281771008,4276755455,4294967295,4279318560]',
+    ),
+  )();
+  TextColumn get stylusMappingJson =>
+      text().withDefault(const Constant('{}'))();
+  TextColumn get penProfileJson => text().withDefault(const Constant('{}'))();
 
   IntColumn get defaultPomodoroWorkSecs =>
       integer().withDefault(const Constant(1500))();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:zenno/config/theme/app_spacing.dart';
+import 'package:zenno/core/widgets/app_dialog.dart';
 import 'package:zenno/features/goal_cycle/application/reflection_providers.dart';
 import 'package:zenno/features/goal_cycle/data/reflection_repository.dart';
 import 'package:zenno/features/goal_cycle/domain/reflection_template_schema.dart';
@@ -62,8 +63,16 @@ class _ReflectionEditorPageState extends ConsumerState<ReflectionEditorPage> {
 
   /// True while a save write is in flight.
   bool _saving = false;
+  bool _discarding = false;
+  bool _allowPop = false;
+  bool _discardDialogOpen = false;
+  int _templatePickerRevision = 0;
 
   bool get _isEditing => widget.existingEntry != null;
+  Map<String, String> get _initialAnswers =>
+      widget.existingEntry?.answers ?? const {};
+  bool get _dirty =>
+      _selectedTemplate != null || !_mapsEqual(_answers, _initialAnswers);
 
   @override
   void initState() {
@@ -81,6 +90,7 @@ class _ReflectionEditorPageState extends ConsumerState<ReflectionEditorPage> {
   }
 
   Future<void> _save() async {
+    if (_saving || _discarding) return;
     final navigator = Navigator.of(context);
     setState(() => _saving = true);
     try {
@@ -97,12 +107,16 @@ class _ReflectionEditorPageState extends ConsumerState<ReflectionEditorPage> {
           answers: _answers,
         );
       }
-      navigator.pop();
+      _allowPop = true;
+      if (navigator.mounted) navigator.pop();
     } on Object catch (error) {
+      debugPrint('Reflection save failed: $error');
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save reflection: $error')),
+        const SnackBar(
+          content: Text('Could not save reflection. Please try again.'),
+        ),
       );
     }
   }
@@ -110,60 +124,132 @@ class _ReflectionEditorPageState extends ConsumerState<ReflectionEditorPage> {
   @override
   Widget build(BuildContext context) {
     final schema = _activeSchema;
-    // Save is possible only once a schema is in play (a template is chosen,
-    // or we are editing) and at least one answer has been entered.
-    final canSave = schema != null && _answers.isNotEmpty && !_saving;
+    // New reflections need at least one answer. Existing reflections may save
+    // an empty map so clearing every answer is a valid edit.
+    final canSave =
+        schema != null &&
+        (_isEditing || _answers.isNotEmpty) &&
+        !_saving &&
+        !_discarding;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Edit reflection' : 'New reflection'),
-        actions: [
-          TextButton.icon(
-            onPressed: canSave ? _save : null,
-            icon: const Icon(Icons.check),
-            label: const Text('Save'),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: AppSpacing.contentMaxWidth,
-          ),
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            children: [
-              if (_isEditing)
-                _SnapshotHeader(name: widget.existingEntry!.templateName)
-              else
-                _TemplatePicker(
-                  selected: _selectedTemplate,
-                  onChanged: (template) {
-                    setState(() => _selectedTemplate = template);
-                  },
-                ),
-              const SizedBox(height: AppSpacing.lg),
-              if (schema != null)
-                ReflectionForm(
-                  // Re-key so the form rebuilds its fields when the template
-                  // selection changes.
-                  key: ValueKey(
-                    _isEditing
-                        ? 'entry-${widget.existingEntry!.id}'
-                        : 'template-${_selectedTemplate?.id}',
-                  ),
-                  schema: schema,
-                  initialAnswers: _answers,
-                  onChanged: (answers) => _answers = answers,
-                )
-              else
-                const _ChooseTemplatePrompt(),
-            ],
+    return PopScope<void>(
+      canPop: _allowPop || (!_dirty && !_saving && !_discarding),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_saving && !_discarding) _confirmLeave();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Edit reflection' : 'New reflection'),
+          actions: [
+            TextButton.icon(
+              onPressed: canSave ? _save : null,
+              icon: const Icon(Icons.check),
+              label: const Text('Save'),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
+        ),
+        body: AbsorbPointer(
+          absorbing: _saving || _discarding,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppSpacing.contentMaxWidth,
+              ),
+              child: ListView(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                children: [
+                  if (_isEditing)
+                    _SnapshotHeader(name: widget.existingEntry!.templateName)
+                  else
+                    _TemplatePicker(
+                      key: ValueKey(
+                        'reflection-framework-'
+                        '${_selectedTemplate?.id}-$_templatePickerRevision',
+                      ),
+                      selected: _selectedTemplate,
+                      onChanged: _selectTemplate,
+                    ),
+                  const SizedBox(height: AppSpacing.lg),
+                  if (schema != null)
+                    ReflectionForm(
+                      // Re-key so the form rebuilds its fields when the template
+                      // selection changes.
+                      key: ValueKey(
+                        _isEditing
+                            ? 'entry-${widget.existingEntry!.id}'
+                            : 'template-${_selectedTemplate?.id}',
+                      ),
+                      schema: schema,
+                      initialAnswers: _answers,
+                      onChanged: (answers) =>
+                          setState(() => _answers = answers),
+                    )
+                  else
+                    const _ChooseTemplatePrompt(),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _selectTemplate(ReflectionTemplateView? template) async {
+    if (template?.id == _selectedTemplate?.id) return;
+    if (_answers.isNotEmpty) {
+      final change = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Change framework?'),
+          content: const Text(
+            'Your answers belong to the current framework and will be cleared.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Keep writing'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Change framework'),
+            ),
+          ],
+        ),
+      );
+      if (change != true || !mounted) {
+        if (mounted) setState(() => _templatePickerRevision += 1);
+        return;
+      }
+    }
+    setState(() {
+      _selectedTemplate = template;
+      // Answers belong to prompt keys in one schema. Never carry them into a
+      // different template, even when two templates reuse the same key.
+      _answers = <String, String>{};
+    });
+  }
+
+  Future<void> _confirmLeave() async {
+    if (_saving || _discarding || _discardDialogOpen) return;
+    _discardDialogOpen = true;
+    final discard = await confirmDiscardChanges(context);
+    _discardDialogOpen = false;
+    if (!discard || !mounted) return;
+    setState(() {
+      _discarding = true;
+      _allowPop = true;
+    });
+    Navigator.of(context).pop();
+  }
+
+  bool _mapsEqual(Map<String, String> a, Map<String, String> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return true;
   }
 }
 
@@ -197,7 +283,11 @@ class _SnapshotHeader extends StatelessWidget {
 
 /// A dropdown that picks the framework for a new reflection.
 class _TemplatePicker extends ConsumerWidget {
-  const _TemplatePicker({required this.selected, required this.onChanged});
+  const _TemplatePicker({
+    required this.selected,
+    required this.onChanged,
+    super.key,
+  });
 
   final ReflectionTemplateView? selected;
   final ValueChanged<ReflectionTemplateView?> onChanged;

@@ -144,8 +144,8 @@ class _TemplatesList extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: const Text('Delete template?'),
         content: Text(
-          'Delete "${template.name}"? Saved reflections made from it keep '
-          'their own copy and are unaffected. This cannot be undone.',
+          'Delete "${template.name}"? A template can only be deleted when '
+          'no saved reflections use it. This cannot be undone.',
         ),
         actions: [
           TextButton(

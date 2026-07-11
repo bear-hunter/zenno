@@ -28,47 +28,40 @@ class GoalCardTile extends StatelessWidget {
     final goal = payload is GoalCardExtra ? payload : null;
     final reflectionCount = goal?.reflectionCount ?? 0;
     final targetDate = goal?.targetDate;
+    final statusNote = goal?.statusNote?.trim();
+    final supportingText = statusNote != null && statusNote.isNotEmpty
+        ? statusNote
+        : card.subtitle;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      color: theme.colorScheme.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.sm),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          card.title,
+          style: theme.textTheme.titleSmall,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (supportingText case final text? when text.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.md),
+        Row(
           children: [
-            Text(
-              card.title,
-              style: theme.textTheme.titleSmall,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (card.subtitle case final subtitle?
-                when subtitle.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                _ReflectionBadge(count: reflectionCount),
-                const Spacer(),
-                if (targetDate != null) _TargetDateLabel(date: targetDate),
-              ],
-            ),
+            _ReflectionBadge(count: reflectionCount),
+            const Spacer(),
+            if (targetDate != null) _TargetDateLabel(date: targetDate),
           ],
         ),
-      ),
+      ],
     );
   }
 }
@@ -83,35 +76,22 @@ class _ReflectionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // No reflections yet → a muted prompt rather than a "0" badge.
     final hasReflections = count > 0;
     final color = hasReflections
         ? theme.colorScheme.primary
         : theme.colorScheme.onSurfaceVariant;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: 2,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: hasReflections ? 0.16 : 0.08),
-        borderRadius: BorderRadius.circular(AppSpacing.md),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.menu_book_outlined, size: 14, color: color),
-          const SizedBox(width: AppSpacing.xs),
-          Text(
-            hasReflections
-                ? '$count reflection${count == 1 ? '' : 's'}'
-                : 'No reflections',
-            style: theme.textTheme.labelSmall?.copyWith(color: color),
-          ),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.menu_book_outlined, size: 14, color: color),
+        const SizedBox(width: AppSpacing.xs),
+        Text(
+          '$count',
+          semanticsLabel: '$count reflection${count == 1 ? '' : 's'}',
+          style: theme.textTheme.labelSmall?.copyWith(color: color),
+        ),
+      ],
     );
   }
 }
@@ -126,22 +106,45 @@ class _TargetDateLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.flag_outlined,
-          size: 14,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          DateFormat.MMMd().format(date.toLocal()),
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+    final local = date.toLocal();
+    final today = DateTime.now();
+    final day = DateTime(local.year, local.month, local.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final days = day.difference(todayDay).inDays;
+    final overdue = days < 0;
+    final urgent = days <= 1;
+    final label = switch (days) {
+      < -1 => '${-days} days overdue',
+      -1 => '1 day overdue',
+      0 => 'Due today',
+      1 => 'Due tomorrow',
+      > 1 && <= 7 => 'Due in $days days',
+      _ when local.year != today.year => DateFormat.yMMMd().format(local),
+      _ => DateFormat.MMMd().format(local),
+    };
+    final color = overdue
+        ? theme.colorScheme.error
+        : urgent
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Tooltip(
+      message: 'Target ${DateFormat.yMMMMd().format(local)}',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            overdue ? Icons.warning_amber_rounded : Icons.flag_outlined,
+            size: 14,
+            color: color,
           ),
-        ),
-      ],
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(color: color),
+          ),
+        ],
+      ),
     );
   }
 }

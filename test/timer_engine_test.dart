@@ -170,6 +170,26 @@ void main() {
       expect(engine.remaining, const Duration(minutes: 5));
     });
 
+    test('stalled ticker reconciles across every elapsed phase', () {
+      final clock = _FakeClock(epoch);
+      final engine = TimerEngine(
+        mode: TimerMode.pomodoro,
+        clock: clock.now,
+        pomodoroWork: const Duration(minutes: 25),
+        pomodoroBreak: const Duration(minutes: 5),
+      )..start();
+
+      clock.advance(const Duration(minutes: 35));
+      expect(engine.advanceIfPhaseComplete(), isTrue);
+
+      expect(engine.phase, TimerPhase.work);
+      expect(engine.elapsed, const Duration(minutes: 5));
+      expect(engine.remaining, const Duration(minutes: 20));
+      expect(engine.runtimeSnapshot.bankedFocus, const Duration(minutes: 25));
+      expect(engine.accumulatedFocus, const Duration(minutes: 30));
+      expect(engine.cyclesCompleted, 1);
+    });
+
     test('break elapsed resets — it does not carry work elapsed', () {
       final clock = _FakeClock(epoch);
       final engine = TimerEngine(

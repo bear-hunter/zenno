@@ -229,6 +229,28 @@ class GoalRepository {
     );
   }
 
+  /// Saves the editable goal card and its detail row as one transaction.
+  Future<void> saveCard({
+    required String cardId,
+    required String title,
+    required String? subtitle,
+    required String? statusNote,
+    required DateTime? targetDate,
+  }) {
+    return _db.transaction(() async {
+      await updateCard(cardId, title: title, subtitle: Value(subtitle));
+      await _db
+          .into(_db.goalCardDetails)
+          .insertOnConflictUpdate(
+            GoalCardDetailsCompanion(
+              cardId: Value(cardId),
+              statusNote: Value(statusNote),
+              targetDate: Value(targetDate),
+            ),
+          );
+    });
+  }
+
   /// Adds a card to [columnId], creating both the `board_cards` row and its
   /// 1:1 `goal_card_details` row in one transaction. Returns the new id.
   Future<String> addCard({
@@ -313,6 +335,7 @@ class GoalRepository {
   }) async {
     await (_db.update(_db.boardColumns)..where((c) => c.id.equals(columnId)))
         .write(BoardColumnsCompanion(position: Value(newPosition)));
+    await _renormaliseBoardColumnsIfNeeded(await _boardIdForColumn(columnId));
   }
 
   /// Renames column [columnId] to [name].
@@ -398,6 +421,30 @@ class GoalRepository {
         await (_db.update(_db.boardCards)
               ..where((c) => c.id.equals(cards[i].id)))
             .write(BoardCardsCompanion(position: Value(i.toDouble())));
+      }
+    });
+  }
+
+  Future<void> _renormaliseBoardColumnsIfNeeded(String boardId) async {
+    final columns =
+        await (_db.select(_db.boardColumns)
+              ..where((column) => column.boardId.equals(boardId))
+              ..orderBy([(column) => OrderingTerm.asc(column.position)]))
+            .get();
+    var dense = false;
+    for (var index = 1; index < columns.length; index += 1) {
+      if (columns[index].position - columns[index - 1].position <
+          _minPositionGap) {
+        dense = true;
+        break;
+      }
+    }
+    if (!dense) return;
+    await _db.transaction(() async {
+      for (var index = 0; index < columns.length; index += 1) {
+        await (_db.update(_db.boardColumns)
+              ..where((column) => column.id.equals(columns[index].id)))
+            .write(BoardColumnsCompanion(position: Value(index.toDouble())));
       }
     });
   }

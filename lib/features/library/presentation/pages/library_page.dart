@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:zenno/config/router/routes.dart';
+import 'package:zenno/canvas/canvas_editor_navigation.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
+import 'package:zenno/core/database/database.dart';
+import 'package:zenno/core/database/database_exceptions.dart';
 import 'package:zenno/core/database/tables/settings_tables.dart';
+import 'package:zenno/core/widgets/aurora.dart';
 import 'package:zenno/features/library/application/library_providers.dart';
 import 'package:zenno/features/library/presentation/widgets/canvas_card.dart';
 import 'package:zenno/features/settings/application/settings_providers.dart';
@@ -14,8 +16,34 @@ import 'package:zenno/features/settings/application/settings_providers.dart';
 /// Shows every non-archived canvas in a responsive grid, lets the user create
 /// a new canvas, and exposes the sort order. Reads are reactive, so a rename
 /// or delete from a [CanvasCard] refreshes the grid automatically.
-class LibraryPage extends ConsumerWidget {
+class LibraryPage extends ConsumerStatefulWidget {
   const LibraryPage({super.key});
+
+  @override
+  ConsumerState<LibraryPage> createState() => _LibraryPageState();
+}
+
+class _LibraryPageState extends ConsumerState<LibraryPage> {
+  bool _creating = false;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController
+      ..removeListener(_onSearchChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {});
+  }
 
   /// Human-readable label for a [LibrarySort] menu entry.
   static String _sortLabel(LibrarySort sort) => switch (sort) {
@@ -26,65 +54,598 @@ class LibraryPage extends ConsumerWidget {
 
   /// Creates a canvas and opens it in the full-bleed editor.
   Future<void> _createCanvas(BuildContext context, WidgetRef ref) async {
-    final id = await ref.read(libraryRepositoryProvider).createCanvas();
-    if (context.mounted) {
-      await context.push(Routes.canvasPath(id));
+    if (_creating) return;
+    setState(() => _creating = true);
+    try {
+      final id = await ref.read(libraryRepositoryProvider).createCanvas();
+      if (context.mounted) {
+        await openCanvasEditor(context, id);
+      }
+    } catch (error) {
+      debugPrint('Create canvas failed: $error');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not create canvas. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  Future<String?> _promptFolderName(
+    BuildContext context, {
+    String title = 'New folder',
+    String initialName = '',
+  }) {
+    final controller = TextEditingController(text: initialName);
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(labelText: 'Folder name'),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
+  }
+
+  Future<void> _createFolder(BuildContext context) async {
+    final name = await _promptFolderName(context);
+    if (!context.mounted || name == null || name.isEmpty) return;
+    try {
+      await ref.read(libraryRepositoryProvider).createFolder(name);
+    } catch (error) {
+      debugPrint('Create folder failed: $error');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not create folder.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _renameFolder(BuildContext context, CanvasFolder folder) async {
+    final name = await _promptFolderName(
+      context,
+      title: 'Rename folder',
+      initialName: folder.name,
+    );
+    if (!context.mounted ||
+        name == null ||
+        name.isEmpty ||
+        name == folder.name) {
+      return;
+    }
+    try {
+      await ref.read(libraryRepositoryProvider).renameFolder(folder.id, name);
+    } catch (error) {
+      debugPrint('Rename folder failed: $error');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not rename folder.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteFolder(BuildContext context, CanvasFolder folder) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete folder?'),
+        content: Text(
+          '"${folder.name}" will be removed. Its canvases will move to Unfiled.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted || confirmed != true) return;
+    try {
+      await ref.read(libraryRepositoryProvider).deleteFolder(folder.id);
+    } catch (error) {
+      debugPrint('Delete folder failed: $error');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete folder.')),
+        );
+      }
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final canvases = ref.watch(canvasListProvider);
+    final folders = ref.watch(canvasFolderListProvider);
     final activeSort = ref.watch(librarySortProvider);
+    final query = _searchController.text.trim().toLowerCase();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Library'),
-        actions: [
-          PopupMenuButton<LibrarySort>(
-            tooltip: 'Sort canvases',
-            icon: const Icon(Icons.sort),
-            initialValue: activeSort,
-            onSelected: ref.read(settingsRepositoryProvider).setLibrarySort,
-            itemBuilder: (context) => [
-              for (final sort in LibrarySort.values)
-                PopupMenuItem(value: sort, child: Text(_sortLabel(sort))),
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          AuroraTopBar(
+            eyebrow: 'Workspace',
+            title: 'Library',
+            subtitle:
+                'Pick up a canvas where your thinking left off, or start a new one.',
+            actions: [
+              FilledButton.icon(
+                onPressed: _creating ? null : () => _createCanvas(context, ref),
+                icon: _creating
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add),
+                label: Text(_creating ? 'Creating...' : 'New canvas'),
+              ),
             ],
           ),
+          _LibraryToolbar(
+            searchController: _searchController,
+            activeSort: activeSort,
+            onClearSearch: _searchController.clear,
+            onSortSelected: (sort) =>
+                ref.read(settingsRepositoryProvider).setLibrarySort(sort),
+            onCreateFolder: () => _createFolder(context),
+          ),
+          Expanded(child: _buildLibraryBody(canvases, folders, query)),
         ],
       ),
-      body: canvases.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _LibraryMessage(
-          icon: Icons.error_outline,
-          title: 'Could not load your canvases',
-          subtitle: '$error',
-        ),
-        data: (items) {
-          if (items.isEmpty) {
-            return const _LibraryMessage(
-              icon: Icons.draw_outlined,
-              title: 'No canvases yet',
-              subtitle: 'Tap "New canvas" to start your first one.',
+    );
+  }
+
+  Widget _buildLibraryBody(
+    AsyncValue<List<Canvase>> canvases,
+    AsyncValue<List<CanvasFolder>> folders,
+    String query,
+  ) {
+    final items = canvases.value;
+    final folderItems = folders.value;
+    if (items != null && folderItems != null) {
+      return _LibraryFoldersView(
+        canvases: _filterCanvases(items, folderItems, query),
+        folders: _filterFolders(items, folderItems, query),
+        isFiltering: query.isNotEmpty,
+        onRenameFolder: (folder) => _renameFolder(context, folder),
+        onDeleteFolder: (folder) => _deleteFolder(context, folder),
+      );
+    }
+
+    final Object? loadError = switch ((canvases, folders)) {
+      (AsyncError(:final error), _) => error,
+      (_, AsyncError(:final error)) => error,
+      _ => null,
+    };
+    if (loadError != null) {
+      final alreadyOpen = isDatabaseAlreadyOpenError(loadError);
+      return _LibraryMessage(
+        icon: Icons.error_outline,
+        title: alreadyOpen
+            ? 'Zenno is open in another tab'
+            : 'Could not load your canvases',
+        subtitle: alreadyOpen
+            ? 'Close the other tab, then reload this page.'
+            : 'Please try again.',
+        onRetry: alreadyOpen
+            ? null
+            : () {
+                ref.invalidate(canvasListProvider);
+                ref.invalidate(canvasFolderListProvider);
+              },
+      );
+    }
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  List<Canvase> _filterCanvases(
+    List<Canvase> canvases,
+    List<CanvasFolder> folders,
+    String query,
+  ) {
+    if (query.isEmpty) return canvases;
+    final folderNames = {for (final folder in folders) folder.id: folder.name};
+    return canvases
+        .where((canvas) {
+          final title = canvas.title.toLowerCase();
+          final folder = folderNames[canvas.folderId]?.toLowerCase() ?? '';
+          return title.contains(query) || folder.contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  List<CanvasFolder> _filterFolders(
+    List<Canvase> canvases,
+    List<CanvasFolder> folders,
+    String query,
+  ) {
+    if (query.isEmpty) return folders;
+    final Set<String> folderIdsWithMatchingCanvases = <String>{
+      for (final canvas in canvases)
+        if (canvas.folderId != null &&
+            canvas.title.toLowerCase().contains(query))
+          canvas.folderId!,
+    };
+    return folders
+        .where((folder) {
+          final nameMatches = folder.name.toLowerCase().contains(query);
+          final hasMatchingCanvas = folderIdsWithMatchingCanvases.contains(
+            folder.id,
+          );
+          return nameMatches || hasMatchingCanvas;
+        })
+        .toList(growable: false);
+  }
+}
+
+class _LibraryToolbar extends StatelessWidget {
+  const _LibraryToolbar({
+    required this.searchController,
+    required this.activeSort,
+    required this.onClearSearch,
+    required this.onSortSelected,
+    required this.onCreateFolder,
+  });
+
+  final TextEditingController searchController;
+  final LibrarySort activeSort;
+  final VoidCallback onClearSearch;
+  final ValueChanged<LibrarySort> onSortSelected;
+  final VoidCallback onCreateFolder;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final search = TextField(
+      controller: searchController,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: 'Search canvases and folders',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: searchController.text.isEmpty
+            ? null
+            : IconButton(
+                onPressed: onClearSearch,
+                tooltip: 'Clear search',
+                icon: const Icon(Icons.close),
+              ),
+      ),
+    );
+    final sort = PopupMenuButton<LibrarySort>(
+      tooltip: 'Sort canvases',
+      initialValue: activeSort,
+      onSelected: onSortSelected,
+      itemBuilder: (context) => [
+        for (final value in LibrarySort.values)
+          PopupMenuItem(
+            value: value,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: value == activeSort
+                      ? Icon(Icons.check, size: 18, color: colors.primary)
+                      : null,
+                ),
+                Text(_LibraryPageState._sortLabel(value)),
+              ],
+            ),
+          ),
+      ],
+      child: _ToolbarControl(
+        icon: Icons.swap_vert,
+        label: _LibraryPageState._sortLabel(activeSort),
+      ),
+    );
+    final folder = OutlinedButton.icon(
+      onPressed: onCreateFolder,
+      icon: const Icon(Icons.create_new_folder_outlined),
+      label: const Text('New folder'),
+    );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.xs,
+        AppSpacing.xl,
+        AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                search,
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    Expanded(child: sort),
+                    const SizedBox(width: AppSpacing.sm),
+                    folder,
+                  ],
+                ),
+              ],
             );
           }
-          return GridView.builder(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 260,
-              mainAxisSpacing: AppSpacing.lg,
-              crossAxisSpacing: AppSpacing.lg,
-              childAspectRatio: 4 / 3,
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, index) => CanvasCard(canvas: items[index]),
+          return Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: search,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              sort,
+              const SizedBox(width: AppSpacing.sm),
+              folder,
+            ],
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _createCanvas(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('New canvas'),
+    );
+  }
+}
+
+class _ToolbarControl extends StatelessWidget {
+  const _ToolbarControl({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: AppSpacing.touchTarget),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outline),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 19, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.sm),
+          Text(label, maxLines: 1, style: theme.textTheme.labelLarge),
+          const SizedBox(width: AppSpacing.xs),
+          Icon(
+            Icons.expand_more,
+            size: 19,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryFoldersView extends StatelessWidget {
+  const _LibraryFoldersView({
+    required this.canvases,
+    required this.folders,
+    required this.isFiltering,
+    required this.onRenameFolder,
+    required this.onDeleteFolder,
+  });
+
+  final List<Canvase> canvases;
+  final List<CanvasFolder> folders;
+  final bool isFiltering;
+  final ValueChanged<CanvasFolder> onRenameFolder;
+  final ValueChanged<CanvasFolder> onDeleteFolder;
+
+  static const _gridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
+    maxCrossAxisExtent: 300,
+    mainAxisSpacing: AppSpacing.xl,
+    crossAxisSpacing: AppSpacing.xl,
+    childAspectRatio: 1.35,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    if (canvases.isEmpty && folders.isEmpty) {
+      return _LibraryMessage(
+        icon: Icons.draw_outlined,
+        title: isFiltering ? 'No matching canvases' : 'No canvases yet',
+        subtitle: isFiltering
+            ? 'Try a different search.'
+            : 'Tap "New canvas" to start your first one.',
+      );
+    }
+
+    final Map<String?, List<Canvase>> canvasesByFolder =
+        <String?, List<Canvase>>{};
+    for (final Canvase canvas in canvases) {
+      (canvasesByFolder[canvas.folderId] ??= <Canvase>[]).add(canvas);
+    }
+    final List<Canvase> unfiled = canvasesByFolder[null] ?? const <Canvase>[];
+
+    return CustomScrollView(
+      slivers: [
+        for (final folder in folders) ...[
+          _FolderHeader(
+            label: folder.name,
+            count: (canvasesByFolder[folder.id] ?? const <Canvase>[]).length,
+            onRename: () => onRenameFolder(folder),
+            onDelete: () => onDeleteFolder(folder),
+          ),
+          _CanvasGrid(
+            canvases: canvasesByFolder[folder.id] ?? const <Canvase>[],
+            folders: folders,
+          ),
+        ],
+        if (unfiled.isNotEmpty || folders.isNotEmpty) ...[
+          _FolderHeader(label: 'Unfiled', count: unfiled.length),
+          _CanvasGrid(canvases: unfiled, folders: folders),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
+    );
+  }
+}
+
+class _FolderHeader extends StatelessWidget {
+  const _FolderHeader({
+    required this.label,
+    required this.count,
+    this.onRename,
+    this.onDelete,
+  });
+
+  final String label;
+  final int count;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.folder_outlined,
+              size: 20,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Text(
+              '$count ${count == 1 ? 'canvas' : 'canvases'}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
+            if (onRename != null || onDelete != null)
+              PopupMenuButton<_FolderAction>(
+                tooltip: 'Folder options',
+                onSelected: (action) {
+                  switch (action) {
+                    case _FolderAction.rename:
+                      onRename?.call();
+                    case _FolderAction.delete:
+                      onDelete?.call();
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _FolderAction.rename,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Rename'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: _FolderAction.delete,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('Delete'),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _FolderAction { rename, delete }
+
+class _CanvasGrid extends StatelessWidget {
+  const _CanvasGrid({required this.canvases, required this.folders});
+
+  final List<Canvase> canvases;
+  final List<CanvasFolder> folders;
+
+  @override
+  Widget build(BuildContext context) {
+    if (canvases.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            0,
+            AppSpacing.xl,
+            AppSpacing.md,
+          ),
+          child: Text(
+            'No canvases',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+      sliver: SliverGrid.builder(
+        gridDelegate: _LibraryFoldersView._gridDelegate,
+        itemCount: canvases.length,
+        itemBuilder: (context, index) =>
+            CanvasCard(canvas: canvases[index], folders: folders),
       ),
     );
   }
@@ -97,11 +658,13 @@ class _LibraryMessage extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.onRetry,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +686,14 @@ class _LibraryMessage extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            if (onRetry != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try again'),
+              ),
+            ],
           ],
         ),
       ),

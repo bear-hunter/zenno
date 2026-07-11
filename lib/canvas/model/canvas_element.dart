@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -5,6 +6,12 @@ import 'package:flutter/widgets.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
+
+/// Visual body style for a persisted arrow shape.
+enum ArrowBodyKind { straight, curved, elbow, sketch }
+
+/// Visual head style for either end of a persisted arrow shape.
+enum ArrowHeadStyle { none, open, filled, dot, diamond, bar }
 
 /// A single positioned object living on the infinite canvas.
 ///
@@ -30,7 +37,12 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 /// file at any time.
 sealed class CanvasElement {
   /// Creates the shared element fields.
-  const CanvasElement({required this.id, required this.zIndex});
+  const CanvasElement({
+    required this.id,
+    required this.zIndex,
+    this.layerId,
+    this.rotation = 0,
+  });
 
   /// Stable unique identifier (uuid v7). Doubles as the key in the spatial
   /// index and in any element-keyed command.
@@ -39,6 +51,20 @@ sealed class CanvasElement {
   /// Paint order within the canvas: lower values are painted first (further
   /// back). The controller keeps its element list sorted by this value.
   final int zIndex;
+
+  /// Persistent editing layer this element belongs to.
+  ///
+  /// `null` means an older row or in-memory test element; the controller maps
+  /// it to the canvas default content layer when layer behaviour matters.
+  final String? layerId;
+
+  /// Element-local visual rotation in radians.
+  ///
+  /// Freehand ink and geometric shapes usually bake transforms into their
+  /// point geometry and keep this at zero. Rectangular content such as images,
+  /// PDFs, links and text uses it for visual rotation around its placement
+  /// rectangle centre.
+  final double rotation;
 
   /// Axis-aligned bounding box of this element in world coordinates.
   ///
@@ -57,6 +83,109 @@ sealed class CanvasElement {
   CanvasElement translated(Offset delta);
 }
 
+/// A crisp geometric shape element.
+final class ShapeElement extends CanvasElement {
+  const ShapeElement({
+    required super.id,
+    required super.zIndex,
+    super.layerId,
+    super.rotation,
+    required this.shapeKind,
+    required this.start,
+    required this.end,
+    required this.color,
+    required this.strokeWidth,
+    this.arrowBody = ArrowBodyKind.straight,
+    this.arrowStartHead = ArrowHeadStyle.none,
+    this.arrowEndHead = ArrowHeadStyle.filled,
+    this.arrowHeadScale = 1.0,
+    this.controlPoints = const <Offset>[],
+    this.legacyArrow = true,
+  });
+
+  /// Index of `ShapeKind` from `canvas_controller.dart`.
+  final int shapeKind;
+  final Offset start;
+  final Offset end;
+  final int color;
+  final double strokeWidth;
+  final ArrowBodyKind arrowBody;
+  final ArrowHeadStyle arrowStartHead;
+  final ArrowHeadStyle arrowEndHead;
+  final double arrowHeadScale;
+  final List<Offset> controlPoints;
+
+  /// Whether an arrow should keep Zenno's pre-style-system filled head math.
+  ///
+  /// Existing v6 rows migrate with this set to true so old notes do not change
+  /// shape just because the renderer learned new arrow styles. New arrows set
+  /// this to false and use the style fields above.
+  final bool legacyArrow;
+
+  @override
+  Rect get worldBounds {
+    final left = start.dx < end.dx ? start.dx : end.dx;
+    final right = start.dx > end.dx ? start.dx : end.dx;
+    final top = start.dy < end.dy ? start.dy : end.dy;
+    final bottom = start.dy > end.dy ? start.dy : end.dy;
+    return Rect.fromLTRB(
+      left,
+      top,
+      right,
+      bottom,
+    ).inflate(strokeWidth / 2 + _arrowPad);
+  }
+
+  static const double _arrowPad = 56;
+
+  ShapeElement copyWith({
+    String? id,
+    int? zIndex,
+    String? layerId,
+    double? rotation,
+    int? shapeKind,
+    Offset? start,
+    Offset? end,
+    int? color,
+    double? strokeWidth,
+    ArrowBodyKind? arrowBody,
+    ArrowHeadStyle? arrowStartHead,
+    ArrowHeadStyle? arrowEndHead,
+    double? arrowHeadScale,
+    List<Offset>? controlPoints,
+    bool? legacyArrow,
+  }) {
+    return ShapeElement(
+      id: id ?? this.id,
+      zIndex: zIndex ?? this.zIndex,
+      layerId: layerId ?? this.layerId,
+      rotation: rotation ?? this.rotation,
+      shapeKind: shapeKind ?? this.shapeKind,
+      start: start ?? this.start,
+      end: end ?? this.end,
+      color: color ?? this.color,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+      arrowBody: arrowBody ?? this.arrowBody,
+      arrowStartHead: arrowStartHead ?? this.arrowStartHead,
+      arrowEndHead: arrowEndHead ?? this.arrowEndHead,
+      arrowHeadScale: arrowHeadScale ?? this.arrowHeadScale,
+      controlPoints: controlPoints ?? this.controlPoints,
+      legacyArrow: legacyArrow ?? this.legacyArrow,
+    );
+  }
+
+  @override
+  ShapeElement translated(Offset delta) {
+    return copyWith(
+      start: start + delta,
+      end: end + delta,
+      controlPoints: <Offset>[
+        for (final Offset point in controlPoints) point + delta,
+      ],
+    );
+  }
+}
+
 /// A [CanvasElement] wrapping a single freehand ink [Stroke].
 ///
 /// This is the concrete element produced when the user finishes drawing.
@@ -71,14 +200,27 @@ final class InkElement extends CanvasElement {
   InkElement({
     required super.id,
     required super.zIndex,
+    super.layerId,
+    super.rotation,
     required this.stroke,
     Rect? worldBounds,
   }) : _worldBounds = worldBounds ?? computeBounds(stroke);
 
   /// Creates an ink element from [stroke], taking its [id] from the stroke and
   /// placing it at [zIndex] in the canvas paint order.
-  factory InkElement.fromStroke(Stroke stroke, {required int zIndex}) {
-    return InkElement(id: stroke.id, zIndex: zIndex, stroke: stroke);
+  factory InkElement.fromStroke(
+    Stroke stroke, {
+    required int zIndex,
+    String? layerId,
+    double? rotation,
+  }) {
+    return InkElement(
+      id: stroke.id,
+      zIndex: zIndex,
+      layerId: layerId,
+      rotation: rotation ?? 0,
+      stroke: stroke,
+    );
   }
 
   /// The ink geometry and style this element renders.
@@ -120,6 +262,8 @@ final class InkElement extends CanvasElement {
   InkElement copyWith({
     String? id,
     int? zIndex,
+    String? layerId,
+    double? rotation,
     Stroke? stroke,
     Rect? worldBounds,
   }) {
@@ -127,6 +271,8 @@ final class InkElement extends CanvasElement {
     return InkElement(
       id: id ?? this.id,
       zIndex: zIndex ?? this.zIndex,
+      layerId: layerId ?? this.layerId,
+      rotation: rotation ?? this.rotation,
       stroke: nextStroke,
       worldBounds:
           worldBounds ??
@@ -138,7 +284,16 @@ final class InkElement extends CanvasElement {
   InkElement translated(Offset delta) {
     final List<StrokePoint> shifted = <StrokePoint>[
       for (final StrokePoint p in stroke.points)
-        StrokePoint(p.x + delta.dx, p.y + delta.dy, p.pressure),
+        StrokePoint(
+          p.x + delta.dx,
+          p.y + delta.dy,
+          p.pressure,
+          tiltX: p.tiltX,
+          tiltY: p.tiltY,
+          azimuth: p.azimuth,
+          timestampMicros: p.timestampMicros,
+          velocity: p.velocity,
+        ),
     ];
     return copyWith(
       stroke: stroke.copyWith(points: shifted),
@@ -212,6 +367,8 @@ final class ImageElement extends CanvasElement {
   const ImageElement({
     required super.id,
     required super.zIndex,
+    super.layerId,
+    super.rotation,
     required Rect worldBounds,
     required this.sourceFilePath,
     required this.intrinsicSize,
@@ -238,7 +395,10 @@ final class ImageElement extends CanvasElement {
   final ui.Image? raster;
 
   @override
-  Rect get worldBounds => _worldBounds;
+  Rect get worldBounds => _rotatedBounds(_worldBounds, rotation);
+
+  /// Unrotated placement rectangle used for persistence and image layout.
+  Rect get placementBounds => _worldBounds;
 
   /// Returns a copy with the given fields replaced.
   ///
@@ -250,6 +410,8 @@ final class ImageElement extends CanvasElement {
   ImageElement copyWith({
     String? id,
     int? zIndex,
+    String? layerId,
+    double? rotation,
     Rect? worldBounds,
     String? sourceFilePath,
     Size? intrinsicSize,
@@ -263,6 +425,8 @@ final class ImageElement extends CanvasElement {
     return ImageElement(
       id: id ?? this.id,
       zIndex: zIndex ?? this.zIndex,
+      layerId: layerId ?? this.layerId,
+      rotation: rotation ?? this.rotation,
       worldBounds: worldBounds ?? _worldBounds,
       sourceFilePath: sourceFilePath ?? this.sourceFilePath,
       intrinsicSize: intrinsicSize ?? this.intrinsicSize,
@@ -284,14 +448,23 @@ final class ImageElement extends CanvasElement {
     return other is ImageElement &&
         other.id == id &&
         other.zIndex == zIndex &&
+        other.layerId == layerId &&
+        other.rotation == rotation &&
         other._worldBounds == _worldBounds &&
         other.sourceFilePath == sourceFilePath &&
         other.intrinsicSize == intrinsicSize;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, zIndex, _worldBounds, sourceFilePath, intrinsicSize);
+  int get hashCode => Object.hash(
+    id,
+    zIndex,
+    layerId,
+    rotation,
+    _worldBounds,
+    sourceFilePath,
+    intrinsicSize,
+  );
 
   @override
   String toString() =>
@@ -330,6 +503,8 @@ final class PdfElement extends CanvasElement {
   const PdfElement({
     required super.id,
     required super.zIndex,
+    super.layerId,
+    super.rotation,
     required Rect worldBounds,
     required this.sourceFilePath,
     required this.pageNumber,
@@ -368,7 +543,10 @@ final class PdfElement extends CanvasElement {
   final int rasterScaleBucket;
 
   @override
-  Rect get worldBounds => _worldBounds;
+  Rect get worldBounds => _rotatedBounds(_worldBounds, rotation);
+
+  /// Unrotated placement rectangle used for persistence and page layout.
+  Rect get placementBounds => _worldBounds;
 
   /// Returns a copy with the given fields replaced.
   ///
@@ -381,6 +559,8 @@ final class PdfElement extends CanvasElement {
   PdfElement copyWith({
     String? id,
     int? zIndex,
+    String? layerId,
+    double? rotation,
     Rect? worldBounds,
     String? sourceFilePath,
     int? pageNumber,
@@ -396,6 +576,8 @@ final class PdfElement extends CanvasElement {
     return PdfElement(
       id: id ?? this.id,
       zIndex: zIndex ?? this.zIndex,
+      layerId: layerId ?? this.layerId,
+      rotation: rotation ?? this.rotation,
       worldBounds: worldBounds ?? _worldBounds,
       sourceFilePath: sourceFilePath ?? this.sourceFilePath,
       pageNumber: pageNumber ?? this.pageNumber,
@@ -422,6 +604,8 @@ final class PdfElement extends CanvasElement {
     return other is PdfElement &&
         other.id == id &&
         other.zIndex == zIndex &&
+        other.layerId == layerId &&
+        other.rotation == rotation &&
         other._worldBounds == _worldBounds &&
         other.sourceFilePath == sourceFilePath &&
         other.pageNumber == pageNumber &&
@@ -432,6 +616,8 @@ final class PdfElement extends CanvasElement {
   int get hashCode => Object.hash(
     id,
     zIndex,
+    layerId,
+    rotation,
     _worldBounds,
     sourceFilePath,
     pageNumber,
@@ -547,6 +733,8 @@ final class LinkElement extends CanvasElement {
   const LinkElement({
     required super.id,
     required super.zIndex,
+    super.layerId,
+    super.rotation,
     required Rect worldBounds,
     required this.label,
     required this.target,
@@ -570,12 +758,17 @@ final class LinkElement extends CanvasElement {
   final LinkTarget target;
 
   @override
-  Rect get worldBounds => _worldBounds;
+  Rect get worldBounds => _rotatedBounds(_worldBounds, rotation);
+
+  /// Unrotated placement rectangle used for persistence and chip layout.
+  Rect get placementBounds => _worldBounds;
 
   /// Returns a copy with the given fields replaced.
   LinkElement copyWith({
     String? id,
     int? zIndex,
+    String? layerId,
+    double? rotation,
     Rect? worldBounds,
     String? label,
     LinkTarget? target,
@@ -583,6 +776,8 @@ final class LinkElement extends CanvasElement {
     return LinkElement(
       id: id ?? this.id,
       zIndex: zIndex ?? this.zIndex,
+      layerId: layerId ?? this.layerId,
+      rotation: rotation ?? this.rotation,
       worldBounds: worldBounds ?? _worldBounds,
       label: label ?? this.label,
       target: target ?? this.target,
@@ -600,13 +795,16 @@ final class LinkElement extends CanvasElement {
     return other is LinkElement &&
         other.id == id &&
         other.zIndex == zIndex &&
+        other.layerId == layerId &&
+        other.rotation == rotation &&
         other._worldBounds == _worldBounds &&
         other.label == label &&
         other.target == target;
   }
 
   @override
-  int get hashCode => Object.hash(id, zIndex, _worldBounds, label, target);
+  int get hashCode =>
+      Object.hash(id, zIndex, layerId, rotation, _worldBounds, label, target);
 
   @override
   String toString() =>
@@ -624,6 +822,8 @@ final class TextElement extends CanvasElement {
   const TextElement({
     required super.id,
     required super.zIndex,
+    super.layerId,
+    super.rotation,
     required Rect worldBounds,
     required this.text,
     required this.color,
@@ -645,12 +845,17 @@ final class TextElement extends CanvasElement {
   final double fontSize;
 
   @override
-  Rect get worldBounds => _worldBounds;
+  Rect get worldBounds => _rotatedBounds(_worldBounds, rotation);
+
+  /// Unrotated placement rectangle used for persistence and text layout.
+  Rect get placementBounds => _worldBounds;
 
   /// Returns a copy with the given fields replaced.
   TextElement copyWith({
     String? id,
     int? zIndex,
+    String? layerId,
+    double? rotation,
     Rect? worldBounds,
     String? text,
     int? color,
@@ -659,6 +864,8 @@ final class TextElement extends CanvasElement {
     return TextElement(
       id: id ?? this.id,
       zIndex: zIndex ?? this.zIndex,
+      layerId: layerId ?? this.layerId,
+      rotation: rotation ?? this.rotation,
       worldBounds: worldBounds ?? _worldBounds,
       text: text ?? this.text,
       color: color ?? this.color,
@@ -677,6 +884,8 @@ final class TextElement extends CanvasElement {
     return other is TextElement &&
         other.id == id &&
         other.zIndex == zIndex &&
+        other.layerId == layerId &&
+        other.rotation == rotation &&
         other._worldBounds == _worldBounds &&
         other.text == text &&
         other.color == color &&
@@ -684,11 +893,60 @@ final class TextElement extends CanvasElement {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, zIndex, _worldBounds, text, color, fontSize);
+  int get hashCode => Object.hash(
+    id,
+    zIndex,
+    layerId,
+    rotation,
+    _worldBounds,
+    text,
+    color,
+    fontSize,
+  );
 
   @override
   String toString() =>
       'TextElement(id: $id, zIndex: $zIndex, bounds: $_worldBounds, '
       'text: $text)';
+}
+
+Rect _rotatedBounds(Rect rect, double radians) {
+  if (radians == 0 || rect.isEmpty) {
+    return rect;
+  }
+  final Offset center = rect.center;
+  final List<Offset> corners = <Offset>[
+    rect.topLeft,
+    rect.topRight,
+    rect.bottomRight,
+    rect.bottomLeft,
+  ];
+  final Iterable<Offset> rotated = corners.map(
+    (Offset point) => _rotateAround(point, center, radians),
+  );
+  double left = rotated.first.dx;
+  double right = rotated.first.dx;
+  double top = rotated.first.dy;
+  double bottom = rotated.first.dy;
+  for (final Offset point in rotated.skip(1)) {
+    left = math.min(left, point.dx);
+    right = math.max(right, point.dx);
+    top = math.min(top, point.dy);
+    bottom = math.max(bottom, point.dy);
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
+Offset _rotateAround(Offset point, Offset origin, double radians) {
+  if (radians == 0) {
+    return point;
+  }
+  final double sin = math.sin(radians);
+  final double cos = math.cos(radians);
+  final double dx = point.dx - origin.dx;
+  final double dy = point.dy - origin.dy;
+  return Offset(
+    origin.dx + dx * cos - dy * sin,
+    origin.dy + dx * sin + dy * cos,
+  );
 }

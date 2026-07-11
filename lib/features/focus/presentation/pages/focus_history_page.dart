@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:zenno/config/router/routes.dart';
+import 'package:zenno/canvas/canvas_editor_navigation.dart';
 import 'package:zenno/config/theme/app_colors.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
@@ -272,7 +271,7 @@ class _SessionTile extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   onPressed: () =>
-                      context.push(Routes.canvasPath(session.linkedCanvasId!)),
+                      openCanvasEditor(context, session.linkedCanvasId!),
                   icon: const Icon(Icons.draw_outlined),
                   label: const Text('Open canvas'),
                 ),
@@ -324,6 +323,10 @@ class _StatusBadge extends StatelessWidget {
       FocusSessionStatus.completed => ('Completed', AppColors.flagGreen),
       FocusSessionStatus.abandoned => ('Abandoned', AppColors.flagRed),
       FocusSessionStatus.inProgress => ('In progress', AppColors.flagYellow),
+      FocusSessionStatus.reviewPending => (
+        'Review pending',
+        AppColors.flagYellow,
+      ),
     };
 
     return Container(

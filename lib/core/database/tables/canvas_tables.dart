@@ -1,16 +1,19 @@
 import 'package:drift/drift.dart';
 
 /// How a canvas background grid is rendered.
-enum BackgroundKind { blank, grid, lined, dotted }
+enum BackgroundKind { blank, grid, lined, dotted, isometric, triangle }
 
 /// The visual/behavioural type of a positioned canvas element.
 enum ElementKind { stroke, pdf, link, image, text, card, shape }
 
 /// The freehand drawing tool used to author an [InkStrokes] row.
-enum StrokeTool { pen, highlighter }
+enum StrokeTool { pen, highlighter, pencil, marker, airbrush }
 
 /// The kind of destination a [CanvasLinks] row points at.
 enum CanvasLinkKind { web, canvas, region, bookmark }
+
+/// Persistent layer kind for the canvas layer panel.
+enum CanvasLayerKind { content, background, grid, measurement }
 
 /// Library documents. Each row is one infinite canvas.
 @TableIndex(name: 'idx_canvases_folder_id', columns: {#folderId})
@@ -38,12 +41,77 @@ class Canvases extends Table {
   RealColumn get vpTy => real().withDefault(const Constant(0))();
   RealColumn get vpScale => real().withDefault(const Constant(1))();
   RealColumn get vpRotation => real().withDefault(const Constant(0))();
+  BoolColumn get rotationLocked =>
+      boolean().withDefault(const Constant(false))();
 
   IntColumn get backgroundKind =>
       intEnum<BackgroundKind>().withDefault(const Constant(0))();
+  IntColumn get canvasBackgroundColor =>
+      integer().withDefault(const Constant(0xFF172331))();
+  IntColumn get gridColor =>
+      integer().withDefault(const Constant(0xFFFFFFFF))();
+  RealColumn get gridSpacing => real().withDefault(const Constant(48))();
+  RealColumn get gridOpacity => real().withDefault(const Constant(0.14))();
+  IntColumn get graphMajorInterval =>
+      integer().withDefault(const Constant(4))();
+  IntColumn get activePenColor =>
+      integer().withDefault(const Constant(0xFFFFFFFF))();
+  RealColumn get activePenWidth => real().withDefault(const Constant(4))();
+  IntColumn get activePenWidthMode =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get activePenTool =>
+      intEnum<StrokeTool>().withDefault(const Constant(0))();
+  BoolColumn get pressureEnabled =>
+      boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// Ordered editing layers for one canvas.
+@TableIndex(name: 'idx_canvas_layers_canvas_id', columns: {#canvasId})
+@TableIndex(
+  name: 'idx_canvas_layers_canvas_id_position',
+  columns: {#canvasId, #position},
+)
+class CanvasLayers extends Table {
+  TextColumn get id => text()();
+  TextColumn get canvasId =>
+      text().references(Canvases, #id, onDelete: KeyAction.cascade)();
+  TextColumn get name => text()();
+
+  /// Fractional ordering position, lower layers paint first.
+  RealColumn get position => real()();
+  BoolColumn get visible => boolean().withDefault(const Constant(true))();
+  BoolColumn get locked => boolean().withDefault(const Constant(false))();
+  RealColumn get opacity => real().withDefault(const Constant(1.0))();
+  TextColumn get blendMode => text().withDefault(const Constant('srcOver'))();
+  IntColumn get kind =>
+      intEnum<CanvasLayerKind>().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Named viewport locations saved within a canvas.
+@TableIndex(
+  name: 'idx_canvas_bookmarks_canvas_position',
+  columns: {#canvasId, #position},
+)
+class CanvasBookmarks extends Table {
+  TextColumn get canvasId =>
+      text().references(Canvases, #id, onDelete: KeyAction.cascade)();
+  TextColumn get name => text()();
+  RealColumn get vpTx => real()();
+  RealColumn get vpTy => real()();
+  RealColumn get vpScale => real()();
+  RealColumn get vpRotation => real()();
+  IntColumn get position => integer()();
+
+  @override
+  Set<Column> get primaryKey => {canvasId, name};
 }
 
 /// One-level grouping for canvases in the library.
@@ -69,6 +137,11 @@ class CanvasElements extends Table {
   TextColumn get id => text()();
   TextColumn get canvasId =>
       text().references(Canvases, #id, onDelete: KeyAction.cascade)();
+  TextColumn get layerId => text().nullable().references(
+    CanvasLayers,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
   IntColumn get kind => intEnum<ElementKind>()();
 
   /// World-space bounds — stored so the spatial index loads without
@@ -211,6 +284,29 @@ class CanvasTexts extends Table {
 
   /// World-space font size at scale 1.
   RealColumn get fontSize => real()();
+
+  @override
+  Set<Column> get primaryKey => {elementId};
+}
+
+/// 1:1 detail for [ElementKind.shape] elements.
+class CanvasShapes extends Table {
+  TextColumn get elementId =>
+      text().references(CanvasElements, #id, onDelete: KeyAction.cascade)();
+  IntColumn get shapeKind => integer()();
+  RealColumn get startX => real()();
+  RealColumn get startY => real()();
+  RealColumn get endX => real()();
+  RealColumn get endY => real()();
+  IntColumn get color => integer()();
+  RealColumn get strokeWidth => real()();
+  IntColumn get arrowBodyKind => integer().withDefault(const Constant(0))();
+  IntColumn get arrowStartHead => integer().withDefault(const Constant(0))();
+  IntColumn get arrowEndHead => integer().withDefault(const Constant(2))();
+  RealColumn get arrowHeadScale => real().withDefault(const Constant(1.0))();
+  TextColumn get controlPointsJson =>
+      text().withDefault(const Constant('[]'))();
+  BoolColumn get arrowLegacy => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {elementId};

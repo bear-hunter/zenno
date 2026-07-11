@@ -16,13 +16,29 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 /// render layer call into it freely.
 abstract final class CanvasTransform {
   /// Smallest permitted viewport [ViewportState.scale].
-  static const double minScale = 0.02;
+  static const double minScale = 1 / 65536;
 
   /// Largest permitted viewport [ViewportState.scale].
-  static const double maxScale = 64.0;
+  static const double maxScale = 65536.0;
 
   /// Discrete zoom stops that [snapScale] is allowed to snap to.
   static const List<double> _snapStops = <double>[
+    1 / 65536,
+    1 / 32768,
+    1 / 16384,
+    1 / 8192,
+    1 / 4096,
+    1 / 2048,
+    1 / 1024,
+    1 / 512,
+    1 / 256,
+    1 / 128,
+    1 / 64,
+    1 / 32,
+    1 / 16,
+    0.01,
+    0.02,
+    0.0625,
     0.125,
     0.25,
     0.5,
@@ -31,6 +47,18 @@ abstract final class CanvasTransform {
     4,
     8,
     16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
   ];
 
   /// Builds the world-to-screen [Matrix4] for [vp].

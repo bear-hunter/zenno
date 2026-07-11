@@ -39,35 +39,22 @@ class MasteryFlagChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = masteryFlagColor(flag);
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: dense ? AppSpacing.sm : AppSpacing.md,
-        vertical: dense ? 2 : AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(AppSpacing.md),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: dense ? 8 : 10,
-            height: dense ? 8 : 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          SizedBox(width: dense ? AppSpacing.xs : AppSpacing.sm),
-          Text(
-            masteryFlagLabel(flag),
-            style:
-                (dense
-                        ? theme.textTheme.labelSmall
-                        : theme.textTheme.labelMedium)
-                    ?.copyWith(color: theme.colorScheme.onSurface),
-          ),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: dense ? 8 : 10,
+          height: dense ? 8 : 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        SizedBox(width: dense ? AppSpacing.xs : AppSpacing.sm),
+        Text(
+          masteryFlagLabel(flag),
+          style:
+              (dense ? theme.textTheme.labelSmall : theme.textTheme.labelMedium)
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }

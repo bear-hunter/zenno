@@ -1,26 +1,34 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:zenno/canvas/engine/canvas_commands.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
+import 'package:zenno/canvas/input/pen_input_processor.dart';
+import 'package:zenno/canvas/input/pen_profile.dart';
 import 'package:zenno/canvas/io/canvas_import.dart';
 import 'package:zenno/canvas/model/canvas_bookmark.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
+import 'package:zenno/canvas/model/canvas_layer.dart';
+import 'package:zenno/canvas/model/canvas_style.dart';
+import 'package:zenno/canvas/model/selection_transform.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/pdf/pdf_raster_service.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
+import 'package:zenno/canvas/tools/arrow_geometry.dart';
 import 'package:zenno/canvas/tools/canvas_geometry.dart';
 import 'package:zenno/core/util/id.dart';
 
 /// The active canvas interaction tool.
 ///
-/// The setting decides what a stylus (and a mouse) do on press-drag: a finger
-/// always transforms the viewport (pan / pinch / rotate) regardless — see
-/// `CanvasView` for the routing.
+/// The setting decides what a stylus (and a mouse) do on press-drag. Fingers
+/// normally transform the viewport, but selected content can be manipulated
+/// directly with touch gestures — see `CanvasView` for the routing.
 enum CanvasTool {
   /// A stylus or mouse drag pans the viewport.
   pan,
@@ -58,6 +66,9 @@ enum EraserMode {
   partial,
 }
 
+/// How a lasso or item-pick gesture changes the current selection.
+enum SelectionMode { replace, add, subtract }
+
 /// The geometric primitive produced by [CanvasTool.shape].
 ///
 /// Each kind is generated as a normal [InkElement] whose centerline is computed
@@ -75,6 +86,63 @@ enum ShapeKind {
 
   /// A single-headed arrow from the drag's start to its end.
   arrow,
+}
+
+class _TemporaryToolSnapshot {
+  const _TemporaryToolSnapshot({required this.tool, required this.shapeKind});
+
+  final CanvasTool tool;
+  final ShapeKind shapeKind;
+}
+
+class _LiveStrokeBuilder {
+  _LiveStrokeBuilder({
+    required this.id,
+    required StrokePoint firstPoint,
+    required this.color,
+    required this.width,
+    required this.tool,
+  }) : _points = <StrokePoint>[firstPoint];
+
+  final String id;
+  final int color;
+  final double width;
+  final StrokeToolKind tool;
+  final List<StrokePoint> _points;
+  Stroke? _snapshot;
+
+  StrokePoint get last => _points.last;
+
+  void append(StrokePoint point) {
+    _points.add(point);
+    _snapshot = null;
+  }
+
+  Stroke snapshot() {
+    return _snapshot ??= Stroke(
+      id: id,
+      points: List<StrokePoint>.unmodifiable(_points),
+      color: color,
+      width: width,
+      tool: tool,
+    );
+  }
+}
+
+enum _RasterJobKind { image, pdf }
+
+class _RasterJob {
+  const _RasterJob({
+    required this.elementId,
+    required this.kind,
+    required this.bucket,
+    required this.priority,
+  });
+
+  final String elementId;
+  final _RasterJobKind kind;
+  final int bucket;
+  final double priority;
 }
 
 /// Mutable, observable state for a single infinite canvas.
@@ -114,13 +182,22 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// SQLite — call [load] once after construction to hydrate it. Omitting
   /// either keeps the controller fully in-memory (the Phase-1-and-earlier
   /// behaviour); the two are an all-or-nothing pair.
-  CanvasController({CanvasRepository? repository, String? canvasId})
-    : assert(
-        (repository == null) == (canvasId == null),
-        'repository and canvasId must be supplied together, or neither.',
-      ),
-      _repository = repository,
-      _canvasId = canvasId;
+  CanvasController({
+    CanvasRepository? repository,
+    String? canvasId,
+    PdfRasterService? pdfRasterService,
+    CanvasImporter? importer,
+  }) : assert(
+         (repository == null) == (canvasId == null),
+         'repository and canvasId must be supplied together, or neither.',
+       ),
+       _repository = repository,
+       _canvasId = canvasId,
+       _pdfRasterService = pdfRasterService ?? PdfRasterService() {
+    _importer = importer ?? CanvasImporter(pdfRasterService: _pdfRasterService);
+    _layers.add(CanvasLayer.defaultContent(_layerCanvasId));
+    _activeLayerId = _layers.single.id;
+  }
 
   /// Persistence backend, or `null` for an in-memory canvas.
   final CanvasRepository? _repository;
@@ -155,6 +232,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// guarantee every write has hit SQLite before it disposes.
   final Set<Future<void>> _pendingWrites = <Future<void>>{};
 
+  bool _collectingPersistenceMutations = false;
+  final Map<String, CanvasElement> _batchedUpserts = <String, CanvasElement>{};
+  final Set<String> _batchedDeletes = <String>{};
+
   final List<Future<void> Function()> _failedWrites =
       <Future<void> Function()>[];
   Object? _saveError;
@@ -165,16 +246,38 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Whether there are failed writes the user can retry.
   bool get hasSaveError => _saveError != null;
 
+  /// Whether any failed persistence mutation still needs to be recovered.
+  /// This remains true when the user hides the banner.
+  bool get hasUnsavedWrites => _failedWrites.isNotEmpty;
+
   /// The camera through which the world is observed.
   ViewportState viewport = ViewportState.initial;
+
+  /// Whether two-finger gestures are allowed to rotate the viewport.
+  bool rotationLocked = false;
 
   /// Committed elements, kept sorted ascending by [CanvasElement.zIndex]
   /// (back to front). Mutated only via [addElementToStore] /
   /// [removeElementFromStore], which keep [_spatialIndex] in sync.
   final List<CanvasElement> _elements = <CanvasElement>[];
+  List<CanvasElement>? _elementsView;
+  List<CanvasElement>? _visibleElementsView;
 
   /// Viewport-culling index over [_elements], keyed by element id.
   final SpatialIndex _spatialIndex = SpatialIndex();
+
+  /// Ordered canvas layers. Lower positions paint first.
+  final List<CanvasLayer> _layers = <CanvasLayer>[];
+
+  /// Layer receiving newly created content.
+  String? _activeLayerId;
+
+  int _elementsRevision = 0;
+  int _selectionRevision = 0;
+  int _selectionPreviewRevision = 0;
+  int _viewportRevision = 0;
+  int _liveStrokeRevision = 0;
+  bool _liveStrokeNotifyScheduled = false;
 
   /// Applied commands available to be reversed by [undo], oldest at the front.
   final List<CanvasCommand> _undoStack = <CanvasCommand>[];
@@ -191,7 +294,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// The committed canvas elements in paint order (back to front), as an
   /// unmodifiable view.
   List<CanvasElement> get elements =>
-      List<CanvasElement>.unmodifiable(_elements);
+      _elementsView ??= List<CanvasElement>.unmodifiable(_elements);
+
+  int get elementsRevision => _elementsRevision;
+
+  int get selectionRevision => _selectionRevision;
+
+  int get selectionPreviewRevision => _selectionPreviewRevision;
+
+  int get viewportRevision => _viewportRevision;
+
+  int get liveStrokeRevision => _liveStrokeRevision;
 
   /// The spatial index over the committed elements, for viewport culling.
   ///
@@ -199,14 +312,40 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// directly — the controller keeps it consistent with [elements].
   SpatialIndex get spatialIndex => _spatialIndex;
 
+  /// Ordered layers, from back to front.
+  List<CanvasLayer> get layers => List<CanvasLayer>.unmodifiable(_layers);
+
+  /// Id of the layer receiving new elements.
+  String get activeLayerId => _activeLayerId ?? _defaultLayerId;
+
+  CanvasLayer get activeLayer =>
+      _layerById(activeLayerId) ?? CanvasLayer.defaultContent(_layerCanvasId);
+
+  /// Whether a visible, unlocked content layer can receive new elements.
+  bool get canCreateContent => _firstEditableLayerId() != null;
+
+  /// Elements whose layers are currently visible.
+  List<CanvasElement> get visibleElements {
+    return _visibleElementsView ??=
+        List<CanvasElement>.unmodifiable(<CanvasElement>[
+          for (final CanvasElement element in _elements)
+            if (_isElementVisible(element)) element,
+        ]);
+  }
+
   /// The stroke currently being drawn, or `null` when nothing is in progress.
   ///
   /// The live stroke is not yet a [CanvasElement]; it becomes an [InkElement]
   /// only when [endStroke] commits it.
-  Stroke? liveStroke;
+  Stroke? get liveStroke => _liveStrokeBuilder?.snapshot();
+  _LiveStrokeBuilder? _liveStrokeBuilder;
 
   /// The active interaction tool. Drawing always starts as [CanvasTool.pen].
   CanvasTool activeTool = CanvasTool.pen;
+
+  CanvasTool _previousTool = CanvasTool.pen;
+  final List<_TemporaryToolSnapshot> _temporaryTools =
+      <_TemporaryToolSnapshot>[];
 
   /// Packed ARGB colour applied to new strokes. Defaults to opaque white.
   int penColor = 0xFFFFFFFF;
@@ -214,8 +353,23 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// On-screen width (logical px at `scale == 1`) applied to new strokes.
   double penWidth = 4.0;
 
+  /// Whether [penWidth] is interpreted as screen-space or canvas-space width.
+  PenWidthMode penWidthMode = PenWidthMode.screen;
+
   /// The ink tool kind applied to new strokes.
   StrokeToolKind penKind = StrokeToolKind.pen;
+
+  /// Whether stylus pressure affects new ink width.
+  bool pressureEnabled = true;
+
+  /// Capture-side pressure and smoothing profile for new pen strokes.
+  PenProfile penProfile = const PenProfile();
+
+  /// Per-canvas paper/background styling.
+  CanvasPaperStyle paperStyle = const CanvasPaperStyle();
+
+  /// Whether new precision objects snap to the active paper grid.
+  bool snapToGridEnabled = false;
 
   /// Whether the eraser deletes whole elements or splits strokes into vector
   /// fragments. See [EraserMode].
@@ -224,8 +378,23 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// On-screen radius (logical px at `scale == 1`) of the eraser footprint.
   double eraserRadius = 14.0;
 
+  /// Selection edit mode used by lasso and tap item picking.
+  SelectionMode selectionMode = SelectionMode.replace;
+
   /// The shape primitive [CanvasTool.shape] currently produces.
   ShapeKind shapeKind = ShapeKind.line;
+
+  /// Arrow body style for newly-created arrow shapes.
+  ArrowBodyKind arrowBody = ArrowBodyKind.straight;
+
+  /// Start arrowhead style for newly-created arrow shapes.
+  ArrowHeadStyle arrowStartHead = ArrowHeadStyle.none;
+
+  /// End arrowhead style for newly-created arrow shapes.
+  ArrowHeadStyle arrowEndHead = ArrowHeadStyle.open;
+
+  /// Scale multiplier for newly-created arrowheads.
+  double arrowHeadScale = 1.0;
 
   /// World-space position of the stylus hover indicator, or `null`.
   Offset? hoverPointWorld;
@@ -234,12 +403,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   ///
   /// Created lazily on the first import and disposed with the controller; the
   /// importer and the PDF raster scheduler both borrow it.
-  final PdfRasterService _pdfRasterService = PdfRasterService();
+  final PdfRasterService _pdfRasterService;
 
   /// Picks media files (image / PDF) and stages them for the canvas.
-  late final CanvasImporter _importer = CanvasImporter(
-    pdfRasterService: _pdfRasterService,
-  );
+  late final CanvasImporter _importer;
 
   /// Size of the canvas viewport in logical pixels, kept in sync by the view.
   ///
@@ -263,6 +430,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// controller evicts rasters from off-screen image/PDF elements.
   int _rasterBytesInUse = 0;
 
+  @visibleForTesting
+  int get debugRasterBytesInUse => _rasterBytesInUse;
+
   /// Soft ceiling on total decoded raster memory across all elements.
   ///
   /// ~96 MB of `ui.Image` pixels. Past this, off-screen image/PDF rasters are
@@ -270,6 +440,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// from the source file when scrolled back into view. Keeps the canvas
   /// inside a sane memory envelope on a mid-range tablet.
   static const int _rasterBudgetBytes = 96 * 1024 * 1024;
+
+  final List<_RasterJob> _rasterJobQueue = <_RasterJob>[];
+  int _activeImageRasterJobs = 0;
+  int _activePdfRasterJobs = 0;
+
+  /// Bound expensive raster work so a PDF-heavy viewport cannot start every
+  /// page render at once.
+  static const int _maxConcurrentImageRasterJobs = 2;
+  static const int _maxConcurrentPdfRasterJobs = 1;
 
   /// Default longest-edge world size for a freshly imported element.
   ///
@@ -297,6 +476,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// A [Set] for O(1) membership checks from the painters; the controller
   /// keeps it consistent with [_elements] — undo/erase prune missing ids.
   final Set<String> _selectedIds = <String>{};
+  Set<String>? _selectedIdsView;
+
+  /// Selection present at replace-lasso start, restored if it is cancelled.
+  Set<String>? _selectionBeforeReplaceLasso;
 
   /// World-space anchor of an in-progress shape drag, or `null`.
   Offset? _shapeStart;
@@ -309,9 +492,23 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// the store is mutated once, on pointer-up, via [MoveElementsCommand].
   Offset? _selectionDragDelta;
 
+  /// Original selected elements captured at the start of a live pinch/rotate
+  /// selection transform.
+  List<CanvasElement>? _selectionTransformOriginals;
+
+  /// Matrix-style live selection transform preview.
+  ///
+  /// Like [_selectionDragDelta], this is preview-only; committed geometry is
+  /// written once on pointer-up as a single [TransformElementsCommand].
+  SelectionTransformPreview _selectionTransformPreview =
+      const SelectionTransformPreview.identity();
+  double _selectionTransformScale = 1;
+  double _selectionTransformRotation = 0;
+  Offset _selectionTransformTranslation = Offset.zero;
+
   /// Named viewport locations saved on this canvas, newest last.
   ///
-  /// In-memory in Phase 1 — step 1.7 persists these to the `bookmarks` table.
+  /// Hydrated from and written through to the canvas bookmarks table.
   /// Exposed read-only via [bookmarks].
   final List<Bookmark> _bookmarks = <Bookmark>[];
 
@@ -335,7 +532,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       _lassoPath == null ? null : List<Offset>.unmodifiable(_lassoPath!);
 
   /// Ids of the currently selected elements, as an unmodifiable view.
-  Set<String> get selectedIds => Set<String>.unmodifiable(_selectedIds);
+  Set<String> get selectedIds =>
+      _selectedIdsView ??= Set<String>.unmodifiable(_selectedIds);
 
   /// Whether at least one element is currently selected.
   bool get hasSelection => _selectedIds.isNotEmpty;
@@ -347,28 +545,220 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Whether a selection is currently being dragged.
   bool get isDraggingSelection => _selectionDragDelta != null;
 
+  /// Whether a selection is currently being scaled or rotated.
+  bool get isTransformingSelection => _selectionTransformOriginals != null;
+
+  /// Live transform applied by the painter while scaling/rotating a selection.
+  SelectionTransformPreview? get selectionTransformPreview =>
+      _selectionTransformOriginals == null ? null : _selectionTransformPreview;
+
   /// The committed elements that are currently selected, in paint order.
   List<CanvasElement> get selectedElements => <CanvasElement>[
     for (final CanvasElement e in _elements)
-      if (_selectedIds.contains(e.id)) e,
+      if (_selectedIds.contains(e.id) && _isElementEditable(e)) e,
   ];
 
   /// World-space bounding box enclosing every selected element, or `null` when
-  /// nothing is selected. Reflects any in-progress [selectionDragDelta].
+  /// nothing is selected. Reflects in-progress selection move/scale/rotate
+  /// previews.
   Rect? get selectionBounds {
+    if (_selectionTransformOriginals != null) {
+      return _transformedSelectionBounds();
+    }
+    final Rect? bounds = _boundsForSelectedElements(_elements);
+    if (bounds == null) {
+      return null;
+    }
+    return bounds.shift(selectionDragDelta);
+  }
+
+  Rect? _boundsForSelectedElements(Iterable<CanvasElement> elements) {
     Rect? bounds;
-    for (final CanvasElement element in _elements) {
+    for (final CanvasElement element in elements) {
       if (!_selectedIds.contains(element.id)) {
+        continue;
+      }
+      if (!_isElementVisible(element)) {
         continue;
       }
       bounds = bounds == null
           ? element.worldBounds
           : bounds.expandToInclude(element.worldBounds);
     }
-    if (bounds == null) {
+    return bounds;
+  }
+
+  Rect? _transformedSelectionBounds() {
+    final List<CanvasElement>? originals = _selectionTransformOriginals;
+    if (originals == null) {
       return null;
     }
-    return bounds.shift(selectionDragDelta);
+    Rect? bounds;
+    for (final CanvasElement element in originals) {
+      if (!_selectedIds.contains(element.id) || !_isElementVisible(element)) {
+        continue;
+      }
+      final Rect transformed = _selectionTransformPreview.transformRect(
+        element.worldBounds,
+      );
+      bounds = bounds == null
+          ? transformed
+          : bounds.expandToInclude(transformed);
+    }
+    return bounds;
+  }
+
+  String get _layerCanvasId => _canvasId ?? 'memory';
+
+  String get _defaultLayerId =>
+      CanvasLayer.defaultContentLayerId(_layerCanvasId);
+
+  CanvasLayer? _layerById(String id) {
+    for (final CanvasLayer layer in _layers) {
+      if (layer.id == id) {
+        return layer;
+      }
+    }
+    return null;
+  }
+
+  String _effectiveLayerId(CanvasElement element) =>
+      element.layerId ?? _defaultLayerId;
+
+  bool _isLayerVisible(String layerId) => _layerById(layerId)?.visible ?? true;
+
+  bool _isLayerLocked(String layerId) => _layerById(layerId)?.locked ?? false;
+
+  bool _isElementVisible(CanvasElement element) {
+    return _isLayerVisible(_effectiveLayerId(element));
+  }
+
+  bool _isElementEditable(CanvasElement element) {
+    final String layerId = _effectiveLayerId(element);
+    return _isLayerVisible(layerId) && !_isLayerLocked(layerId);
+  }
+
+  CanvasElement _normalizeElementLayer(CanvasElement element) {
+    final String layerId =
+        element.layerId ?? _editableActiveLayerId() ?? _defaultLayerId;
+    if (element.layerId == layerId) {
+      return element;
+    }
+    return _copyElementWithLayer(element, layerId);
+  }
+
+  void _markElementsChanged() {
+    _elementsRevision += 1;
+    _elementsView = null;
+    _visibleElementsView = null;
+  }
+
+  void _markSelectionChanged() {
+    _selectionRevision += 1;
+    _selectedIdsView = null;
+  }
+
+  void _markSelectionPreviewChanged() {
+    _selectionPreviewRevision += 1;
+  }
+
+  void _markViewportChanged() {
+    _viewportRevision += 1;
+  }
+
+  bool _clearSelectedIds() {
+    if (_selectedIds.isEmpty) {
+      return false;
+    }
+    _selectedIds.clear();
+    _markSelectionChanged();
+    return true;
+  }
+
+  bool _removeSelectedIdsWhere(bool Function(String id) test) {
+    final int before = _selectedIds.length;
+    _selectedIds.removeWhere(test);
+    if (_selectedIds.length == before) {
+      return false;
+    }
+    _markSelectionChanged();
+    _cancelSelectionManipulation();
+    return true;
+  }
+
+  bool _cancelSelectionManipulation() {
+    var changed = false;
+    if (_selectionDragDelta != null) {
+      _selectionDragDelta = null;
+      changed = true;
+    }
+    if (_selectionTransformOriginals != null) {
+      _clearSelectionTransformPreview();
+      changed = true;
+    }
+    return changed;
+  }
+
+  void _notifyLiveStrokeSoon() {
+    if (_liveStrokeNotifyScheduled) {
+      return;
+    }
+    _liveStrokeNotifyScheduled = true;
+    try {
+      SchedulerBinding.instance.scheduleFrameCallback((_) {
+        _liveStrokeNotifyScheduled = false;
+        if (!_disposed) {
+          notifyListeners();
+        }
+      });
+      SchedulerBinding.instance.ensureVisualUpdate();
+    } on Object {
+      _liveStrokeNotifyScheduled = false;
+      notifyListeners();
+    }
+  }
+
+  String? _editableActiveLayerId() {
+    final CanvasLayer? active = _layerById(activeLayerId);
+    if (active != null && active.isEditable) {
+      return active.id;
+    }
+    final String? firstEditable = _firstEditableLayerId();
+    if (firstEditable != null) {
+      _activeLayerId = firstEditable;
+      return firstEditable;
+    }
+    return null;
+  }
+
+  String? _firstEditableLayerId() {
+    for (final CanvasLayer layer in _layers) {
+      if (layer.isEditable) {
+        return layer.id;
+      }
+    }
+    return null;
+  }
+
+  int _compareElements(CanvasElement a, CanvasElement b) {
+    final double layerA = _layerById(_effectiveLayerId(a))?.position ?? 0;
+    final double layerB = _layerById(_effectiveLayerId(b))?.position ?? 0;
+    final int layerOrder = layerA.compareTo(layerB);
+    if (layerOrder != 0) {
+      return layerOrder;
+    }
+    return a.zIndex.compareTo(b.zIndex);
+  }
+
+  CanvasElement _copyElementWithLayer(CanvasElement element, String? layerId) {
+    return switch (element) {
+      InkElement() => element.copyWith(layerId: layerId),
+      ImageElement() => element.copyWith(layerId: layerId),
+      PdfElement() => element.copyWith(layerId: layerId),
+      LinkElement() => element.copyWith(layerId: layerId),
+      TextElement() => element.copyWith(layerId: layerId),
+      ShapeElement() => element.copyWith(layerId: layerId),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -376,36 +766,41 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   // ---------------------------------------------------------------------------
 
   @override
-  List<CanvasElement> get currentElements =>
-      List<CanvasElement>.unmodifiable(_elements);
+  List<CanvasElement> get currentElements => elements;
 
   @override
   void addElementToStore(CanvasElement element) {
+    final CanvasElement stored = _normalizeElementLayer(element);
     // Idempotent: a command replay must not duplicate an element.
     for (final CanvasElement existing in _elements) {
-      if (existing.id == element.id) {
+      if (existing.id == stored.id) {
         return;
       }
     }
     // Insert keeping the list sorted ascending by zIndex.
     var insertAt = _elements.length;
     for (var i = 0; i < _elements.length; i++) {
-      if (_elements[i].zIndex > element.zIndex) {
+      if (_compareElements(_elements[i], stored) > 0) {
         insertAt = i;
         break;
       }
     }
-    _elements.insert(insertAt, element);
-    _spatialIndex.insert(element.id, element.worldBounds);
+    _elements.insert(insertAt, stored);
+    _spatialIndex.insert(stored.id, stored.worldBounds);
+    final ui.Image? raster = _elementRaster(stored);
+    if (raster != null) {
+      _trackRaster(raster);
+    }
+    _markElementsChanged();
 
     // Keep the z-index allocator ahead of every committed element.
-    if (element.zIndex >= _nextZIndex) {
-      _nextZIndex = element.zIndex + 1;
+    if (stored.zIndex >= _nextZIndex) {
+      _nextZIndex = stored.zIndex + 1;
     }
 
     // Write-through: an add (including a redo, or the re-add half of a move)
     // upserts the element. Skipped while [load] is hydrating the store.
-    _persistUpsert(element);
+    _persistUpsert(stored);
   }
 
   @override
@@ -414,12 +809,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (index < 0) {
       return;
     }
-    _elements.removeAt(index);
+    final CanvasElement removed = _elements.removeAt(index);
+    _disposeElementRaster(removed);
     _spatialIndex.remove(id);
+    _markElementsChanged();
     // Keep the selection consistent: a removed element can no longer be
     // selected. (A MoveElementsCommand removes-then-re-adds with the same id,
     // so it re-selects itself below via _reconcileSelection.)
-    _selectedIds.remove(id);
+    if (_selectedIds.remove(id)) {
+      _markSelectionChanged();
+    }
 
     // Write-through: a remove (including an undo, or the remove half of a
     // move) deletes the element row. A move's immediately-following re-add
@@ -448,18 +847,34 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       _isLoaded = true;
       return;
     }
-    // The library normally creates the canvas row first; make the editor
-    // self-sufficient when reached directly so element/viewport FKs hold.
-    await repo.ensureCanvasExists(canvasId);
+    // Every supported entry point creates the canvas before opening it. Do not
+    // recreate a deleted canvas from a stale link or route: that would turn a
+    // broken reference into a new, misleading blank note.
+    if (!await repo.canvasExists(canvasId)) {
+      throw CanvasNotFoundException(canvasId);
+    }
 
+    final List<CanvasLayer> loadedLayers = await repo.loadLayers(canvasId);
     final List<CanvasElement> loaded = await repo.loadElements(canvasId);
+    final List<Bookmark> loadedBookmarks = await repo.loadBookmarks(canvasId);
     final ViewportState? savedViewport = await repo.loadViewport(canvasId);
+    final bool savedRotationLocked = await repo.loadRotationLocked(canvasId);
+    final CanvasPaperStyle savedPaper = await repo.loadPaperStyle(canvasId);
+    final CanvasToolSettings savedTool = await repo.loadToolSettings(canvasId);
     if (_disposed) {
       return;
     }
 
     _hydrating = true;
     try {
+      _layers
+        ..clear()
+        ..addAll(loadedLayers);
+      _activeLayerId = _firstEditableLayerId() ?? _defaultLayerId;
+      _bookmarks
+        ..clear()
+        ..addAll(loadedBookmarks);
+      _markElementsChanged();
       for (final CanvasElement element in loaded) {
         addElementToStore(element);
       }
@@ -468,7 +883,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
     if (savedViewport != null) {
       viewport = savedViewport;
+      _markViewportChanged();
     }
+    rotationLocked = savedRotationLocked;
+    paperStyle = savedPaper;
+    penColor = savedTool.penColor;
+    penWidth = savedTool.penWidth;
+    penWidthMode = savedTool.penWidthMode;
+    penKind = savedTool.penKind;
+    pressureEnabled = savedTool.pressureEnabled;
     _isLoaded = true;
     notifyListeners();
   }
@@ -503,20 +926,84 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_hydrating || repo == null || canvasId == null) {
       return;
     }
+    if (_collectingPersistenceMutations) {
+      _batchedDeletes.remove(element.id);
+      _batchedUpserts[element.id] = element;
+      return;
+    }
     _track(() => repo.upsertElement(canvasId, element));
   }
 
   /// Deletes the element [id] via the repository, if persistence is enabled.
   ///
-  /// A no-op while hydrating or for an in-memory controller. A move removes
-  /// then immediately re-adds an id — the re-add's upsert lands after this
-  /// delete, so the row survives the move with updated geometry.
+  /// A no-op while hydrating or for an in-memory controller. Command-backed
+  /// mutations are coalesced so a move/transform becomes one final upsert
+  /// instead of a delete followed by an insert for every selected element.
   void _persistDelete(String id) {
     final CanvasRepository? repo = _repository;
     if (_hydrating || repo == null) {
       return;
     }
+    if (_collectingPersistenceMutations) {
+      _batchedUpserts.remove(id);
+      _batchedDeletes.add(id);
+      return;
+    }
     _track(() => repo.deleteElement(id));
+  }
+
+  void _beginPersistenceBatch() {
+    if (_repository == null || _canvasId == null || _hydrating) {
+      return;
+    }
+    _collectingPersistenceMutations = true;
+    _batchedUpserts.clear();
+    _batchedDeletes.clear();
+  }
+
+  void _endPersistenceBatch() {
+    if (!_collectingPersistenceMutations) {
+      return;
+    }
+    _collectingPersistenceMutations = false;
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo == null || canvasId == null || _hydrating) {
+      _batchedUpserts.clear();
+      _batchedDeletes.clear();
+      return;
+    }
+    final List<CanvasElement> upserts = _batchedUpserts.values.toList(
+      growable: false,
+    );
+    final List<String> deletes = _batchedDeletes.toList(growable: false);
+    _batchedUpserts.clear();
+    _batchedDeletes.clear();
+    if (deletes.isNotEmpty || upserts.isNotEmpty) {
+      _track(
+        () => repo.applyElementBatch(
+          canvasId,
+          deletes: deletes,
+          upserts: upserts,
+        ),
+      );
+    }
+  }
+
+  void _persistLayer(CanvasLayer layer) {
+    final CanvasRepository? repo = _repository;
+    if (_hydrating || repo == null) {
+      return;
+    }
+    _track(() => repo.upsertLayer(layer));
+  }
+
+  void _persistLayers(List<CanvasLayer> layers) {
+    final CanvasRepository? repo = _repository;
+    if (_hydrating || repo == null) {
+      return;
+    }
+    _track(() => repo.upsertLayers(layers));
   }
 
   /// Schedules a debounced save of the current [viewport].
@@ -544,14 +1031,34 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Retries failed persistence writes.
   Future<void> retryFailedWrites() async {
-    final retries = List<Future<void> Function()>.of(_failedWrites);
+    if (_failedWrites.isEmpty) return;
     _failedWrites.clear();
     _saveError = null;
     notifyListeners();
-    for (final retry in retries) {
-      _track(retry);
-    }
+    _track(_syncCurrentCanvasState);
     await flush();
+  }
+
+  Future<void> _syncCurrentCanvasState() async {
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo == null || canvasId == null) return;
+    await repo.syncCanvasState(
+      canvasId,
+      elements: List<CanvasElement>.of(_elements),
+      layers: List<CanvasLayer>.of(_layers),
+      bookmarks: List<Bookmark>.of(_bookmarks),
+      viewport: viewport,
+      rotationLocked: rotationLocked,
+      paperStyle: paperStyle,
+      toolSettings: CanvasToolSettings(
+        penColor: penColor,
+        penWidth: penWidth,
+        penWidthMode: penWidthMode,
+        penKind: penKind,
+        pressureEnabled: pressureEnabled,
+      ),
+    );
   }
 
   /// Dismisses the visible save error without dropping retry information.
@@ -590,10 +1097,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// [CanvasCommand.apply], records the command for [undo], and clears the
   /// redo stack because a fresh edit forks history. Ends with [notifyListeners].
   void _runCommand(CanvasCommand command) {
-    command.apply(this);
+    _applyCommandMutation(command.apply);
     _undoStack.add(command);
     _redoStack.clear();
     _reconcileSelectionFor(command);
+    _scheduleVisibleRasters();
     notifyListeners();
   }
 
@@ -605,10 +1113,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     final CanvasCommand command = _undoStack.removeLast();
-    command.revert(this);
+    _applyCommandMutation(command.revert);
     _redoStack.add(command);
     _recomputeNextZIndex();
     _reconcileSelectionFor(command);
+    _scheduleVisibleRasters();
     notifyListeners();
   }
 
@@ -621,10 +1130,20 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     final CanvasCommand command = _redoStack.removeLast();
-    command.apply(this);
+    _applyCommandMutation(command.apply);
     _undoStack.add(command);
     _reconcileSelectionFor(command);
+    _scheduleVisibleRasters();
     notifyListeners();
+  }
+
+  void _applyCommandMutation(void Function(ElementStore store) mutate) {
+    _beginPersistenceBatch();
+    try {
+      mutate(this);
+    } finally {
+      _endPersistenceBatch();
+    }
   }
 
   /// Repairs the selection after [command] ran (forward or reverse).
@@ -635,13 +1154,22 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// moved ids are re-selected (only those still present in [_elements]) so a
   /// selection survives undo/redo of its own move and stays draggable.
   void _reconcileSelectionFor(CanvasCommand command) {
-    if (command is! MoveElementsCommand) {
+    final Iterable<CanvasElement> selectedAfterCommand = switch (command) {
+      MoveElementsCommand(:final moved) => moved,
+      TransformElementsCommand(:final transformed) => transformed,
+      _ => const <CanvasElement>[],
+    };
+    if (selectedAfterCommand.isEmpty) {
       return;
     }
-    for (final CanvasElement element in command.moved) {
+    var changed = false;
+    for (final CanvasElement element in selectedAfterCommand) {
       if (_elements.any((CanvasElement e) => e.id == element.id)) {
-        _selectedIds.add(element.id);
+        changed = _selectedIds.add(element.id) || changed;
       }
+    }
+    if (changed) {
+      _markSelectionChanged();
     }
   }
 
@@ -668,39 +1196,78 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   ///
   /// Replaces any existing [liveStroke]; pen settings are snapshotted onto the
   /// new stroke so later tool changes do not retroactively affect it.
-  void beginStroke(Offset world, double pressure) {
-    liveStroke = Stroke(
+  void beginStroke(
+    Offset world,
+    double pressure, {
+    double tiltX = 0,
+    double tiltY = 0,
+    double azimuth = 0,
+    int timestampMicros = 0,
+    double velocity = 0,
+  }) {
+    if (_editableActiveLayerId() == null) {
+      _liveStrokeBuilder = null;
+      _liveStrokeRevision += 1;
+      notifyListeners();
+      return;
+    }
+    _liveStrokeBuilder = _LiveStrokeBuilder(
       id: newId(),
-      points: <StrokePoint>[StrokePoint(world.dx, world.dy, pressure)],
+      firstPoint: StrokePoint(
+        world.dx,
+        world.dy,
+        pressure,
+        tiltX: tiltX,
+        tiltY: tiltY,
+        azimuth: azimuth,
+        timestampMicros: timestampMicros,
+        velocity: velocity,
+      ),
       color: penColor,
-      width: penWidth,
+      width: resolvedPenWidthWorld(),
       tool: penKind,
     );
+    _liveStrokeRevision += 1;
     notifyListeners();
   }
 
   /// Appends a sample at the [world] point with [pressure] to [liveStroke].
   ///
   /// A no-op when no stroke is in progress.
-  void appendToStroke(Offset world, double pressure) {
-    final Stroke? stroke = liveStroke;
+  void appendToStroke(
+    Offset world,
+    double pressure, {
+    double tiltX = 0,
+    double tiltY = 0,
+    double azimuth = 0,
+    int timestampMicros = 0,
+    double velocity = 0,
+  }) {
+    final _LiveStrokeBuilder? stroke = _liveStrokeBuilder;
     if (stroke == null) {
       return;
     }
-    final StrokePoint last = stroke.points.last;
-    final double minDistance = 1.0 / viewport.scale;
+    final StrokePoint last = stroke.last;
+    final double minDistance = _strokeSampleMinDistanceWorld(stroke.width);
     final bool movedEnough = (world - last.offset).distance >= minDistance;
     final bool pressureChanged = (pressure - last.pressure).abs() >= 0.035;
     if (!movedEnough && !pressureChanged) {
       return;
     }
-    liveStroke = stroke.copyWith(
-      points: <StrokePoint>[
-        ...stroke.points,
-        StrokePoint(world.dx, world.dy, pressure),
-      ],
+    stroke.append(
+      StrokePoint(
+        world.dx,
+        world.dy,
+        pressure,
+        tiltX: tiltX,
+        tiltY: tiltY,
+        azimuth: azimuth,
+        timestampMicros: timestampMicros,
+        velocity: velocity,
+      ),
     );
-    notifyListeners();
+    _liveStrokeRevision += 1;
+    _notifyLiveStrokeSoon();
   }
 
   /// Commits the in-progress [liveStroke] to the canvas as an [InkElement].
@@ -709,12 +1276,18 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// through an [AddElementCommand], so the commit is undoable. The
   /// [liveStroke] is always cleared.
   void endStroke() {
-    final Stroke? stroke = liveStroke;
-    liveStroke = null;
-    if (stroke != null && stroke.points.isNotEmpty) {
+    final Stroke? stroke = _liveStrokeBuilder?.snapshot();
+    final String? layerId = _editableActiveLayerId();
+    _liveStrokeBuilder = null;
+    _liveStrokeRevision += 1;
+    if (stroke != null && stroke.points.isNotEmpty && layerId != null) {
+      final Stroke committed = stroke.copyWith(
+        points: PenInputProcessor.applyTaper(stroke.points, penProfile),
+      );
       final InkElement element = InkElement.fromStroke(
-        stroke,
+        committed,
         zIndex: _nextZIndex,
+        layerId: layerId,
       );
       _runCommand(AddElementCommand(element));
       return;
@@ -724,7 +1297,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Discards the in-progress [liveStroke] without committing it.
   void cancelStroke() {
-    liveStroke = null;
+    _liveStrokeBuilder = null;
+    _liveStrokeRevision += 1;
     notifyListeners();
   }
 
@@ -737,22 +1311,105 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Schedules a debounced persist of the new camera (a no-op in memory-only
   /// mode) — so the canvas reopens framed where it was left.
   void setViewport(ViewportState next) {
+    if (viewport == next) {
+      return;
+    }
     viewport = next;
+    _markViewportChanged();
     _scheduleViewportSave();
     notifyListeners();
   }
 
   /// Pans the viewport by [screenDelta] screen pixels.
   void panBy(Offset screenDelta) {
+    if (screenDelta == Offset.zero) {
+      return;
+    }
     viewport = CanvasTransform.panBy(viewport, screenDelta);
+    _markViewportChanged();
     _scheduleViewportSave();
     notifyListeners();
   }
 
+  /// Zooms around the visible viewport center.
+  void zoomBy(double scaleFactor) {
+    final Offset focus = _viewportSize.isEmpty
+        ? Offset.zero
+        : Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    setViewport(
+      CanvasTransform.zoomAround(
+        current: viewport,
+        focusScreen: focus,
+        scaleFactor: scaleFactor,
+      ),
+    );
+  }
+
   /// Resets the viewport to [ViewportState.initial].
   void resetView() {
+    if (viewport == ViewportState.initial) {
+      return;
+    }
     viewport = ViewportState.initial;
+    _markViewportChanged();
     _scheduleViewportSave();
+    notifyListeners();
+  }
+
+  /// Frames all committed canvas content, if any exists.
+  void fitContent() {
+    final Rect? bounds = contentBounds;
+    if (bounds == null) {
+      return;
+    }
+    frameRegion(bounds);
+  }
+
+  /// Frames the current lasso selection, if any exists.
+  void fitSelection() {
+    final Rect? bounds = selectionBounds;
+    if (bounds == null) {
+      return;
+    }
+    frameRegion(bounds);
+  }
+
+  /// Zooms to paper scale while keeping the visible centre anchored.
+  void zoomTo100() {
+    if (viewport.scale == 1.0) {
+      return;
+    }
+    final Offset focus = _viewportSize.isEmpty
+        ? Offset.zero
+        : Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    setViewport(
+      CanvasTransform.zoomAround(
+        current: viewport,
+        focusScreen: focus,
+        scaleFactor: 1 / viewport.scale,
+      ),
+    );
+  }
+
+  /// Resets only the viewport rotation, preserving pan and zoom.
+  void resetRotation() {
+    if (viewport.rotation == 0) {
+      return;
+    }
+    viewport = viewport.copyWith(rotation: 0);
+    _markViewportChanged();
+    _scheduleViewportSave();
+    notifyListeners();
+  }
+
+  /// Toggles whether pinch gestures may rotate the viewport.
+  void toggleRotationLock() {
+    rotationLocked = !rotationLocked;
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo != null && canvasId != null) {
+      _track(() => repo.saveRotationLocked(canvasId, locked: rotationLocked));
+    }
     notifyListeners();
   }
 
@@ -799,27 +1456,191 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
+  /// Public world-space rectangle currently visible in the viewport.
+  Rect get visibleWorldRect => _visibleWorldRect;
+
+  /// World-space bounding box of all committed content, or `null` when empty.
+  Rect? get contentBounds {
+    Rect? bounds;
+    for (final CanvasElement element in _elements) {
+      if (!_isElementVisible(element)) {
+        continue;
+      }
+      bounds = bounds == null
+          ? element.worldBounds
+          : bounds.expandToInclude(element.worldBounds);
+    }
+    return bounds;
+  }
+
   // ---------------------------------------------------------------------------
   // Tools
   // ---------------------------------------------------------------------------
 
   /// Sets the active interaction tool.
   ///
-  /// Switching away from the lasso clears any active selection and discards an
-  /// in-progress lasso loop, so a stale selection box never lingers under an
-  /// unrelated tool.
+  /// Switching tools discards only an in-progress lasso loop. Committed
+  /// selections intentionally survive so they can be moved, scaled, rotated or
+  /// deleted without forcing the user to stay in the lasso tool.
   void setTool(CanvasTool tool) {
-    activeTool = tool;
-    if (tool != CanvasTool.lasso) {
-      _selectedIds.clear();
-      _lassoPath = null;
+    if (activeTool != tool) {
+      _previousTool = activeTool;
     }
+    activeTool = tool;
+    _discardLasso(restoreSelection: true);
+    notifyListeners();
+  }
+
+  /// Toggles between the current tool and the last explicit tool.
+  void togglePreviousTool() {
+    final CanvasTool next = _previousTool;
+    _previousTool = activeTool;
+    activeTool = next;
+    _discardLasso(restoreSelection: true);
+    notifyListeners();
+  }
+
+  /// Temporarily swaps tools for a held stylus-button gesture.
+  void pushTemporaryTool(CanvasTool tool, {ShapeKind? shapeKindOverride}) {
+    _temporaryTools.add(
+      _TemporaryToolSnapshot(tool: activeTool, shapeKind: shapeKind),
+    );
+    activeTool = tool;
+    if (shapeKindOverride != null) {
+      shapeKind = shapeKindOverride;
+    }
+    notifyListeners();
+  }
+
+  /// Restores the most recent temporary tool swap.
+  void popTemporaryTool() {
+    if (_temporaryTools.isEmpty) {
+      return;
+    }
+    final _TemporaryToolSnapshot snapshot = _temporaryTools.removeLast();
+    activeTool = snapshot.tool;
+    shapeKind = snapshot.shapeKind;
     notifyListeners();
   }
 
   /// Sets how the eraser removes ink (whole elements vs. vector fragments).
   void setEraserMode(EraserMode mode) {
     eraserMode = mode;
+    notifyListeners();
+  }
+
+  /// Sets how lasso and tap item-picking update the current selection.
+  void setSelectionMode(SelectionMode mode) {
+    selectionMode = mode;
+    notifyListeners();
+  }
+
+  /// Makes [layerId] the destination for new canvas content.
+  void setActiveLayer(String layerId) {
+    final CanvasLayer? layer = _layerById(layerId);
+    if (layer == null || !layer.isEditable) {
+      return;
+    }
+    _activeLayerId = layerId;
+    notifyListeners();
+  }
+
+  /// Adds a new content layer above the current topmost layer.
+  CanvasLayer addLayer({String name = 'Layer'}) {
+    final double position = _layers.isEmpty
+        ? 0
+        : _layers
+                  .map((CanvasLayer layer) => layer.position)
+                  .reduce((double a, double b) => a > b ? a : b) +
+              1;
+    final CanvasLayer layer = CanvasLayer(
+      id: newId(),
+      canvasId: _layerCanvasId,
+      name: name,
+      position: position,
+    );
+    _layers.add(layer);
+    _layers.sort(
+      (CanvasLayer a, CanvasLayer b) => a.position.compareTo(b.position),
+    );
+    _activeLayerId = layer.id;
+    _markElementsChanged();
+    _persistLayer(layer);
+    notifyListeners();
+    return layer;
+  }
+
+  void setLayerVisible(String layerId, {required bool visible}) {
+    final int index = _layers.indexWhere((CanvasLayer l) => l.id == layerId);
+    if (index < 0) {
+      return;
+    }
+    final CanvasLayer layer = _layers[index];
+    final CanvasLayer next = layer.copyWith(visible: visible);
+    _layers[index] = next;
+    _markElementsChanged();
+    if (!visible) {
+      _removeSelectedIdsWhere(
+        (String id) => _elements.any(
+          (CanvasElement element) =>
+              element.id == id && _effectiveLayerId(element) == layerId,
+        ),
+      );
+      if (_activeLayerId == layerId) {
+        _activeLayerId = _firstEditableLayerId() ?? _defaultLayerId;
+      }
+    }
+    _persistLayer(next);
+    notifyListeners();
+  }
+
+  void setLayerLocked(String layerId, {required bool locked}) {
+    final int index = _layers.indexWhere((CanvasLayer l) => l.id == layerId);
+    if (index < 0) {
+      return;
+    }
+    final CanvasLayer layer = _layers[index];
+    final CanvasLayer next = layer.copyWith(locked: locked);
+    _layers[index] = next;
+    if (locked) {
+      _removeSelectedIdsWhere(
+        (String id) => _elements.any(
+          (CanvasElement element) =>
+              element.id == id && _effectiveLayerId(element) == layerId,
+        ),
+      );
+      if (_activeLayerId == layerId) {
+        _activeLayerId = _firstEditableLayerId() ?? _defaultLayerId;
+      }
+    }
+    _persistLayer(next);
+    notifyListeners();
+  }
+
+  void moveLayer(String layerId, int direction) {
+    if (direction == 0 || _layers.length < 2) {
+      return;
+    }
+    _layers.sort(
+      (CanvasLayer a, CanvasLayer b) => a.position.compareTo(b.position),
+    );
+    final int index = _layers.indexWhere((CanvasLayer l) => l.id == layerId);
+    if (index < 0) {
+      return;
+    }
+    final int nextIndex = (index + direction).clamp(0, _layers.length - 1);
+    if (nextIndex == index) {
+      return;
+    }
+    final CanvasLayer moving = _layers.removeAt(index);
+    _layers.insert(nextIndex, moving);
+    for (var i = 0; i < _layers.length; i += 1) {
+      final CanvasLayer updated = _layers[i].copyWith(position: i.toDouble());
+      _layers[i] = updated;
+    }
+    _persistLayers(List<CanvasLayer>.of(_layers));
+    _elements.sort(_compareElements);
+    _markElementsChanged();
     notifyListeners();
   }
 
@@ -835,22 +1656,137 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     notifyListeners();
   }
 
+  /// Sets the arrow style used by newly-created arrow shapes.
+  void setArrowStyle({
+    ArrowBodyKind? body,
+    ArrowHeadStyle? startHead,
+    ArrowHeadStyle? endHead,
+    double? headScale,
+  }) {
+    arrowBody = body ?? arrowBody;
+    arrowStartHead = startHead ?? arrowStartHead;
+    arrowEndHead = endHead ?? arrowEndHead;
+    arrowHeadScale = (headScale ?? arrowHeadScale).clamp(0.35, 2.5);
+    notifyListeners();
+  }
+
   /// Sets the packed ARGB colour applied to new strokes.
   void setPenColor(int color) {
     penColor = color;
+    _saveToolSettings();
     notifyListeners();
   }
 
   /// Sets the on-screen width applied to new strokes.
   void setPenWidth(double width) {
     penWidth = width;
+    _saveToolSettings();
+    notifyListeners();
+  }
+
+  /// Sets whether new marks keep screen size or canvas size while zooming.
+  void setPenWidthMode(PenWidthMode mode) {
+    if (penWidthMode == mode) {
+      return;
+    }
+    penWidthMode = mode;
+    _saveToolSettings();
     notifyListeners();
   }
 
   /// Sets the ink tool kind applied to new strokes.
   void setPenKind(StrokeToolKind kind) {
     penKind = kind;
+    _saveToolSettings();
     notifyListeners();
+  }
+
+  /// Toggles whether captured pressure affects new strokes.
+  void setPressureEnabled({required bool enabled}) {
+    pressureEnabled = enabled;
+    _saveToolSettings();
+    notifyListeners();
+  }
+
+  /// Updates the capture profile for future strokes.
+  void setPenProfile(PenProfile profile, {bool notify = true}) {
+    if (penProfile == profile) {
+      return;
+    }
+    penProfile = profile;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  /// Updates the per-canvas paper style.
+  void setPaperStyle(CanvasPaperStyle style) {
+    paperStyle = style;
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo != null && canvasId != null) {
+      _track(() => repo.savePaperStyle(canvasId, style));
+    }
+    notifyListeners();
+  }
+
+  /// Enables or disables snap-to-grid for precision placement.
+  void setSnapToGridEnabled({required bool enabled}) {
+    if (snapToGridEnabled == enabled) {
+      return;
+    }
+    snapToGridEnabled = enabled;
+    notifyListeners();
+  }
+
+  /// Toggles snap-to-grid.
+  void toggleSnapToGrid() {
+    setSnapToGridEnabled(enabled: !snapToGridEnabled);
+  }
+
+  void _saveToolSettings() {
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo == null || canvasId == null) {
+      return;
+    }
+    _track(
+      () => repo.saveToolSettings(
+        canvasId,
+        CanvasToolSettings(
+          penColor: penColor,
+          penWidth: penWidth,
+          penWidthMode: penWidthMode,
+          penKind: penKind,
+          pressureEnabled: pressureEnabled,
+        ),
+      ),
+    );
+  }
+
+  /// Current pen width resolved to world units for a new committed mark.
+  double resolvedPenWidthWorld() {
+    return resolveStrokeWidthWorld(
+      selectedWidth: penWidth,
+      viewportScale: viewport.scale,
+      mode: penWidthMode,
+    );
+  }
+
+  /// Current pen hover radius in screen pixels.
+  double resolvedPenHoverRadiusScreen() {
+    final double screenDiameter = switch (penWidthMode) {
+      PenWidthMode.screen => penWidth,
+      PenWidthMode.canvas => penWidth * viewport.scale,
+    };
+    return (screenDiameter / 2).clamp(0.5, double.infinity).toDouble();
+  }
+
+  double _strokeSampleMinDistanceWorld(double strokeWidthWorld) {
+    final double scale = viewport.scale;
+    final double screenSample = scale.isFinite && scale > 0 ? 1.0 / scale : 1;
+    final double widthSample = strokeWidthWorld / 3;
+    return math.max(1e-6, math.min(screenSample, widthSample));
   }
 
   /// Sets the stylus hover indicator position, or clears it with `null`.
@@ -868,7 +1804,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// A no-op when [elements] is empty. Backs the object eraser / lasso-delete
   /// in later steps.
   void removeElements(Iterable<CanvasElement> elements) {
-    final List<CanvasElement> list = elements.toList(growable: false);
+    final List<CanvasElement> list = elements
+        .where(_isElementEditable)
+        .toList(growable: false);
     if (list.isEmpty) {
       return;
     }
@@ -880,13 +1818,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Also discards any in-progress [liveStroke] and clears the selection. The
   /// clear can be reversed with [undo].
   void clear() {
-    liveStroke = null;
-    _selectedIds.clear();
-    if (_elements.isEmpty) {
+    _liveStrokeBuilder = null;
+    _liveStrokeRevision += 1;
+    _clearSelectedIds();
+    final List<CanvasElement> editable = _elements
+        .where(_isElementEditable)
+        .toList(growable: false);
+    if (editable.isEmpty) {
       notifyListeners();
       return;
     }
-    _runCommand(ClearCommand());
+    _runCommand(RemoveElementsCommand(editable));
   }
 
   // ---------------------------------------------------------------------------
@@ -994,6 +1936,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           InkElement.fromStroke(
             element.stroke.copyWith(id: newId(), points: run),
             zIndex: _nextZIndex++,
+            layerId: element.layerId,
           ),
         );
       }
@@ -1026,6 +1969,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
     final List<CanvasElement> hits = <CanvasElement>[];
     for (final CanvasElement element in _elements) {
+      if (!_isElementEditable(element)) {
+        continue;
+      }
       if (!candidateIds.contains(element.id)) {
         continue;
       }
@@ -1067,8 +2013,323 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       case PdfElement():
       case LinkElement():
       case TextElement():
-        return _pathReachesRect(path, element.worldBounds, worldRadius);
+        return _pathReachesRotatedRect(
+          path,
+          _placementBoundsOf(element)!,
+          element.rotation,
+          worldRadius,
+        );
+      case ShapeElement():
+        return _pathReachesShape(path, element, worldRadius);
     }
+  }
+
+  static bool _pathReachesShape(
+    List<Offset> path,
+    ShapeElement element,
+    double radius,
+  ) {
+    for (final List<Offset> polygon in _shapeFilledPolygons(element)) {
+      if (path.any(
+        (Offset point) => CanvasGeometry.polygonContainsPoint(polygon, point),
+      )) {
+        return true;
+      }
+    }
+    final double reach = radius + element.strokeWidth / 2;
+    for (final List<Offset> polyline in _shapePolylines(element)) {
+      if (CanvasGeometry.polylinesWithinDistance(path, polyline, reach)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool _pointHitsShape(Offset point, ShapeElement element, double slop) {
+    for (final List<Offset> polygon in _shapeFilledPolygons(element)) {
+      if (CanvasGeometry.polygonContainsPoint(polygon, point)) {
+        return true;
+      }
+    }
+    final double reach = slop + element.strokeWidth / 2;
+    for (final List<Offset> polyline in _shapePolylines(element)) {
+      if (CanvasGeometry.circleHitsPolyline(point, reach, polyline)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static List<List<Offset>> _shapePolylines(ShapeElement element) {
+    switch (element.shapeKind) {
+      case 0:
+        return <List<Offset>>[
+          CanvasGeometry.linePoints(element.start, element.end),
+        ];
+      case 1:
+        return <List<Offset>>[
+          CanvasGeometry.rectanglePoints(element.start, element.end),
+        ];
+      case 2:
+        final Rect rect = Rect.fromPoints(element.start, element.end);
+        final int segments = (math.pi * (rect.width + rect.height) / 8)
+            .ceil()
+            .clamp(32, 256);
+        return <List<Offset>>[
+          CanvasGeometry.ovalPoints(
+            element.start,
+            element.end,
+            segments: segments,
+          ),
+        ];
+      case 3:
+        return _arrowPolylines(element);
+      default:
+        return <List<Offset>>[
+          CanvasGeometry.linePoints(element.start, element.end),
+        ];
+    }
+  }
+
+  static List<List<Offset>> _arrowPolylines(ShapeElement element) {
+    final Offset delta = element.end - element.start;
+    final double length = delta.distance;
+    if (length == 0) {
+      return <List<Offset>>[
+        <Offset>[element.start],
+      ];
+    }
+    if (element.legacyArrow) {
+      final double angle = math.atan2(delta.dy, delta.dx);
+      final double headLength = ArrowGeometry.legacyHeadLength(
+        element.start,
+        element.end,
+      );
+      const double headAngle = math.pi / 7;
+      final Offset left = Offset(
+        element.end.dx - headLength * math.cos(angle - headAngle),
+        element.end.dy - headLength * math.sin(angle - headAngle),
+      );
+      final Offset right = Offset(
+        element.end.dx - headLength * math.cos(angle + headAngle),
+        element.end.dy - headLength * math.sin(angle + headAngle),
+      );
+      return <List<Offset>>[
+        <Offset>[element.start, element.end],
+        <Offset>[element.end, left, right, element.end],
+      ];
+    }
+
+    final List<List<Offset>> result = <List<Offset>>[
+      _samplePath(
+        ArrowGeometry.bodyPath(
+          body: element.arrowBody,
+          start: element.start,
+          end: element.end,
+          controls: element.controlPoints,
+          strokeWidth: element.strokeWidth,
+        ),
+      ),
+    ];
+    final double headLength = ArrowGeometry.styledHeadLength(
+      strokeWidth: element.strokeWidth,
+      headScale: element.arrowHeadScale,
+      maxLength: length,
+    );
+    result.addAll(
+      _arrowHeadPolylines(
+        tip: element.end,
+        direction: ArrowGeometry.endTangent(
+          body: element.arrowBody,
+          start: element.start,
+          end: element.end,
+          controls: element.controlPoints,
+          strokeWidth: element.strokeWidth,
+        ),
+        style: element.arrowEndHead,
+        length: headLength,
+      ),
+    );
+    result.addAll(
+      _arrowHeadPolylines(
+        tip: element.start,
+        direction: -ArrowGeometry.startTangent(
+          body: element.arrowBody,
+          start: element.start,
+          end: element.end,
+          controls: element.controlPoints,
+          strokeWidth: element.strokeWidth,
+        ),
+        style: element.arrowStartHead,
+        length: headLength,
+      ),
+    );
+    return result;
+  }
+
+  static List<Offset> _samplePath(ui.Path path) {
+    final List<Offset> points = <Offset>[];
+    for (final ui.PathMetric metric in path.computeMetrics()) {
+      final int segments = (metric.length / 4).ceil().clamp(1, 256);
+      for (var i = 0; i <= segments; i++) {
+        final ui.Tangent? tangent = metric.getTangentForOffset(
+          metric.length * i / segments,
+        );
+        if (tangent != null) {
+          points.add(tangent.position);
+        }
+      }
+    }
+    return points;
+  }
+
+  static List<List<Offset>> _arrowHeadPolylines({
+    required Offset tip,
+    required Offset direction,
+    required ArrowHeadStyle style,
+    required double length,
+  }) {
+    if (style == ArrowHeadStyle.none ||
+        length <= 0 ||
+        direction.distance == 0) {
+      return const <List<Offset>>[];
+    }
+    final Offset unit = direction / direction.distance;
+    final Offset normal = Offset(-unit.dy, unit.dx);
+    final double wing = length * 0.48;
+    final Offset base = tip - unit * length;
+    final Offset left = base + normal * wing;
+    final Offset right = base - normal * wing;
+    switch (style) {
+      case ArrowHeadStyle.none:
+        return const <List<Offset>>[];
+      case ArrowHeadStyle.open:
+        return <List<Offset>>[
+          <Offset>[left, tip, right],
+        ];
+      case ArrowHeadStyle.filled:
+        return <List<Offset>>[
+          <Offset>[tip, left, right, tip],
+        ];
+      case ArrowHeadStyle.dot:
+        final double radius = length * 0.28;
+        return <List<Offset>>[
+          CanvasGeometry.ovalPoints(
+            tip - Offset(radius, radius),
+            tip + Offset(radius, radius),
+            segments: 32,
+          ),
+        ];
+      case ArrowHeadStyle.diamond:
+        final Offset center = tip - unit * (length * 0.48);
+        final Offset tail = tip - unit * (length * 0.96);
+        return <List<Offset>>[
+          <Offset>[
+            tip,
+            center + normal * wing * 0.75,
+            tail,
+            center - normal * wing * 0.75,
+            tip,
+          ],
+        ];
+      case ArrowHeadStyle.bar:
+        return <List<Offset>>[
+          <Offset>[tip + normal * wing, tip - normal * wing],
+        ];
+    }
+  }
+
+  static List<List<Offset>> _shapeFilledPolygons(ShapeElement element) {
+    if (element.shapeKind != ShapeKind.arrow.index) {
+      return const <List<Offset>>[];
+    }
+    if (element.legacyArrow) {
+      final List<List<Offset>> polylines = _arrowPolylines(element);
+      return polylines.length < 2
+          ? const <List<Offset>>[]
+          : <List<Offset>>[polylines[1]];
+    }
+    final double arrowLength = (element.end - element.start).distance;
+    if (arrowLength == 0) {
+      return const <List<Offset>>[];
+    }
+    final double headLength = ArrowGeometry.styledHeadLength(
+      strokeWidth: element.strokeWidth,
+      headScale: element.arrowHeadScale,
+      maxLength: arrowLength,
+    );
+    final List<List<Offset>> polygons = <List<Offset>>[];
+    if (_arrowHeadIsFilled(element.arrowEndHead)) {
+      polygons.addAll(
+        _arrowHeadPolylines(
+          tip: element.end,
+          direction: ArrowGeometry.endTangent(
+            body: element.arrowBody,
+            start: element.start,
+            end: element.end,
+            controls: element.controlPoints,
+            strokeWidth: element.strokeWidth,
+          ),
+          style: element.arrowEndHead,
+          length: headLength,
+        ),
+      );
+    }
+    if (_arrowHeadIsFilled(element.arrowStartHead)) {
+      polygons.addAll(
+        _arrowHeadPolylines(
+          tip: element.start,
+          direction: -ArrowGeometry.startTangent(
+            body: element.arrowBody,
+            start: element.start,
+            end: element.end,
+            controls: element.controlPoints,
+            strokeWidth: element.strokeWidth,
+          ),
+          style: element.arrowStartHead,
+          length: headLength,
+        ),
+      );
+    }
+    return polygons;
+  }
+
+  static bool _arrowHeadIsFilled(ArrowHeadStyle style) {
+    return style == ArrowHeadStyle.filled || style == ArrowHeadStyle.dot;
+  }
+
+  static List<Offset> _shapeCoverageSamples(ShapeElement element) {
+    final List<(Offset, Offset, double)> segments =
+        <(Offset, Offset, double)>[];
+    var totalLength = 0.0;
+    for (final List<Offset> polyline in _shapePolylines(element)) {
+      for (var i = 0; i + 1 < polyline.length; i++) {
+        final double length = (polyline[i + 1] - polyline[i]).distance;
+        if (length == 0) {
+          continue;
+        }
+        segments.add((polyline[i], polyline[i + 1], length));
+        totalLength += length;
+      }
+    }
+    if (segments.isEmpty || totalLength == 0) {
+      return <Offset>[element.start];
+    }
+    const int targetSamples = 64;
+    return <Offset>[
+      for (final (Offset start, Offset end, double length) in segments)
+        for (
+          var i = 0;
+          i < math.max(1, (targetSamples * length / totalLength).round());
+          i++
+        )
+          Offset.lerp(
+            start,
+            end,
+            (i + 0.5) /
+                math.max(1, (targetSamples * length / totalLength).round()),
+          )!,
+    ];
   }
 
   /// Whether any sample of [path] lies within [radius] of [rect].
@@ -1090,17 +2351,42 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     return false;
   }
 
+  /// Like [_pathReachesRect], but tests against the element's rotated visual
+  /// rectangle rather than its broad axis-aligned culling bounds.
+  static bool _pathReachesRotatedRect(
+    List<Offset> path,
+    Rect rect,
+    double radians,
+    double radius,
+  ) {
+    if (radians == 0) {
+      return _pathReachesRect(path, rect, radius);
+    }
+    final Offset center = rect.center;
+    return _pathReachesRect(
+      <Offset>[
+        for (final Offset point in path) _rotateAround(point, center, -radians),
+      ],
+      rect,
+      radius,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Lasso selection
   // ---------------------------------------------------------------------------
 
   /// Starts a freehand lasso loop at the [world] point.
   ///
-  /// Beginning a new loop clears any prior selection so the gesture starts
-  /// fresh.
+  /// A replace loop snapshots the prior selection but keeps it visible while
+  /// the loop is being traced. The snapshot is only replaced after a valid
+  /// loop commits, and is restored if the gesture is cancelled.
   void beginLasso(Offset world) {
+    _discardLasso(restoreSelection: true);
     _lassoPath = <Offset>[world];
-    _selectedIds.clear();
+    if (selectionMode == SelectionMode.replace) {
+      _selectionBeforeReplaceLasso = Set<String>.of(_selectedIds);
+    }
     notifyListeners();
   }
 
@@ -1122,34 +2408,63 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// phase: the spatial index is queried for the loop's bounding box. Narrow
   /// phase: each candidate is tested with an even-odd point-in-polygon rule —
   /// an ink element is selected when a majority of its centerline points fall
-  /// inside the loop. A loop with too few points (an accidental tap) selects
-  /// nothing. Selection is held in the controller, not committed as a command.
+  /// inside the loop. A loop with too few points (an accidental tap) preserves
+  /// the prior selection. Selection is held in the controller, not committed as
+  /// a command.
   void endLasso() {
     final List<Offset>? path = _lassoPath;
     _lassoPath = null;
     if (path == null || path.length < 3) {
+      _restoreSelectionBeforeReplaceLasso();
+      _consumeSelectionMode();
       notifyListeners();
       return;
     }
 
-    _selectedIds.clear();
+    final Set<String> hits = <String>{};
     final Rect area = CanvasGeometry.boundsOfPoints(path);
     final Set<String> candidateIds = _spatialIndex.query(area).toSet();
     for (final CanvasElement element in _elements) {
+      if (!_isElementEditable(element)) {
+        continue;
+      }
       if (!candidateIds.contains(element.id)) {
         continue;
       }
       if (_lassoSelects(element, path)) {
-        _selectedIds.add(element.id);
+        hits.add(element.id);
       }
     }
+    _applySelectionIds(hits, selectionMode);
+    _selectionBeforeReplaceLasso = null;
+    _consumeSelectionMode();
     notifyListeners();
   }
 
   /// Cancels an in-progress lasso loop without changing the selection.
   void cancelLasso() {
-    _lassoPath = null;
+    _discardLasso(restoreSelection: true);
     notifyListeners();
+  }
+
+  void _discardLasso({required bool restoreSelection}) {
+    _lassoPath = null;
+    if (restoreSelection) {
+      _restoreSelectionBeforeReplaceLasso();
+    } else {
+      _selectionBeforeReplaceLasso = null;
+    }
+  }
+
+  void _restoreSelectionBeforeReplaceLasso() {
+    final Set<String>? previous = _selectionBeforeReplaceLasso;
+    _selectionBeforeReplaceLasso = null;
+    if (previous == null) return;
+    _applySelectionIds(<String>{
+      for (final CanvasElement element in _elements)
+        if (previous.contains(element.id) && _isElementEditable(element))
+          element.id,
+    }, SelectionMode.replace);
   }
 
   /// Whether the closed lasso [polygon] substantially encloses [element].
@@ -1174,16 +2489,184 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       case PdfElement():
       case LinkElement():
       case TextElement():
-        final Rect r = element.worldBounds;
-        final List<Offset> samples = <Offset>[
-          r.topLeft,
-          r.topRight,
-          r.bottomLeft,
-          r.bottomRight,
-          r.center,
-        ];
-        return CanvasGeometry.polygonCoverage(polygon, samples) > 0.5;
+        return CanvasGeometry.polygonCoverage(
+              polygon,
+              _rotatedRectSamples(
+                _placementBoundsOf(element)!,
+                element.rotation,
+              ),
+            ) >
+            0.5;
+      case ShapeElement():
+        return CanvasGeometry.polygonCoverage(
+              polygon,
+              _shapeCoverageSamples(element),
+            ) >
+            0.5;
     }
+  }
+
+  /// Selects the topmost editable element under [world].
+  ///
+  /// Returns whether an element was hit. With replace mode, tapping empty
+  /// space clears the current selection; add/subtract modes leave it alone.
+  bool selectElementAt(Offset world, {SelectionMode? mode}) {
+    final SelectionMode effectiveMode = mode ?? selectionMode;
+    final CanvasElement? hit = elementAt(
+      world,
+      requireEditable: true,
+      requireVisible: true,
+    );
+    if (hit == null) {
+      if (effectiveMode == SelectionMode.replace) {
+        clearSelection();
+      } else {
+        _consumeSelectionMode();
+        notifyListeners();
+      }
+      return false;
+    }
+    _applySelectionIds(<String>{hit.id}, effectiveMode);
+    _consumeSelectionMode();
+    notifyListeners();
+    return true;
+  }
+
+  bool _consumeSelectionMode() {
+    if (selectionMode == SelectionMode.replace) {
+      return false;
+    }
+    selectionMode = SelectionMode.replace;
+    return true;
+  }
+
+  /// Returns the topmost element at [world], or `null` when none is hit.
+  CanvasElement? elementAt(
+    Offset world, {
+    bool requireEditable = false,
+    bool requireVisible = true,
+  }) {
+    final double slop = 10.0 / viewport.scale;
+    final Set<String> candidateIds = _spatialIndex
+        .query(Rect.fromCircle(center: world, radius: slop))
+        .toSet();
+    if (candidateIds.isEmpty) {
+      return null;
+    }
+    for (final CanvasElement element in _elements.reversed) {
+      if (!candidateIds.contains(element.id)) {
+        continue;
+      }
+      if (requireVisible && !_isElementVisible(element)) {
+        continue;
+      }
+      if (requireEditable && !_isElementEditable(element)) {
+        continue;
+      }
+      if (_pointHitsElement(world, element, slop)) {
+        return element;
+      }
+    }
+    return null;
+  }
+
+  void _applySelectionIds(Set<String> ids, SelectionMode mode) {
+    var changed = false;
+    switch (mode) {
+      case SelectionMode.replace:
+        changed =
+            _selectedIds.length != ids.length || !_selectedIds.containsAll(ids);
+        if (changed) {
+          _selectedIds
+            ..clear()
+            ..addAll(ids);
+        }
+      case SelectionMode.add:
+        for (final String id in ids) {
+          changed = _selectedIds.add(id) || changed;
+        }
+      case SelectionMode.subtract:
+        for (final String id in ids) {
+          changed = _selectedIds.remove(id) || changed;
+        }
+    }
+    if (changed) {
+      _markSelectionChanged();
+    }
+  }
+
+  bool _pointHitsElement(Offset world, CanvasElement element, double slop) {
+    switch (element) {
+      case InkElement():
+        final double reach = slop + element.stroke.width / 2;
+        final List<Offset> centerline = <Offset>[
+          for (final StrokePoint p in element.stroke.points) p.offset,
+        ];
+        return CanvasGeometry.circleHitsPolyline(world, reach, centerline);
+      case ImageElement():
+      case PdfElement():
+      case LinkElement():
+      case TextElement():
+        return _pointHitsRotatedRect(
+          world,
+          _placementBoundsOf(element)!,
+          element.rotation,
+          slop,
+        );
+      case ShapeElement():
+        return _pointHitsShape(world, element, slop);
+    }
+  }
+
+  static bool _pointHitsRotatedRect(
+    Offset world,
+    Rect rect,
+    double radians,
+    double slop,
+  ) {
+    final Offset local = radians == 0
+        ? world
+        : _rotateAround(world, rect.center, -radians);
+    return rect.inflate(slop).contains(local);
+  }
+
+  static Rect? _placementBoundsOf(CanvasElement element) {
+    return switch (element) {
+      ImageElement(:final placementBounds) => placementBounds,
+      PdfElement(:final placementBounds) => placementBounds,
+      LinkElement(:final placementBounds) => placementBounds,
+      TextElement(:final placementBounds) => placementBounds,
+      _ => null,
+    };
+  }
+
+  static List<Offset> _rotatedRectSamples(Rect rect, double radians) {
+    final Offset center = rect.center;
+    final List<Offset> corners = <Offset>[
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomRight,
+      rect.bottomLeft,
+    ];
+    return <Offset>[
+      for (final Offset corner in corners)
+        _rotateAround(corner, center, radians),
+      center,
+    ];
+  }
+
+  static Offset _rotateAround(Offset point, Offset origin, double radians) {
+    if (radians == 0) {
+      return point;
+    }
+    final double sin = math.sin(radians);
+    final double cos = math.cos(radians);
+    final double dx = point.dx - origin.dx;
+    final double dy = point.dy - origin.dy;
+    return Offset(
+      origin.dx + dx * cos - dy * sin,
+      origin.dy + dx * sin + dy * cos,
+    );
   }
 
   /// Replaces the current selection with exactly [ids].
@@ -1191,23 +2674,41 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Ids with no matching committed element are ignored. Used by the render
   /// layer for tap-to-select interactions.
   void setSelection(Iterable<String> ids) {
+    final Set<String> next = <String>{
+      for (final String id in ids)
+        if (_elements.any(
+          (CanvasElement e) => e.id == id && _isElementEditable(e),
+        ))
+          id,
+    };
+    final bool manipulationChanged = _cancelSelectionManipulation();
+    if (_selectedIds.length == next.length && _selectedIds.containsAll(next)) {
+      if (manipulationChanged) {
+        notifyListeners();
+      }
+      return;
+    }
     _selectedIds
       ..clear()
-      ..addAll(
-        ids.where(
-          (String id) => _elements.any((CanvasElement e) => e.id == id),
-        ),
-      );
+      ..addAll(next);
+    _markSelectionChanged();
     notifyListeners();
   }
 
   /// Clears the current selection (e.g. on a tap in empty space).
   void clearSelection() {
-    if (_selectedIds.isEmpty && _lassoPath == null) {
+    final bool modeChanged = _consumeSelectionMode();
+    final bool manipulationChanged = _cancelSelectionManipulation();
+    if (_selectedIds.isEmpty &&
+        _lassoPath == null &&
+        _selectionBeforeReplaceLasso == null &&
+        !modeChanged &&
+        !manipulationChanged) {
       return;
     }
-    _selectedIds.clear();
+    _clearSelectedIds();
     _lassoPath = null;
+    _selectionBeforeReplaceLasso = null;
     notifyListeners();
   }
 
@@ -1217,32 +2718,44 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// elements no longer exist to be selected — though an [undo] restores them
   /// (unselected).
   void deleteSelection() {
+    final bool modeChanged = _consumeSelectionMode();
+    final bool manipulationChanged = _cancelSelectionManipulation();
     final List<CanvasElement> selected = selectedElements;
     if (selected.isEmpty) {
+      if (modeChanged || manipulationChanged) {
+        notifyListeners();
+      }
       return;
     }
     _runCommand(RemoveElementsCommand(selected));
     // RemoveElementsCommand.apply already pruned _selectedIds via
     // removeElementFromStore; this is just defensive.
-    _selectedIds.clear();
-    notifyListeners();
+    if (_clearSelectedIds()) {
+      notifyListeners();
+    }
   }
 
   /// Returns whether the [world] point lands on a currently selected element.
   ///
-  /// A precise hit so a drag started inside the selection bounding box but off
-  /// every stroke still falls through to (e.g.) a fresh lasso. Backs the
-  /// "press on the selection to drag it" interaction.
+  /// The visible selection bounding box is draggable, including empty space
+  /// between sparse selected elements. Backs the "press on the selection to
+  /// drag it" interaction.
   ///
   /// Ink is hit against its centerline (a thin stroke stays grabbable via the
   /// slop); an image / PDF / link element — being a filled rectangle — is hit
   /// when the point lands inside its placement rect, grown by the same slop.
   bool selectionHitTest(Offset world) {
-    if (_selectedIds.isEmpty) {
+    if (_selectedIds.isEmpty || selectedElements.isEmpty) {
       return false;
     }
-    // A small world-space slop so thin strokes remain easy to grab.
+    // A small world-space slop keeps the grab area screen-constant. The whole
+    // visible selection box is draggable, including empty space between sparse
+    // elements in a group selection.
     final double slop = 12.0 / viewport.scale;
+    final Rect? bounds = selectionBounds;
+    if (bounds != null && bounds.inflate(slop).contains(world)) {
+      return true;
+    }
     for (final CanvasElement element in selectedElements) {
       switch (element) {
         case InkElement():
@@ -1257,7 +2770,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         case PdfElement():
         case LinkElement():
         case TextElement():
-          if (element.worldBounds.inflate(slop).contains(world)) {
+          if (_pointHitsRotatedRect(
+            world,
+            _placementBoundsOf(element)!,
+            element.rotation,
+            slop,
+          )) {
+            return true;
+          }
+          break;
+        case ShapeElement():
+          if (_pointHitsShape(world, element, slop)) {
             return true;
           }
       }
@@ -1278,6 +2801,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_selectedIds.isEmpty) {
       return;
     }
+    _clearSelectionTransformPreview();
     _selectionDragDelta = Offset.zero;
     notifyListeners();
   }
@@ -1327,14 +2851,410 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     notifyListeners();
   }
 
+  /// Begins a live scale/rotate/translate transform of the current selection.
+  void beginSelectionTransform() {
+    final List<CanvasElement> originals = selectedElements;
+    if (originals.isEmpty) {
+      return;
+    }
+    _selectionDragDelta = null;
+    _selectionTransformOriginals = List<CanvasElement>.unmodifiable(originals);
+    _selectionTransformPreview = SelectionTransformPreview(
+      origin: _boundsForSelectedElements(originals)?.center ?? Offset.zero,
+      translation: Offset.zero,
+      scale: 1,
+      rotation: 0,
+    );
+    _markSelectionPreviewChanged();
+    _selectionTransformScale = 1;
+    _selectionTransformRotation = 0;
+    _selectionTransformTranslation = Offset.zero;
+    notifyListeners();
+  }
+
+  /// Updates the live selection transform preview.
+  void updateSelectionTransform({
+    required Offset origin,
+    required Offset translation,
+    required double scale,
+    required double rotation,
+  }) {
+    final List<CanvasElement>? originals = _selectionTransformOriginals;
+    if (originals == null || originals.isEmpty) {
+      return;
+    }
+    final double clampedScale = scale.clamp(0.05, 20.0).toDouble();
+    _selectionTransformScale = clampedScale;
+    _selectionTransformRotation = rotation;
+    _selectionTransformTranslation = translation;
+    _selectionTransformPreview = SelectionTransformPreview(
+      origin: origin,
+      translation: translation,
+      scale: clampedScale,
+      rotation: rotation,
+    );
+    _markSelectionPreviewChanged();
+    notifyListeners();
+  }
+
+  /// Commits the live selection transform as one undoable command.
+  void endSelectionTransform() {
+    final List<CanvasElement>? captured = _selectionTransformOriginals;
+    if (captured == null || captured.isEmpty) {
+      _clearSelectionTransformPreview(notify: true);
+      return;
+    }
+    final Set<String> capturedIds = <String>{
+      for (final CanvasElement element in captured) element.id,
+    };
+    final List<CanvasElement> originals = <CanvasElement>[
+      for (final CanvasElement element in _elements)
+        if (capturedIds.contains(element.id) &&
+            _selectedIds.contains(element.id) &&
+            _isElementEditable(element))
+          element,
+    ];
+    final SelectionTransformPreview preview = _selectionTransformPreview;
+    final bool changed =
+        (_selectionTransformScale - 1).abs() > 0.000001 ||
+        _selectionTransformRotation.abs() > 0.000001 ||
+        _selectionTransformTranslation.distance > 0.000001;
+    _clearSelectionTransformPreview();
+    if (!changed || originals.isEmpty) {
+      notifyListeners();
+      return;
+    }
+    final List<CanvasElement> transformed = <CanvasElement>[
+      for (final CanvasElement original in originals)
+        _transformElement(
+          original,
+          origin: preview.origin,
+          translation: preview.translation,
+          scale: preview.scale,
+          rotation: preview.rotation,
+        ),
+    ];
+    _runCommand(
+      TransformElementsCommand(
+        originals: originals,
+        transformed: transformed,
+        description: 'Transform',
+      ),
+    );
+  }
+
+  /// Cancels a live selection transform without writing geometry.
+  void cancelSelectionTransform() {
+    _clearSelectionTransformPreview(notify: true);
+  }
+
+  void _clearSelectionTransformPreview({bool notify = false}) {
+    _selectionTransformOriginals = null;
+    _selectionTransformPreview = const SelectionTransformPreview.identity();
+    _markSelectionPreviewChanged();
+    _selectionTransformScale = 1;
+    _selectionTransformRotation = 0;
+    _selectionTransformTranslation = Offset.zero;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  /// Moves the current selection by a small world-space delta.
+  void nudgeSelection(Offset worldDelta) {
+    if (worldDelta == Offset.zero) {
+      return;
+    }
+    final List<CanvasElement> originals = selectedElements;
+    if (originals.isEmpty) {
+      return;
+    }
+    final List<CanvasElement> moved = <CanvasElement>[
+      for (final CanvasElement element in originals)
+        element.translated(worldDelta),
+    ];
+    _runCommand(
+      MoveElementsCommand(
+        originals: originals,
+        moved: moved,
+        delta: worldDelta,
+      ),
+    );
+  }
+
+  /// Scales the current selection around [origin] as one undoable transform.
+  ///
+  /// [scaleX] and [scaleY] are clamped away from zero so a mistaken shortcut
+  /// cannot collapse notes into unrecoverable geometry. When [origin] is
+  /// omitted the current selection centre is used.
+  void scaleSelection(double scaleX, double scaleY, {Offset? origin}) {
+    final double sx = scaleX.clamp(0.05, 20.0).toDouble();
+    final double sy = scaleY.clamp(0.05, 20.0).toDouble();
+    if (sx == 1 && sy == 1) {
+      return;
+    }
+    final Offset? transformOrigin = origin ?? selectionBounds?.center;
+    if (transformOrigin == null) {
+      return;
+    }
+    _transformSelection(
+      description: 'Scale',
+      transform: (CanvasElement element) =>
+          _scaleElement(element, transformOrigin, sx, sy),
+    );
+  }
+
+  /// Rotates the current selection around [origin] as one undoable transform.
+  ///
+  /// Rectangular content stores the rotation as element metadata. Ink and shape
+  /// elements bake it into their point geometry so their existing renderers and
+  /// eraser logic remain precise.
+  void rotateSelection(double radians, {Offset? origin}) {
+    if (radians == 0) {
+      return;
+    }
+    final Offset? transformOrigin = origin ?? selectionBounds?.center;
+    if (transformOrigin == null) {
+      return;
+    }
+    _transformSelection(
+      description: 'Rotate',
+      transform: (CanvasElement element) =>
+          _rotateElement(element, transformOrigin, radians),
+    );
+  }
+
+  void _transformSelection({
+    required String description,
+    required CanvasElement Function(CanvasElement element) transform,
+  }) {
+    final List<CanvasElement> originals = selectedElements;
+    if (originals.isEmpty) {
+      return;
+    }
+    final List<CanvasElement> transformed = <CanvasElement>[
+      for (final CanvasElement element in originals) transform(element),
+    ];
+    _runCommand(
+      TransformElementsCommand(
+        originals: originals,
+        transformed: transformed,
+        description: description,
+      ),
+    );
+  }
+
+  static CanvasElement _transformElement(
+    CanvasElement element, {
+    required Offset origin,
+    required Offset translation,
+    required double scale,
+    required double rotation,
+  }) {
+    CanvasElement transformed = _scaleElement(element, origin, scale, scale);
+    transformed = _rotateElement(transformed, origin, rotation);
+    return transformed.translated(translation);
+  }
+
+  static CanvasElement _scaleElement(
+    CanvasElement element,
+    Offset origin,
+    double scaleX,
+    double scaleY,
+  ) {
+    final double widthScale = _averageScale(scaleX, scaleY);
+    return switch (element) {
+      InkElement() => element.copyWith(
+        stroke: element.stroke.copyWith(
+          points: <StrokePoint>[
+            for (final StrokePoint point in element.stroke.points)
+              _copyStrokePointAt(
+                point,
+                _scalePoint(point.offset, origin, scaleX, scaleY),
+              ),
+          ],
+          width: element.stroke.width * widthScale,
+        ),
+      ),
+      ShapeElement() => element.copyWith(
+        start: _scalePoint(element.start, origin, scaleX, scaleY),
+        end: _scalePoint(element.end, origin, scaleX, scaleY),
+        controlPoints: <Offset>[
+          for (final Offset point in element.controlPoints)
+            _scalePoint(point, origin, scaleX, scaleY),
+        ],
+        strokeWidth: element.strokeWidth * widthScale,
+      ),
+      ImageElement() => element.copyWith(
+        worldBounds: _scaleRect(
+          element.placementBounds,
+          origin,
+          scaleX,
+          scaleY,
+        ),
+      ),
+      PdfElement() => element.copyWith(
+        worldBounds: _scaleRect(
+          element.placementBounds,
+          origin,
+          scaleX,
+          scaleY,
+        ),
+      ),
+      LinkElement() => element.copyWith(
+        worldBounds: _scaleRect(
+          element.placementBounds,
+          origin,
+          scaleX,
+          scaleY,
+        ),
+      ),
+      TextElement() => element.copyWith(
+        worldBounds: _scaleRect(
+          element.placementBounds,
+          origin,
+          scaleX,
+          scaleY,
+        ),
+        fontSize: element.fontSize * widthScale,
+      ),
+    };
+  }
+
+  static CanvasElement _rotateElement(
+    CanvasElement element,
+    Offset origin,
+    double radians,
+  ) {
+    return switch (element) {
+      InkElement() => element.copyWith(
+        stroke: element.stroke.copyWith(
+          points: <StrokePoint>[
+            for (final StrokePoint point in element.stroke.points)
+              _copyStrokePointAt(
+                point,
+                _rotateAround(point.offset, origin, radians),
+              ),
+          ],
+        ),
+      ),
+      ShapeElement() => element.copyWith(
+        start: _rotateAround(element.start, origin, radians),
+        end: _rotateAround(element.end, origin, radians),
+        controlPoints: <Offset>[
+          for (final Offset point in element.controlPoints)
+            _rotateAround(point, origin, radians),
+        ],
+      ),
+      ImageElement() => element.copyWith(
+        worldBounds: _rotatePlacement(element.placementBounds, origin, radians),
+        rotation: _normalizeRadians(element.rotation + radians),
+      ),
+      PdfElement() => element.copyWith(
+        worldBounds: _rotatePlacement(element.placementBounds, origin, radians),
+        rotation: _normalizeRadians(element.rotation + radians),
+      ),
+      LinkElement() => element.copyWith(
+        worldBounds: _rotatePlacement(element.placementBounds, origin, radians),
+        rotation: _normalizeRadians(element.rotation + radians),
+      ),
+      TextElement() => element.copyWith(
+        worldBounds: _rotatePlacement(element.placementBounds, origin, radians),
+        rotation: _normalizeRadians(element.rotation + radians),
+      ),
+    };
+  }
+
+  static Offset _scalePoint(
+    Offset point,
+    Offset origin,
+    double scaleX,
+    double scaleY,
+  ) {
+    return Offset(
+      origin.dx + (point.dx - origin.dx) * scaleX,
+      origin.dy + (point.dy - origin.dy) * scaleY,
+    );
+  }
+
+  static Rect _scaleRect(
+    Rect rect,
+    Offset origin,
+    double scaleX,
+    double scaleY,
+  ) {
+    final Offset topLeft = _scalePoint(rect.topLeft, origin, scaleX, scaleY);
+    final Offset bottomRight = _scalePoint(
+      rect.bottomRight,
+      origin,
+      scaleX,
+      scaleY,
+    );
+    return Rect.fromPoints(topLeft, bottomRight);
+  }
+
+  static Rect _rotatePlacement(Rect rect, Offset origin, double radians) {
+    return Rect.fromCenter(
+      center: _rotateAround(rect.center, origin, radians),
+      width: rect.width,
+      height: rect.height,
+    );
+  }
+
+  static StrokePoint _copyStrokePointAt(StrokePoint point, Offset offset) {
+    return StrokePoint(
+      offset.dx,
+      offset.dy,
+      point.pressure,
+      tiltX: point.tiltX,
+      tiltY: point.tiltY,
+      azimuth: point.azimuth,
+      timestampMicros: point.timestampMicros,
+      velocity: point.velocity,
+    );
+  }
+
+  static double _averageScale(double scaleX, double scaleY) {
+    return (scaleX.abs() + scaleY.abs()) / 2;
+  }
+
+  static double _normalizeRadians(double radians) {
+    double value = radians;
+    while (value <= -math.pi) {
+      value += math.pi * 2;
+    }
+    while (value > math.pi) {
+      value -= math.pi * 2;
+    }
+    return value;
+  }
+
+  Offset _snapWorld(Offset world) {
+    if (!snapToGridEnabled || paperStyle.gridSpacing <= 0) {
+      return world;
+    }
+    final double step = paperStyle.gridSpacing;
+    return Offset(
+      (world.dx / step).roundToDouble() * step,
+      (world.dy / step).roundToDouble() * step,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Shape tool
   // ---------------------------------------------------------------------------
 
   /// Begins a shape drag anchored at the [world] point.
   void beginShape(Offset world) {
-    _shapeStart = world;
-    _shapeEnd = world;
+    if (_editableActiveLayerId() == null) {
+      _shapeStart = null;
+      _shapeEnd = null;
+      notifyListeners();
+      return;
+    }
+    final Offset snapped = _snapWorld(world);
+    _shapeStart = snapped;
+    _shapeEnd = snapped;
     notifyListeners();
   }
 
@@ -1345,7 +3265,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_shapeStart == null) {
       return;
     }
-    _shapeEnd = world;
+    _shapeEnd = _snapWorld(world);
     notifyListeners();
   }
 
@@ -1359,25 +3279,38 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void endShape() {
     final Offset? start = _shapeStart;
     final Offset? end = _shapeEnd;
+    final String? layerId = _editableActiveLayerId();
     _shapeStart = null;
     _shapeEnd = null;
-    if (start == null || end == null || start == end) {
+    if (start == null || end == null || start == end || layerId == null) {
       notifyListeners();
       return;
     }
 
-    final List<Offset> geometry = _shapeGeometry(shapeKind, start, end);
-    final Stroke stroke = Stroke(
-      id: newId(),
-      points: <StrokePoint>[
-        for (final Offset p in geometry) StrokePoint(p.dx, p.dy, 0.5),
-      ],
-      color: penColor,
-      width: penWidth,
-      tool: StrokeToolKind.pen,
-    );
     _runCommand(
-      AddElementCommand(InkElement.fromStroke(stroke, zIndex: _nextZIndex)),
+      AddElementCommand(
+        ShapeElement(
+          id: newId(),
+          zIndex: _nextZIndex,
+          layerId: layerId,
+          shapeKind: shapeKind.index,
+          start: start,
+          end: end,
+          color: penColor,
+          strokeWidth: resolvedPenWidthWorld(),
+          arrowBody: shapeKind == ShapeKind.arrow
+              ? arrowBody
+              : ArrowBodyKind.straight,
+          arrowStartHead: shapeKind == ShapeKind.arrow
+              ? arrowStartHead
+              : ArrowHeadStyle.none,
+          arrowEndHead: shapeKind == ShapeKind.arrow
+              ? arrowEndHead
+              : ArrowHeadStyle.none,
+          arrowHeadScale: arrowHeadScale,
+          legacyArrow: false,
+        ),
+      ),
     );
   }
 
@@ -1421,8 +3354,39 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         for (final Offset p in geometry) StrokePoint(p.dx, p.dy, 0.5),
       ],
       color: penColor,
-      width: penWidth,
+      width: resolvedPenWidthWorld(),
       tool: StrokeToolKind.pen,
+    );
+  }
+
+  /// Crisp live preview for the in-progress shape drag.
+  ShapeElement? get liveShapeElement {
+    final Offset? start = _shapeStart;
+    final Offset? end = _shapeEnd;
+    final String? layerId = _editableActiveLayerId();
+    if (start == null || end == null || layerId == null) {
+      return null;
+    }
+    return ShapeElement(
+      id: 'live-shape',
+      zIndex: _nextZIndex,
+      layerId: layerId,
+      shapeKind: shapeKind.index,
+      start: start,
+      end: end,
+      color: penColor,
+      strokeWidth: resolvedPenWidthWorld(),
+      arrowBody: shapeKind == ShapeKind.arrow
+          ? arrowBody
+          : ArrowBodyKind.straight,
+      arrowStartHead: shapeKind == ShapeKind.arrow
+          ? arrowStartHead
+          : ArrowHeadStyle.none,
+      arrowEndHead: shapeKind == ShapeKind.arrow
+          ? arrowEndHead
+          : ArrowHeadStyle.none,
+      arrowHeadScale: arrowHeadScale,
+      legacyArrow: false,
     );
   }
 
@@ -1438,16 +3402,23 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// [_linkPlacementRect]. Placement is one [AddElementCommand], so a link is
   /// undoable, erasable and selectable exactly like any other element.
   ///
-  /// Returns the placed element so the view can, e.g., select it.
-  LinkElement placeLink({
+  /// Returns the placed element so the view can, e.g., select it, or `null`
+  /// when no visible, unlocked content layer can receive it.
+  LinkElement? placeLink({
     required Offset worldCenter,
     required String label,
     required LinkTarget target,
   }) {
+    final String? layerId = _editableActiveLayerId();
+    if (layerId == null) {
+      return null;
+    }
+    final Offset center = _snapWorld(worldCenter);
     final LinkElement element = LinkElement(
       id: newId(),
       zIndex: _nextZIndex,
-      worldBounds: _linkPlacementRect(worldCenter),
+      layerId: layerId,
+      worldBounds: _linkPlacementRect(center),
       label: label,
       target: target,
     );
@@ -1471,9 +3442,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     LinkElement? hit;
     // _elements is ascending z-index; the last match is the topmost link.
     for (final CanvasElement element in _elements) {
+      if (!_isElementVisible(element)) {
+        continue;
+      }
       if (element is LinkElement &&
           candidateIds.contains(element.id) &&
-          element.worldBounds.contains(world)) {
+          _pointHitsElement(world, element, 0)) {
         hit = element;
       }
     }
@@ -1499,8 +3473,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   // Text tool
   // ---------------------------------------------------------------------------
 
-  /// Places a new typed note on the canvas as one undoable command.
-  TextElement placeText({
+  /// Places a new typed note on the canvas as one undoable command, returning
+  /// `null` when no visible, unlocked content layer can receive it.
+  TextElement? placeText({
     required Offset worldCenter,
     required String text,
     int? color,
@@ -1510,10 +3485,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (body.isEmpty) {
       throw ArgumentError.value(text, 'text', 'Text note cannot be empty.');
     }
+    final String? layerId = _editableActiveLayerId();
+    if (layerId == null) {
+      return null;
+    }
+    final Offset center = _snapWorld(worldCenter);
     final TextElement element = TextElement(
       id: newId(),
       zIndex: _nextZIndex,
-      worldBounds: _textPlacementRect(worldCenter),
+      layerId: layerId,
+      worldBounds: _textPlacementRect(center),
       text: body,
       color: color ?? penColor,
       fontSize: fontSize,
@@ -1545,9 +3526,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         .toSet();
     TextElement? hit;
     for (final CanvasElement element in _elements) {
+      if (!_isElementEditable(element)) {
+        continue;
+      }
       if (element is TextElement &&
           candidateIds.contains(element.id) &&
-          element.worldBounds.contains(world)) {
+          _pointHitsElement(world, element, 0)) {
         hit = element;
       }
     }
@@ -1623,6 +3607,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     } else {
       _bookmarks.add(bookmark);
     }
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo != null && canvasId != null) {
+      final int position = _bookmarks.indexOf(bookmark);
+      _track(() => repo.upsertBookmark(canvasId, bookmark, position: position));
+    }
     notifyListeners();
     return bookmark;
   }
@@ -1635,6 +3625,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Removes [bookmark] from the saved list. A no-op if it is not present.
   void removeBookmark(Bookmark bookmark) {
     if (_bookmarks.remove(bookmark)) {
+      final CanvasRepository? repo = _repository;
+      final String? canvasId = _canvasId;
+      if (repo != null && canvasId != null) {
+        _track(() => repo.deleteBookmark(canvasId, bookmark.name));
+      }
       notifyListeners();
     }
   }
@@ -1650,6 +3645,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   bool get isImporting => _isImporting;
   bool _isImporting = false;
 
+  String? get importErrorMessage => _importErrorMessage;
+  String? _importErrorMessage;
+
+  void clearImportError() {
+    if (_importErrorMessage == null) return;
+    _importErrorMessage = null;
+    notifyListeners();
+  }
+
   /// Opens the system picker, imports a single image and places it on the
   /// canvas centred in the current viewport.
   ///
@@ -1658,34 +3662,63 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// decoded bitmap so the picture is visible immediately. Placement is one
   /// undoable [AddElementCommand]. A cancelled picker is a silent no-op.
   Future<void> importImage() async {
-    if (_isImporting) {
+    if (_disposed || _isImporting || !canCreateContent) {
       return;
     }
     _isImporting = true;
     notifyListeners();
+    ImportedImage? imported;
+    var rasterTransferred = false;
     try {
-      final ImportedImage? imported = await _importer.pickImage();
-      if (imported == null) {
+      imported = await _importer.pickImage();
+      if (imported == null || _disposed) {
         return;
       }
-      final Rect bounds = _placementRect(imported.intrinsicSize);
-      _trackRaster(imported.raster);
-      _runCommand(
-        AddElementCommand(
-          ImageElement(
-            id: newId(),
-            zIndex: _nextZIndex,
-            worldBounds: bounds,
-            sourceFilePath: imported.storedPath,
-            intrinsicSize: imported.intrinsicSize,
-            raster: imported.raster,
-          ),
-        ),
+      final ImportedImage ready = imported;
+      final String? layerId = _editableActiveLayerId();
+      if (layerId == null) {
+        return;
+      }
+      final Rect bounds = _placementRect(ready.intrinsicSize);
+      final ImageElement element = ImageElement(
+        id: newId(),
+        zIndex: _nextZIndex,
+        layerId: layerId,
+        worldBounds: bounds,
+        sourceFilePath: ready.storedPath,
+        intrinsicSize: ready.intrinsicSize,
       );
-      _enforceRasterBudget();
+      _runCommand(AddElementCommand(element));
+      if (_disposed) {
+        return;
+      }
+      var kept = true;
+      _swapElement(element.id, (CanvasElement current) {
+        if (current is! ImageElement) {
+          kept = false;
+          return current;
+        }
+        return current.copyWith(raster: ready.raster);
+      });
+      if (kept) {
+        rasterTransferred = true;
+        _trackRaster(ready.raster);
+        _enforceRasterBudget();
+      }
+    } catch (error) {
+      if (!_disposed) {
+        debugPrint('Image import failed: $error');
+        _importErrorMessage =
+            'Could not import that image. Please try another file.';
+      }
     } finally {
-      _isImporting = false;
-      notifyListeners();
+      if (imported != null && !rasterTransferred) {
+        imported.raster.dispose();
+      }
+      if (!_disposed) {
+        _isImporting = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1699,14 +3732,18 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// is rendered lazily afterwards (see [_scheduleVisibleRasters]); until then
   /// the painter shows a placeholder. A cancelled picker is a silent no-op.
   Future<void> importPdf() async {
-    if (_isImporting) {
+    if (_disposed || _isImporting || !canCreateContent) {
       return;
     }
     _isImporting = true;
     notifyListeners();
     try {
       final ImportedPdf? imported = await _importer.pickPdf();
-      if (imported == null || imported.pages.isEmpty) {
+      if (_disposed || imported == null || imported.pages.isEmpty) {
+        return;
+      }
+      final String? layerId = _editableActiveLayerId();
+      if (layerId == null) {
         return;
       }
 
@@ -1716,15 +3753,22 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       double cursorTop = firstRect.top;
       final List<CanvasElement> pageElements = <CanvasElement>[];
       for (final PdfPageInfo page in imported.pages) {
-        final Rect rect = _fitRect(
+        final Rect fitted = _fitRect(
           intrinsicSize: page.size,
-          center: Offset(firstRect.center.dx, cursorTop + firstRect.height / 2),
+          center: Offset.zero,
           maxEdge: firstRect.longestSide,
+        );
+        final Rect rect = Rect.fromLTWH(
+          firstRect.center.dx - fitted.width / 2,
+          cursorTop,
+          fitted.width,
+          fitted.height,
         );
         pageElements.add(
           PdfElement(
             id: newId(),
             zIndex: _nextZIndex + pageElements.length,
+            layerId: layerId,
             worldBounds: rect,
             sourceFilePath: imported.storedPath,
             pageNumber: page.pageNumber,
@@ -1742,9 +3786,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       );
       // Kick off rasterising whatever pages landed on screen.
       _scheduleVisibleRasters();
+    } catch (error) {
+      if (!_disposed) {
+        debugPrint('PDF import failed: $error');
+        _importErrorMessage =
+            'Could not import that PDF. Please try another file.';
+      }
     } finally {
-      _isImporting = false;
-      notifyListeners();
+      if (!_disposed) {
+        _isImporting = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1796,28 +3848,46 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// that keeps PDF rasterisation viewport-bounded rather than count-bounded.
   void scheduleRasterWork() => _scheduleVisibleRasters();
 
-  /// Internal: walks the visible elements and starts any needed raster load.
+  /// Internal: queues needed visible raster loads by viewport priority.
   void _scheduleVisibleRasters() {
     if (_disposed) {
       return;
     }
+    final Rect visibleWorldRect = _visibleWorldRect;
     final Set<String> visibleIds = _spatialIndex
-        .query(_visibleWorldRect)
+        .query(visibleWorldRect)
         .toSet();
     final int wantBucket = PdfRasterService.bucketForScale(viewport.scale);
+    final Offset viewportCenter = visibleWorldRect.center;
+    final List<_RasterJob> jobs = <_RasterJob>[];
     for (final CanvasElement element in _elements) {
+      if (!_isElementVisible(element)) {
+        continue;
+      }
       if (!visibleIds.contains(element.id)) {
         continue;
       }
+      final double priority = _distanceSquared(
+        element.worldBounds.center,
+        viewportCenter,
+      );
       switch (element) {
         case InkElement():
         case LinkElement():
         case TextElement():
+        case ShapeElement():
           // Vector ink and link chips have no raster — nothing to schedule.
           break;
         case ImageElement():
           if (element.raster == null) {
-            _loadImageRaster(element);
+            jobs.add(
+              _RasterJob(
+                elementId: element.id,
+                kind: _RasterJobKind.image,
+                bucket: 0,
+                priority: priority,
+              ),
+            );
           }
         case PdfElement():
           // (Re-)rasterise when no raster exists, or when the user has zoomed
@@ -1826,15 +3896,141 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           final bool needsRaster =
               element.raster == null || element.rasterScaleBucket < wantBucket;
           if (needsRaster) {
-            _loadPdfRaster(element, wantBucket);
+            jobs.add(
+              _RasterJob(
+                elementId: element.id,
+                kind: _RasterJobKind.pdf,
+                bucket: wantBucket,
+                priority: priority,
+              ),
+            );
           }
       }
     }
+    jobs.sort((_RasterJob a, _RasterJob b) => a.priority.compareTo(b.priority));
+    _rasterJobQueue
+      ..clear()
+      ..addAll(jobs.where((job) => !_rasterJobIsInFlight(job)));
+    _drainRasterJobQueue();
   }
 
   /// Element ids with an image-raster decode in flight, so the same picture is
   /// not decoded twice concurrently.
   final Set<String> _imageRasterInFlight = <String>{};
+
+  /// Element ids with a PDF page render in flight, mapped to the bucket being
+  /// rendered, so stale queued work can wait for the current render to finish.
+  final Map<String, int> _pdfRasterInFlight = <String, int>{};
+
+  void _drainRasterJobQueue() {
+    if (_disposed) {
+      _rasterJobQueue.clear();
+      return;
+    }
+    final Rect visibleWorldRect = _visibleWorldRect;
+    var index = 0;
+    while (index < _rasterJobQueue.length) {
+      final _RasterJob job = _rasterJobQueue[index];
+      final CanvasElement? element = _elementById(job.elementId);
+      if (element == null ||
+          !_isRasterJobStillNeeded(job, element, visibleWorldRect)) {
+        _rasterJobQueue.removeAt(index);
+        continue;
+      }
+      if (!_rasterJobHasCapacity(job) || _rasterJobIsInFlight(job)) {
+        index += 1;
+        continue;
+      }
+      _rasterJobQueue.removeAt(index);
+      _startRasterJob(job, element);
+    }
+  }
+
+  bool _rasterJobHasCapacity(_RasterJob job) {
+    return switch (job.kind) {
+      _RasterJobKind.image =>
+        _activeImageRasterJobs < _maxConcurrentImageRasterJobs,
+      _RasterJobKind.pdf => _activePdfRasterJobs < _maxConcurrentPdfRasterJobs,
+    };
+  }
+
+  bool _rasterJobIsInFlight(_RasterJob job) {
+    return switch (job.kind) {
+      _RasterJobKind.image => _imageRasterInFlight.contains(job.elementId),
+      _RasterJobKind.pdf => _pdfRasterInFlight.containsKey(job.elementId),
+    };
+  }
+
+  bool _isRasterJobStillNeeded(
+    _RasterJob job,
+    CanvasElement element,
+    Rect visibleWorldRect,
+  ) {
+    if (!_isElementVisible(element) ||
+        !visibleWorldRect.overlaps(element.worldBounds)) {
+      return false;
+    }
+    return switch (job.kind) {
+      _RasterJobKind.image => element is ImageElement && element.raster == null,
+      _RasterJobKind.pdf =>
+        element is PdfElement &&
+            (element.raster == null || element.rasterScaleBucket < job.bucket),
+    };
+  }
+
+  void _startRasterJob(_RasterJob job, CanvasElement element) {
+    switch (job.kind) {
+      case _RasterJobKind.image:
+        if (element is! ImageElement) {
+          return;
+        }
+        _activeImageRasterJobs += 1;
+        _imageRasterInFlight.add(job.elementId);
+        unawaited(
+          _loadImageRaster(element).whenComplete(() {
+            if (_disposed) {
+              return;
+            }
+            _activeImageRasterJobs = math.max(0, _activeImageRasterJobs - 1);
+            _imageRasterInFlight.remove(job.elementId);
+            _drainRasterJobQueue();
+          }),
+        );
+      case _RasterJobKind.pdf:
+        if (element is! PdfElement) {
+          return;
+        }
+        _activePdfRasterJobs += 1;
+        _pdfRasterInFlight[job.elementId] = job.bucket;
+        unawaited(
+          _loadPdfRaster(element, job.bucket).whenComplete(() {
+            if (_disposed) {
+              return;
+            }
+            _activePdfRasterJobs = math.max(0, _activePdfRasterJobs - 1);
+            if (_pdfRasterInFlight[job.elementId] == job.bucket) {
+              _pdfRasterInFlight.remove(job.elementId);
+            }
+            _drainRasterJobQueue();
+          }),
+        );
+    }
+  }
+
+  CanvasElement? _elementById(String id) {
+    for (final CanvasElement element in _elements) {
+      if (element.id == id) {
+        return element;
+      }
+    }
+    return null;
+  }
+
+  static double _distanceSquared(Offset a, Offset b) {
+    final double dx = a.dx - b.dx;
+    final double dy = a.dy - b.dy;
+    return dx * dx + dy * dy;
+  }
 
   /// Asynchronously decodes [element]'s picture and swaps it into the store.
   ///
@@ -1844,40 +4040,32 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// membership and undo history). A load that finishes after the element was
   /// removed or the canvas cleared is discarded.
   Future<void> _loadImageRaster(ImageElement element) async {
-    if (_imageRasterInFlight.contains(element.id)) {
+    final int epoch = _rasterEpoch;
+    final ui.Image? image = await _decodeImageFile(element.sourceFilePath);
+    if (image == null) {
       return;
     }
-    _imageRasterInFlight.add(element.id);
-    final int epoch = _rasterEpoch;
-    try {
-      final ui.Image? image = await _decodeImageFile(element.sourceFilePath);
-      if (image == null) {
-        return;
+    if (epoch != _rasterEpoch || !_containsVisibleRasterElement(element.id)) {
+      // The element was removed, cleared, or scrolled away while decoding. The
+      // freshly-decoded image is referenced by nothing else, so disposing it
+      // here is safe and reclaims its memory immediately.
+      image.dispose();
+      return;
+    }
+    var kept = true;
+    _swapElement(element.id, (CanvasElement current) {
+      if (current is! ImageElement || current.raster != null) {
+        kept = false;
+        return current;
       }
-      if (epoch != _rasterEpoch || !_containsId(element.id)) {
-        // The element was removed, or the canvas cleared, while decoding. The
-        // freshly-decoded image is referenced by nothing else, so disposing it
-        // here is safe and reclaims its memory immediately.
-        image.dispose();
-        return;
-      }
-      var kept = true;
-      _swapElement(element.id, (CanvasElement current) {
-        if (current is! ImageElement) {
-          kept = false;
-          return current;
-        }
-        return current.copyWith(raster: image);
-      });
-      if (kept) {
-        _trackRaster(image);
-        _enforceRasterBudget();
-        notifyListeners();
-      } else {
-        image.dispose();
-      }
-    } finally {
-      _imageRasterInFlight.remove(element.id);
+      return current.copyWith(raster: image);
+    });
+    if (kept) {
+      _trackRaster(image);
+      _enforceRasterBudget();
+      notifyListeners();
+    } else {
+      image.dispose();
     }
   }
 
@@ -1902,10 +4090,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
   }
 
-  /// Element ids with a PDF page render in flight, mapped to the bucket being
-  /// rendered, so a higher-resolution request can still supersede a lower one.
-  final Map<String, int> _pdfRasterInFlight = <String, int>{};
-
   /// Asynchronously rasterises [element]'s PDF page at [bucket] and swaps the
   /// result into the store.
   ///
@@ -1914,68 +4098,64 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// already has (a slow low-res render can otherwise land after a fast
   /// high-res one). A render that finishes after a clear/removal is discarded.
   Future<void> _loadPdfRaster(PdfElement element, int bucket) async {
-    final int? inFlight = _pdfRasterInFlight[element.id];
-    if (inFlight != null && inFlight >= bucket) {
-      return;
-    }
-    _pdfRasterInFlight[element.id] = bucket;
     final int epoch = _rasterEpoch;
+    final PdfRasterResult? result;
     try {
-      final PdfRasterResult? result = await _pdfRasterService.rasterizePage(
+      result = await _pdfRasterService.rasterizePage(
         filePath: element.sourceFilePath,
         pageNumber: element.pageNumber,
         scaleBucket: bucket,
       );
-      if (result == null) {
-        return;
+    } on Object {
+      return;
+    }
+    if (result == null) {
+      return;
+    }
+    final PdfRasterResult rendered = result;
+    if (epoch != _rasterEpoch || !_containsVisibleRasterElement(element.id)) {
+      rendered.image.dispose();
+      return;
+    }
+    var kept = true;
+    _swapElement(element.id, (CanvasElement current) {
+      if (current is! PdfElement) {
+        kept = false;
+        return current;
       }
-      if (epoch != _rasterEpoch || !_containsId(element.id)) {
-        result.image.dispose();
-        return;
+      // Reject a render that is not sharper than what is already cached.
+      if (current.raster != null &&
+          current.rasterScaleBucket >= rendered.scaleBucket) {
+        kept = false;
+        return current;
       }
-      var kept = true;
-      _swapElement(element.id, (CanvasElement current) {
-        if (current is! PdfElement) {
-          kept = false;
-          return current;
-        }
-        // Reject a render that is not sharper than what is already cached.
-        if (current.raster != null &&
-            current.rasterScaleBucket >= result.scaleBucket) {
-          kept = false;
-          return current;
-        }
-        // Drop the superseded raster's byte count but do NOT dispose it: an
-        // older element instance still carrying that `ui.Image` may be held
-        // by a command on the undo stack (e.g. a MoveElementsCommand snapshot
-        // taken while it was current). Disposing it here would leave that
-        // command pointing at a freed image. The Flutter engine GC-finalises
-        // an unreferenced `ui.Image`, so the native memory is still reclaimed.
-        final ui.Image? old = current.raster;
-        if (old != null) {
-          _untrackRaster(old);
-        }
-        return current.copyWith(
-          raster: result.image,
-          rasterScaleBucket: result.scaleBucket,
-        );
-      });
-      if (kept) {
-        _trackRaster(result.image);
-        _enforceRasterBudget();
-        notifyListeners();
-      } else {
-        result.image.dispose();
+      // Command history stores raster-free snapshots, so the superseded image
+      // is owned only by the live store/painters and can be released now.
+      final ui.Image? old = current.raster;
+      if (old != null) {
+        _untrackRaster(old);
+        old.dispose();
       }
-    } finally {
-      if (_pdfRasterInFlight[element.id] == bucket) {
-        _pdfRasterInFlight.remove(element.id);
-      }
+      return current.copyWith(
+        raster: rendered.image,
+        rasterScaleBucket: rendered.scaleBucket,
+      );
+    });
+    if (kept) {
+      _trackRaster(rendered.image);
+      _enforceRasterBudget();
+      notifyListeners();
+    } else {
+      rendered.image.dispose();
     }
   }
 
-  /// Whether an element with [id] is still present in the store.
-  bool _containsId(String id) => _elements.any((CanvasElement e) => e.id == id);
+  bool _containsVisibleRasterElement(String id) {
+    final CanvasElement? element = _elementById(id);
+    return element != null &&
+        _isElementVisible(element) &&
+        _visibleWorldRect.overlaps(element.worldBounds);
+  }
 
   /// Replaces the element with [id] in place via [update], keeping z-order.
   ///
@@ -1991,11 +4171,29 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     _elements[index] = update(_elements[index]);
+    _markElementsChanged();
   }
 
   /// Adds [image]'s estimated byte size to the in-use raster total.
   void _trackRaster(ui.Image image) {
     _rasterBytesInUse += _rasterBytes(image);
+  }
+
+  static ui.Image? _elementRaster(CanvasElement element) {
+    return switch (element) {
+      ImageElement(:final raster) => raster,
+      PdfElement(:final raster) => raster,
+      _ => null,
+    };
+  }
+
+  void _disposeElementRaster(CanvasElement element) {
+    final ui.Image? raster = _elementRaster(element);
+    if (raster == null) {
+      return;
+    }
+    _untrackRaster(raster);
+    raster.dispose();
   }
 
   /// Subtracts [image]'s estimated byte size from the in-use raster total.
@@ -2016,12 +4214,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// frame); an evicted element keeps all of its persistent state and simply
   /// re-rasterises from its source file when it scrolls back into view.
   ///
-  /// The evicted `ui.Image` is **not** explicitly disposed: the same off-screen
-  /// element instance may still be referenced by a command on the undo stack,
-  /// so freeing the image here would leave that command holding a dead handle.
-  /// The element in the store is replaced with a raster-free copy, dropping the
-  /// *store's* reference; once no command references the old instance either,
-  /// the Flutter engine GC-finalises the `ui.Image` and reclaims its memory.
+  /// Command history stores raster-free snapshots, so evicted `ui.Image`s are
+  /// disposed immediately and the element in the store is replaced with its
+  /// durable metadata-only form.
   void _enforceRasterBudget() {
     if (_rasterBytesInUse <= _rasterBudgetBytes) {
       return;
@@ -2042,19 +4237,24 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         case InkElement():
         case LinkElement():
         case TextElement():
+        case ShapeElement():
           // No raster to evict.
           break;
         case ImageElement():
           final ui.Image? raster = element.raster;
           if (raster != null) {
             _untrackRaster(raster);
+            raster.dispose();
             _elements[i] = element.copyWith(clearRaster: true);
+            _markElementsChanged();
           }
         case PdfElement():
           final ui.Image? raster = element.raster;
           if (raster != null) {
             _untrackRaster(raster);
+            raster.dispose();
             _elements[i] = element.copyWith(clearRaster: true);
+            _markElementsChanged();
           }
       }
     }
@@ -2066,18 +4266,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// in flight discards its result instead of touching a dead controller.
   void _disposeAllRasters() {
     _rasterEpoch++;
+    _rasterJobQueue.clear();
+    _imageRasterInFlight.clear();
+    _pdfRasterInFlight.clear();
+    _activeImageRasterJobs = 0;
+    _activePdfRasterJobs = 0;
     for (final CanvasElement element in _elements) {
-      switch (element) {
-        case InkElement():
-        case LinkElement():
-        case TextElement():
-          // No raster to dispose.
-          break;
-        case ImageElement():
-          element.raster?.dispose();
-        case PdfElement():
-          element.raster?.dispose();
-      }
+      _disposeElementRaster(element);
     }
     _rasterBytesInUse = 0;
   }

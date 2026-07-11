@@ -14,11 +14,14 @@ import 'package:zenno/shared/kanban/kanban_models.dart';
 /// by the generic Kanban widget around this tile.
 class RevisionCardTile extends StatelessWidget {
   /// Creates a tile for [card].
-  const RevisionCardTile({required this.card, super.key});
+  const RevisionCardTile({required this.card, required this.now, super.key});
 
   /// The card to render. Its [KanbanCardData.payload] is expected to be a
   /// [RevisionCardExtra].
   final KanbanCardData card;
+
+  /// Clock value used for relative revision labels.
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
@@ -28,57 +31,49 @@ class RevisionCardTile extends StatelessWidget {
     // defensively rather than throwing if a payload is ever missing.
     final revision = extra is RevisionCardExtra ? extra : null;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      color: theme.colorScheme.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.sm),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          card.title,
+          style: theme.textTheme.titleSmall,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (card.subtitle case final subtitle? when subtitle.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.md),
+        Row(
           children: [
-            Text(
-              card.title,
-              style: theme.textTheme.titleSmall,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (card.subtitle case final subtitle?
-                when subtitle.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                if (revision != null)
-                  MasteryFlagChip(flag: revision.flag, dense: true),
-                const Spacer(),
-                _RevisedAgo(lastRevisedAt: revision?.lastRevisedAt),
-              ],
-            ),
+            if (revision != null)
+              MasteryFlagChip(flag: revision.flag, dense: true),
+            const Spacer(),
+            _RevisedAgo(lastRevisedAt: revision?.lastRevisedAt, now: now),
           ],
         ),
-      ),
+      ],
     );
   }
 }
 
 /// The compact "13d ago" / "Not revised" footer text.
 class _RevisedAgo extends StatelessWidget {
-  const _RevisedAgo({required this.lastRevisedAt});
+  const _RevisedAgo({required this.lastRevisedAt, required this.now});
 
   /// When the card was last marked revised, or `null` if never.
   final DateTime? lastRevisedAt;
+
+  /// Clock value used for relative labels.
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +89,7 @@ class _RevisedAgo extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.xs),
         Text(
-          at == null ? 'Not revised' : relativeTime(at),
+          at == null ? 'Not revised' : relativeTime(at, now: now),
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

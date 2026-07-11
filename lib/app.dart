@@ -18,9 +18,10 @@ class ZennoApp extends ConsumerWidget {
 
   /// Maps the persisted [ThemeModeSetting] to Flutter's [ThemeMode].
   static ThemeMode _toThemeMode(ThemeModeSetting setting) => switch (setting) {
-    ThemeModeSetting.system => ThemeMode.system,
     ThemeModeSetting.light => ThemeMode.light,
-    ThemeModeSetting.dark => ThemeMode.dark,
+    // Older rows may still contain `system`; settings now expose only Light
+    // and Dark, so keep the dark-first default for that legacy value.
+    ThemeModeSetting.system || ThemeModeSetting.dark => ThemeMode.dark,
   };
 
   @override

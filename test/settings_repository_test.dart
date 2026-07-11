@@ -1,5 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zenno/canvas/input/pen_profile.dart';
+import 'package:zenno/canvas/input/stylus_button_mapping.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/settings_tables.dart';
 import 'package:zenno/features/settings/data/settings_repository.dart';
@@ -22,6 +24,19 @@ void main() {
 
     // Matches the schema defaults in settings_tables.dart.
     expect(settings.themeMode, ThemeModeSetting.system);
+    expect(settings.accentColor, 0xFFE8B84B);
+    expect(settings.backgroundColor, 0xFF121212);
+    expect(settings.inkPalette, isNotEmpty);
+    expect(
+      settings.stylusButtonMapping,
+      const StylusButtonMapping(
+        hold: StylusButtonAction.temporaryEraser,
+        tap: StylusButtonAction.togglePreviousTool,
+        drag: StylusButtonAction.temporaryEraser,
+        penLongPress: StylusButtonAction.temporaryLasso,
+      ),
+    );
+    expect(settings.penProfile, const PenProfile());
     expect(settings.pomodoroWork, const Duration(seconds: 1500));
     expect(settings.pomodoroBreak, const Duration(seconds: 300));
     expect(settings.flowBreakRatio, closeTo(0.2, 1e-9));
@@ -35,6 +50,24 @@ void main() {
     await repo.setPomodoroWork(const Duration(minutes: 30));
     await repo.setKeepScreenOnInFocus(value: false);
     await repo.setLibrarySort(LibrarySort.title);
+    await repo.setAccentColor(0xFF1E9BFF);
+    await repo.setBackgroundColor(0xFF172331);
+    await repo.setInkPalette(const <int>[0xFF112233, 0xFF445566]);
+    await repo.setStylusButtonMapping(
+      const StylusButtonMapping(
+        hold: StylusButtonAction.temporaryPan,
+        tap: StylusButtonAction.undo,
+        drag: StylusButtonAction.temporaryLasso,
+        penLongPress: StylusButtonAction.temporaryPan,
+      ),
+    );
+    await repo.setPenProfile(
+      const PenProfile(
+        stabilizer: 0.4,
+        smoothing: 0.2,
+        pressureCurve: PressureCurveKind.firm,
+      ),
+    );
 
     final updated = await repo.readSettings();
 
@@ -42,6 +75,26 @@ void main() {
     expect(updated.pomodoroWork, const Duration(minutes: 30));
     expect(updated.keepScreenOnInFocus, isFalse);
     expect(updated.librarySort, LibrarySort.title);
+    expect(updated.accentColor, 0xFF1E9BFF);
+    expect(updated.backgroundColor, 0xFF172331);
+    expect(updated.inkPalette, const <int>[0xFF112233, 0xFF445566]);
+    expect(
+      updated.stylusButtonMapping,
+      const StylusButtonMapping(
+        hold: StylusButtonAction.temporaryPan,
+        tap: StylusButtonAction.undo,
+        drag: StylusButtonAction.temporaryLasso,
+        penLongPress: StylusButtonAction.temporaryPan,
+      ),
+    );
+    expect(
+      updated.penProfile,
+      const PenProfile(
+        stabilizer: 0.4,
+        smoothing: 0.2,
+        pressureCurve: PressureCurveKind.firm,
+      ),
+    );
     // Untouched fields keep their defaults.
     expect(updated.pomodoroBreak, const Duration(seconds: 300));
   });
@@ -49,6 +102,20 @@ void main() {
   test('save() round-trips a full SettingsModel', () async {
     const model = SettingsModel(
       themeMode: ThemeModeSetting.dark,
+      accentColor: 0xFFFF4F91,
+      backgroundColor: 0xFF172331,
+      inkPalette: <int>[0xFFFF4F91, 0xFFFFFFFF],
+      stylusButtonMapping: StylusButtonMapping(
+        hold: StylusButtonAction.temporaryEraser,
+        tap: StylusButtonAction.redo,
+        drag: StylusButtonAction.arrow,
+        penLongPress: StylusButtonAction.disabled,
+      ),
+      penProfile: PenProfile(
+        stabilizer: 0.25,
+        smoothing: 0.5,
+        pressureCurve: PressureCurveKind.light,
+      ),
       pomodoroWork: Duration(minutes: 45),
       pomodoroBreak: Duration(minutes: 10),
       flowBreakRatio: 0.35,

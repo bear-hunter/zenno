@@ -1,11 +1,13 @@
 import 'package:flutter/gestures.dart';
 
+const int _stylusButtonMask = kPrimaryStylusButton | kSecondaryStylusButton;
+
 /// The canvas-relevant category of a raw pointer.
 ///
 /// The engine routes input by this kind: a [CanvasInputKind.stylus] drives the
-/// active tool (draw / erase / lasso) while a [CanvasInputKind.touch] drives
-/// viewport transforms (pan / zoom / rotate). This is the "stylus draws, finger
-/// pans" model with no mode toggle.
+/// active tool (draw / erase / lasso) while a [CanvasInputKind.touch] normally
+/// drives viewport transforms (pan / zoom / rotate). Selected elements are the
+/// exception: touches that start on the selection directly move/scale/rotate it.
 enum CanvasInputKind {
   /// A pen / S Pen, including the eraser end held upside down.
   stylus,
@@ -58,3 +60,6 @@ double normalizedPressure(PointerEvent event) {
   }
   return ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0);
 }
+
+/// Whether the pointer reports a stylus side button being held.
+bool hasStylusButton(int buttons) => (buttons & _stylusButtonMask) != 0;

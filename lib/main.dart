@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:zenno/app.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   // Zenno is a landscape-first tablet app; lock orientation before first frame.
-  SystemChrome.setPreferredOrientations(const [
+  await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);

@@ -477,6 +477,21 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _rotationLockedMeta = const VerificationMeta(
+    'rotationLocked',
+  );
+  @override
+  late final GeneratedColumn<bool> rotationLocked = GeneratedColumn<bool>(
+    'rotation_locked',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("rotation_locked" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   late final GeneratedColumnWithTypeConverter<BackgroundKind, int>
   backgroundKind = GeneratedColumn<int>(
@@ -487,6 +502,124 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   ).withConverter<BackgroundKind>($CanvasesTable.$converterbackgroundKind);
+  static const VerificationMeta _canvasBackgroundColorMeta =
+      const VerificationMeta('canvasBackgroundColor');
+  @override
+  late final GeneratedColumn<int> canvasBackgroundColor = GeneratedColumn<int>(
+    'canvas_background_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFF172331),
+  );
+  static const VerificationMeta _gridColorMeta = const VerificationMeta(
+    'gridColor',
+  );
+  @override
+  late final GeneratedColumn<int> gridColor = GeneratedColumn<int>(
+    'grid_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFFFFFFFF),
+  );
+  static const VerificationMeta _gridSpacingMeta = const VerificationMeta(
+    'gridSpacing',
+  );
+  @override
+  late final GeneratedColumn<double> gridSpacing = GeneratedColumn<double>(
+    'grid_spacing',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(48),
+  );
+  static const VerificationMeta _gridOpacityMeta = const VerificationMeta(
+    'gridOpacity',
+  );
+  @override
+  late final GeneratedColumn<double> gridOpacity = GeneratedColumn<double>(
+    'grid_opacity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.14),
+  );
+  static const VerificationMeta _graphMajorIntervalMeta =
+      const VerificationMeta('graphMajorInterval');
+  @override
+  late final GeneratedColumn<int> graphMajorInterval = GeneratedColumn<int>(
+    'graph_major_interval',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(4),
+  );
+  static const VerificationMeta _activePenColorMeta = const VerificationMeta(
+    'activePenColor',
+  );
+  @override
+  late final GeneratedColumn<int> activePenColor = GeneratedColumn<int>(
+    'active_pen_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFFFFFFFF),
+  );
+  static const VerificationMeta _activePenWidthMeta = const VerificationMeta(
+    'activePenWidth',
+  );
+  @override
+  late final GeneratedColumn<double> activePenWidth = GeneratedColumn<double>(
+    'active_pen_width',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(4),
+  );
+  static const VerificationMeta _activePenWidthModeMeta =
+      const VerificationMeta('activePenWidthMode');
+  @override
+  late final GeneratedColumn<int> activePenWidthMode = GeneratedColumn<int>(
+    'active_pen_width_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<StrokeTool, int> activePenTool =
+      GeneratedColumn<int>(
+        'active_pen_tool',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<StrokeTool>($CanvasesTable.$converteractivePenTool);
+  static const VerificationMeta _pressureEnabledMeta = const VerificationMeta(
+    'pressureEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> pressureEnabled = GeneratedColumn<bool>(
+    'pressure_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("pressure_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -503,7 +636,18 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
     vpTy,
     vpScale,
     vpRotation,
+    rotationLocked,
     backgroundKind,
+    canvasBackgroundColor,
+    gridColor,
+    gridSpacing,
+    gridOpacity,
+    graphMajorInterval,
+    activePenColor,
+    activePenWidth,
+    activePenWidthMode,
+    activePenTool,
+    pressureEnabled,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -618,6 +762,93 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
         vpRotation.isAcceptableOrUnknown(data['vp_rotation']!, _vpRotationMeta),
       );
     }
+    if (data.containsKey('rotation_locked')) {
+      context.handle(
+        _rotationLockedMeta,
+        rotationLocked.isAcceptableOrUnknown(
+          data['rotation_locked']!,
+          _rotationLockedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canvas_background_color')) {
+      context.handle(
+        _canvasBackgroundColorMeta,
+        canvasBackgroundColor.isAcceptableOrUnknown(
+          data['canvas_background_color']!,
+          _canvasBackgroundColorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('grid_color')) {
+      context.handle(
+        _gridColorMeta,
+        gridColor.isAcceptableOrUnknown(data['grid_color']!, _gridColorMeta),
+      );
+    }
+    if (data.containsKey('grid_spacing')) {
+      context.handle(
+        _gridSpacingMeta,
+        gridSpacing.isAcceptableOrUnknown(
+          data['grid_spacing']!,
+          _gridSpacingMeta,
+        ),
+      );
+    }
+    if (data.containsKey('grid_opacity')) {
+      context.handle(
+        _gridOpacityMeta,
+        gridOpacity.isAcceptableOrUnknown(
+          data['grid_opacity']!,
+          _gridOpacityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('graph_major_interval')) {
+      context.handle(
+        _graphMajorIntervalMeta,
+        graphMajorInterval.isAcceptableOrUnknown(
+          data['graph_major_interval']!,
+          _graphMajorIntervalMeta,
+        ),
+      );
+    }
+    if (data.containsKey('active_pen_color')) {
+      context.handle(
+        _activePenColorMeta,
+        activePenColor.isAcceptableOrUnknown(
+          data['active_pen_color']!,
+          _activePenColorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('active_pen_width')) {
+      context.handle(
+        _activePenWidthMeta,
+        activePenWidth.isAcceptableOrUnknown(
+          data['active_pen_width']!,
+          _activePenWidthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('active_pen_width_mode')) {
+      context.handle(
+        _activePenWidthModeMeta,
+        activePenWidthMode.isAcceptableOrUnknown(
+          data['active_pen_width_mode']!,
+          _activePenWidthModeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('pressure_enabled')) {
+      context.handle(
+        _pressureEnabledMeta,
+        pressureEnabled.isAcceptableOrUnknown(
+          data['pressure_enabled']!,
+          _pressureEnabledMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -683,12 +914,58 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
         DriftSqlType.double,
         data['${effectivePrefix}vp_rotation'],
       )!,
+      rotationLocked: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}rotation_locked'],
+      )!,
       backgroundKind: $CanvasesTable.$converterbackgroundKind.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.int,
           data['${effectivePrefix}background_kind'],
         )!,
       ),
+      canvasBackgroundColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}canvas_background_color'],
+      )!,
+      gridColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grid_color'],
+      )!,
+      gridSpacing: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}grid_spacing'],
+      )!,
+      gridOpacity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}grid_opacity'],
+      )!,
+      graphMajorInterval: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}graph_major_interval'],
+      )!,
+      activePenColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}active_pen_color'],
+      )!,
+      activePenWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}active_pen_width'],
+      )!,
+      activePenWidthMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}active_pen_width_mode'],
+      )!,
+      activePenTool: $CanvasesTable.$converteractivePenTool.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}active_pen_tool'],
+        )!,
+      ),
+      pressureEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}pressure_enabled'],
+      )!,
     );
   }
 
@@ -699,6 +976,8 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
 
   static JsonTypeConverter2<BackgroundKind, int, int> $converterbackgroundKind =
       const EnumIndexConverter<BackgroundKind>(BackgroundKind.values);
+  static JsonTypeConverter2<StrokeTool, int, int> $converteractivePenTool =
+      const EnumIndexConverter<StrokeTool>(StrokeTool.values);
 }
 
 class Canvase extends DataClass implements Insertable<Canvase> {
@@ -720,7 +999,18 @@ class Canvase extends DataClass implements Insertable<Canvase> {
   final double vpTy;
   final double vpScale;
   final double vpRotation;
+  final bool rotationLocked;
   final BackgroundKind backgroundKind;
+  final int canvasBackgroundColor;
+  final int gridColor;
+  final double gridSpacing;
+  final double gridOpacity;
+  final int graphMajorInterval;
+  final int activePenColor;
+  final double activePenWidth;
+  final int activePenWidthMode;
+  final StrokeTool activePenTool;
+  final bool pressureEnabled;
   const Canvase({
     required this.id,
     required this.title,
@@ -736,7 +1026,18 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     required this.vpTy,
     required this.vpScale,
     required this.vpRotation,
+    required this.rotationLocked,
     required this.backgroundKind,
+    required this.canvasBackgroundColor,
+    required this.gridColor,
+    required this.gridSpacing,
+    required this.gridOpacity,
+    required this.graphMajorInterval,
+    required this.activePenColor,
+    required this.activePenWidth,
+    required this.activePenWidthMode,
+    required this.activePenTool,
+    required this.pressureEnabled,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -761,11 +1062,26 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     map['vp_ty'] = Variable<double>(vpTy);
     map['vp_scale'] = Variable<double>(vpScale);
     map['vp_rotation'] = Variable<double>(vpRotation);
+    map['rotation_locked'] = Variable<bool>(rotationLocked);
     {
       map['background_kind'] = Variable<int>(
         $CanvasesTable.$converterbackgroundKind.toSql(backgroundKind),
       );
     }
+    map['canvas_background_color'] = Variable<int>(canvasBackgroundColor);
+    map['grid_color'] = Variable<int>(gridColor);
+    map['grid_spacing'] = Variable<double>(gridSpacing);
+    map['grid_opacity'] = Variable<double>(gridOpacity);
+    map['graph_major_interval'] = Variable<int>(graphMajorInterval);
+    map['active_pen_color'] = Variable<int>(activePenColor);
+    map['active_pen_width'] = Variable<double>(activePenWidth);
+    map['active_pen_width_mode'] = Variable<int>(activePenWidthMode);
+    {
+      map['active_pen_tool'] = Variable<int>(
+        $CanvasesTable.$converteractivePenTool.toSql(activePenTool),
+      );
+    }
+    map['pressure_enabled'] = Variable<bool>(pressureEnabled);
     return map;
   }
 
@@ -791,7 +1107,18 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       vpTy: Value(vpTy),
       vpScale: Value(vpScale),
       vpRotation: Value(vpRotation),
+      rotationLocked: Value(rotationLocked),
       backgroundKind: Value(backgroundKind),
+      canvasBackgroundColor: Value(canvasBackgroundColor),
+      gridColor: Value(gridColor),
+      gridSpacing: Value(gridSpacing),
+      gridOpacity: Value(gridOpacity),
+      graphMajorInterval: Value(graphMajorInterval),
+      activePenColor: Value(activePenColor),
+      activePenWidth: Value(activePenWidth),
+      activePenWidthMode: Value(activePenWidthMode),
+      activePenTool: Value(activePenTool),
+      pressureEnabled: Value(pressureEnabled),
     );
   }
 
@@ -815,9 +1142,24 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       vpTy: serializer.fromJson<double>(json['vpTy']),
       vpScale: serializer.fromJson<double>(json['vpScale']),
       vpRotation: serializer.fromJson<double>(json['vpRotation']),
+      rotationLocked: serializer.fromJson<bool>(json['rotationLocked']),
       backgroundKind: $CanvasesTable.$converterbackgroundKind.fromJson(
         serializer.fromJson<int>(json['backgroundKind']),
       ),
+      canvasBackgroundColor: serializer.fromJson<int>(
+        json['canvasBackgroundColor'],
+      ),
+      gridColor: serializer.fromJson<int>(json['gridColor']),
+      gridSpacing: serializer.fromJson<double>(json['gridSpacing']),
+      gridOpacity: serializer.fromJson<double>(json['gridOpacity']),
+      graphMajorInterval: serializer.fromJson<int>(json['graphMajorInterval']),
+      activePenColor: serializer.fromJson<int>(json['activePenColor']),
+      activePenWidth: serializer.fromJson<double>(json['activePenWidth']),
+      activePenWidthMode: serializer.fromJson<int>(json['activePenWidthMode']),
+      activePenTool: $CanvasesTable.$converteractivePenTool.fromJson(
+        serializer.fromJson<int>(json['activePenTool']),
+      ),
+      pressureEnabled: serializer.fromJson<bool>(json['pressureEnabled']),
     );
   }
   @override
@@ -838,9 +1180,22 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       'vpTy': serializer.toJson<double>(vpTy),
       'vpScale': serializer.toJson<double>(vpScale),
       'vpRotation': serializer.toJson<double>(vpRotation),
+      'rotationLocked': serializer.toJson<bool>(rotationLocked),
       'backgroundKind': serializer.toJson<int>(
         $CanvasesTable.$converterbackgroundKind.toJson(backgroundKind),
       ),
+      'canvasBackgroundColor': serializer.toJson<int>(canvasBackgroundColor),
+      'gridColor': serializer.toJson<int>(gridColor),
+      'gridSpacing': serializer.toJson<double>(gridSpacing),
+      'gridOpacity': serializer.toJson<double>(gridOpacity),
+      'graphMajorInterval': serializer.toJson<int>(graphMajorInterval),
+      'activePenColor': serializer.toJson<int>(activePenColor),
+      'activePenWidth': serializer.toJson<double>(activePenWidth),
+      'activePenWidthMode': serializer.toJson<int>(activePenWidthMode),
+      'activePenTool': serializer.toJson<int>(
+        $CanvasesTable.$converteractivePenTool.toJson(activePenTool),
+      ),
+      'pressureEnabled': serializer.toJson<bool>(pressureEnabled),
     };
   }
 
@@ -859,7 +1214,18 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     double? vpTy,
     double? vpScale,
     double? vpRotation,
+    bool? rotationLocked,
     BackgroundKind? backgroundKind,
+    int? canvasBackgroundColor,
+    int? gridColor,
+    double? gridSpacing,
+    double? gridOpacity,
+    int? graphMajorInterval,
+    int? activePenColor,
+    double? activePenWidth,
+    int? activePenWidthMode,
+    StrokeTool? activePenTool,
+    bool? pressureEnabled,
   }) => Canvase(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -877,7 +1243,18 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     vpTy: vpTy ?? this.vpTy,
     vpScale: vpScale ?? this.vpScale,
     vpRotation: vpRotation ?? this.vpRotation,
+    rotationLocked: rotationLocked ?? this.rotationLocked,
     backgroundKind: backgroundKind ?? this.backgroundKind,
+    canvasBackgroundColor: canvasBackgroundColor ?? this.canvasBackgroundColor,
+    gridColor: gridColor ?? this.gridColor,
+    gridSpacing: gridSpacing ?? this.gridSpacing,
+    gridOpacity: gridOpacity ?? this.gridOpacity,
+    graphMajorInterval: graphMajorInterval ?? this.graphMajorInterval,
+    activePenColor: activePenColor ?? this.activePenColor,
+    activePenWidth: activePenWidth ?? this.activePenWidth,
+    activePenWidthMode: activePenWidthMode ?? this.activePenWidthMode,
+    activePenTool: activePenTool ?? this.activePenTool,
+    pressureEnabled: pressureEnabled ?? this.pressureEnabled,
   );
   Canvase copyWithCompanion(CanvasesCompanion data) {
     return Canvase(
@@ -907,9 +1284,40 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       vpRotation: data.vpRotation.present
           ? data.vpRotation.value
           : this.vpRotation,
+      rotationLocked: data.rotationLocked.present
+          ? data.rotationLocked.value
+          : this.rotationLocked,
       backgroundKind: data.backgroundKind.present
           ? data.backgroundKind.value
           : this.backgroundKind,
+      canvasBackgroundColor: data.canvasBackgroundColor.present
+          ? data.canvasBackgroundColor.value
+          : this.canvasBackgroundColor,
+      gridColor: data.gridColor.present ? data.gridColor.value : this.gridColor,
+      gridSpacing: data.gridSpacing.present
+          ? data.gridSpacing.value
+          : this.gridSpacing,
+      gridOpacity: data.gridOpacity.present
+          ? data.gridOpacity.value
+          : this.gridOpacity,
+      graphMajorInterval: data.graphMajorInterval.present
+          ? data.graphMajorInterval.value
+          : this.graphMajorInterval,
+      activePenColor: data.activePenColor.present
+          ? data.activePenColor.value
+          : this.activePenColor,
+      activePenWidth: data.activePenWidth.present
+          ? data.activePenWidth.value
+          : this.activePenWidth,
+      activePenWidthMode: data.activePenWidthMode.present
+          ? data.activePenWidthMode.value
+          : this.activePenWidthMode,
+      activePenTool: data.activePenTool.present
+          ? data.activePenTool.value
+          : this.activePenTool,
+      pressureEnabled: data.pressureEnabled.present
+          ? data.pressureEnabled.value
+          : this.pressureEnabled,
     );
   }
 
@@ -930,13 +1338,24 @@ class Canvase extends DataClass implements Insertable<Canvase> {
           ..write('vpTy: $vpTy, ')
           ..write('vpScale: $vpScale, ')
           ..write('vpRotation: $vpRotation, ')
-          ..write('backgroundKind: $backgroundKind')
+          ..write('rotationLocked: $rotationLocked, ')
+          ..write('backgroundKind: $backgroundKind, ')
+          ..write('canvasBackgroundColor: $canvasBackgroundColor, ')
+          ..write('gridColor: $gridColor, ')
+          ..write('gridSpacing: $gridSpacing, ')
+          ..write('gridOpacity: $gridOpacity, ')
+          ..write('graphMajorInterval: $graphMajorInterval, ')
+          ..write('activePenColor: $activePenColor, ')
+          ..write('activePenWidth: $activePenWidth, ')
+          ..write('activePenWidthMode: $activePenWidthMode, ')
+          ..write('activePenTool: $activePenTool, ')
+          ..write('pressureEnabled: $pressureEnabled')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     title,
     createdAt,
@@ -951,8 +1370,19 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     vpTy,
     vpScale,
     vpRotation,
+    rotationLocked,
     backgroundKind,
-  );
+    canvasBackgroundColor,
+    gridColor,
+    gridSpacing,
+    gridOpacity,
+    graphMajorInterval,
+    activePenColor,
+    activePenWidth,
+    activePenWidthMode,
+    activePenTool,
+    pressureEnabled,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -971,7 +1401,18 @@ class Canvase extends DataClass implements Insertable<Canvase> {
           other.vpTy == this.vpTy &&
           other.vpScale == this.vpScale &&
           other.vpRotation == this.vpRotation &&
-          other.backgroundKind == this.backgroundKind);
+          other.rotationLocked == this.rotationLocked &&
+          other.backgroundKind == this.backgroundKind &&
+          other.canvasBackgroundColor == this.canvasBackgroundColor &&
+          other.gridColor == this.gridColor &&
+          other.gridSpacing == this.gridSpacing &&
+          other.gridOpacity == this.gridOpacity &&
+          other.graphMajorInterval == this.graphMajorInterval &&
+          other.activePenColor == this.activePenColor &&
+          other.activePenWidth == this.activePenWidth &&
+          other.activePenWidthMode == this.activePenWidthMode &&
+          other.activePenTool == this.activePenTool &&
+          other.pressureEnabled == this.pressureEnabled);
 }
 
 class CanvasesCompanion extends UpdateCompanion<Canvase> {
@@ -989,7 +1430,18 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
   final Value<double> vpTy;
   final Value<double> vpScale;
   final Value<double> vpRotation;
+  final Value<bool> rotationLocked;
   final Value<BackgroundKind> backgroundKind;
+  final Value<int> canvasBackgroundColor;
+  final Value<int> gridColor;
+  final Value<double> gridSpacing;
+  final Value<double> gridOpacity;
+  final Value<int> graphMajorInterval;
+  final Value<int> activePenColor;
+  final Value<double> activePenWidth;
+  final Value<int> activePenWidthMode;
+  final Value<StrokeTool> activePenTool;
+  final Value<bool> pressureEnabled;
   final Value<int> rowid;
   const CanvasesCompanion({
     this.id = const Value.absent(),
@@ -1006,7 +1458,18 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     this.vpTy = const Value.absent(),
     this.vpScale = const Value.absent(),
     this.vpRotation = const Value.absent(),
+    this.rotationLocked = const Value.absent(),
     this.backgroundKind = const Value.absent(),
+    this.canvasBackgroundColor = const Value.absent(),
+    this.gridColor = const Value.absent(),
+    this.gridSpacing = const Value.absent(),
+    this.gridOpacity = const Value.absent(),
+    this.graphMajorInterval = const Value.absent(),
+    this.activePenColor = const Value.absent(),
+    this.activePenWidth = const Value.absent(),
+    this.activePenWidthMode = const Value.absent(),
+    this.activePenTool = const Value.absent(),
+    this.pressureEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CanvasesCompanion.insert({
@@ -1024,7 +1487,18 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     this.vpTy = const Value.absent(),
     this.vpScale = const Value.absent(),
     this.vpRotation = const Value.absent(),
+    this.rotationLocked = const Value.absent(),
     this.backgroundKind = const Value.absent(),
+    this.canvasBackgroundColor = const Value.absent(),
+    this.gridColor = const Value.absent(),
+    this.gridSpacing = const Value.absent(),
+    this.gridOpacity = const Value.absent(),
+    this.graphMajorInterval = const Value.absent(),
+    this.activePenColor = const Value.absent(),
+    this.activePenWidth = const Value.absent(),
+    this.activePenWidthMode = const Value.absent(),
+    this.activePenTool = const Value.absent(),
+    this.pressureEnabled = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -1045,7 +1519,18 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     Expression<double>? vpTy,
     Expression<double>? vpScale,
     Expression<double>? vpRotation,
+    Expression<bool>? rotationLocked,
     Expression<int>? backgroundKind,
+    Expression<int>? canvasBackgroundColor,
+    Expression<int>? gridColor,
+    Expression<double>? gridSpacing,
+    Expression<double>? gridOpacity,
+    Expression<int>? graphMajorInterval,
+    Expression<int>? activePenColor,
+    Expression<double>? activePenWidth,
+    Expression<int>? activePenWidthMode,
+    Expression<int>? activePenTool,
+    Expression<bool>? pressureEnabled,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1063,7 +1548,21 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
       if (vpTy != null) 'vp_ty': vpTy,
       if (vpScale != null) 'vp_scale': vpScale,
       if (vpRotation != null) 'vp_rotation': vpRotation,
+      if (rotationLocked != null) 'rotation_locked': rotationLocked,
       if (backgroundKind != null) 'background_kind': backgroundKind,
+      if (canvasBackgroundColor != null)
+        'canvas_background_color': canvasBackgroundColor,
+      if (gridColor != null) 'grid_color': gridColor,
+      if (gridSpacing != null) 'grid_spacing': gridSpacing,
+      if (gridOpacity != null) 'grid_opacity': gridOpacity,
+      if (graphMajorInterval != null)
+        'graph_major_interval': graphMajorInterval,
+      if (activePenColor != null) 'active_pen_color': activePenColor,
+      if (activePenWidth != null) 'active_pen_width': activePenWidth,
+      if (activePenWidthMode != null)
+        'active_pen_width_mode': activePenWidthMode,
+      if (activePenTool != null) 'active_pen_tool': activePenTool,
+      if (pressureEnabled != null) 'pressure_enabled': pressureEnabled,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1083,7 +1582,18 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     Value<double>? vpTy,
     Value<double>? vpScale,
     Value<double>? vpRotation,
+    Value<bool>? rotationLocked,
     Value<BackgroundKind>? backgroundKind,
+    Value<int>? canvasBackgroundColor,
+    Value<int>? gridColor,
+    Value<double>? gridSpacing,
+    Value<double>? gridOpacity,
+    Value<int>? graphMajorInterval,
+    Value<int>? activePenColor,
+    Value<double>? activePenWidth,
+    Value<int>? activePenWidthMode,
+    Value<StrokeTool>? activePenTool,
+    Value<bool>? pressureEnabled,
     Value<int>? rowid,
   }) {
     return CanvasesCompanion(
@@ -1101,7 +1611,19 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
       vpTy: vpTy ?? this.vpTy,
       vpScale: vpScale ?? this.vpScale,
       vpRotation: vpRotation ?? this.vpRotation,
+      rotationLocked: rotationLocked ?? this.rotationLocked,
       backgroundKind: backgroundKind ?? this.backgroundKind,
+      canvasBackgroundColor:
+          canvasBackgroundColor ?? this.canvasBackgroundColor,
+      gridColor: gridColor ?? this.gridColor,
+      gridSpacing: gridSpacing ?? this.gridSpacing,
+      gridOpacity: gridOpacity ?? this.gridOpacity,
+      graphMajorInterval: graphMajorInterval ?? this.graphMajorInterval,
+      activePenColor: activePenColor ?? this.activePenColor,
+      activePenWidth: activePenWidth ?? this.activePenWidth,
+      activePenWidthMode: activePenWidthMode ?? this.activePenWidthMode,
+      activePenTool: activePenTool ?? this.activePenTool,
+      pressureEnabled: pressureEnabled ?? this.pressureEnabled,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1151,10 +1673,47 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     if (vpRotation.present) {
       map['vp_rotation'] = Variable<double>(vpRotation.value);
     }
+    if (rotationLocked.present) {
+      map['rotation_locked'] = Variable<bool>(rotationLocked.value);
+    }
     if (backgroundKind.present) {
       map['background_kind'] = Variable<int>(
         $CanvasesTable.$converterbackgroundKind.toSql(backgroundKind.value),
       );
+    }
+    if (canvasBackgroundColor.present) {
+      map['canvas_background_color'] = Variable<int>(
+        canvasBackgroundColor.value,
+      );
+    }
+    if (gridColor.present) {
+      map['grid_color'] = Variable<int>(gridColor.value);
+    }
+    if (gridSpacing.present) {
+      map['grid_spacing'] = Variable<double>(gridSpacing.value);
+    }
+    if (gridOpacity.present) {
+      map['grid_opacity'] = Variable<double>(gridOpacity.value);
+    }
+    if (graphMajorInterval.present) {
+      map['graph_major_interval'] = Variable<int>(graphMajorInterval.value);
+    }
+    if (activePenColor.present) {
+      map['active_pen_color'] = Variable<int>(activePenColor.value);
+    }
+    if (activePenWidth.present) {
+      map['active_pen_width'] = Variable<double>(activePenWidth.value);
+    }
+    if (activePenWidthMode.present) {
+      map['active_pen_width_mode'] = Variable<int>(activePenWidthMode.value);
+    }
+    if (activePenTool.present) {
+      map['active_pen_tool'] = Variable<int>(
+        $CanvasesTable.$converteractivePenTool.toSql(activePenTool.value),
+      );
+    }
+    if (pressureEnabled.present) {
+      map['pressure_enabled'] = Variable<bool>(pressureEnabled.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -1179,7 +1738,1139 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
           ..write('vpTy: $vpTy, ')
           ..write('vpScale: $vpScale, ')
           ..write('vpRotation: $vpRotation, ')
+          ..write('rotationLocked: $rotationLocked, ')
           ..write('backgroundKind: $backgroundKind, ')
+          ..write('canvasBackgroundColor: $canvasBackgroundColor, ')
+          ..write('gridColor: $gridColor, ')
+          ..write('gridSpacing: $gridSpacing, ')
+          ..write('gridOpacity: $gridOpacity, ')
+          ..write('graphMajorInterval: $graphMajorInterval, ')
+          ..write('activePenColor: $activePenColor, ')
+          ..write('activePenWidth: $activePenWidth, ')
+          ..write('activePenWidthMode: $activePenWidthMode, ')
+          ..write('activePenTool: $activePenTool, ')
+          ..write('pressureEnabled: $pressureEnabled, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CanvasLayersTable extends CanvasLayers
+    with TableInfo<$CanvasLayersTable, CanvasLayer> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanvasLayersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _canvasIdMeta = const VerificationMeta(
+    'canvasId',
+  );
+  @override
+  late final GeneratedColumn<String> canvasId = GeneratedColumn<String>(
+    'canvas_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES canvases (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<double> position = GeneratedColumn<double>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _visibleMeta = const VerificationMeta(
+    'visible',
+  );
+  @override
+  late final GeneratedColumn<bool> visible = GeneratedColumn<bool>(
+    'visible',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("visible" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _lockedMeta = const VerificationMeta('locked');
+  @override
+  late final GeneratedColumn<bool> locked = GeneratedColumn<bool>(
+    'locked',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("locked" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _opacityMeta = const VerificationMeta(
+    'opacity',
+  );
+  @override
+  late final GeneratedColumn<double> opacity = GeneratedColumn<double>(
+    'opacity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
+  static const VerificationMeta _blendModeMeta = const VerificationMeta(
+    'blendMode',
+  );
+  @override
+  late final GeneratedColumn<String> blendMode = GeneratedColumn<String>(
+    'blend_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('srcOver'),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<CanvasLayerKind, int> kind =
+      GeneratedColumn<int>(
+        'kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<CanvasLayerKind>($CanvasLayersTable.$converterkind);
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    canvasId,
+    name,
+    position,
+    visible,
+    locked,
+    opacity,
+    blendMode,
+    kind,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canvas_layers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanvasLayer> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('canvas_id')) {
+      context.handle(
+        _canvasIdMeta,
+        canvasId.isAcceptableOrUnknown(data['canvas_id']!, _canvasIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_canvasIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('visible')) {
+      context.handle(
+        _visibleMeta,
+        visible.isAcceptableOrUnknown(data['visible']!, _visibleMeta),
+      );
+    }
+    if (data.containsKey('locked')) {
+      context.handle(
+        _lockedMeta,
+        locked.isAcceptableOrUnknown(data['locked']!, _lockedMeta),
+      );
+    }
+    if (data.containsKey('opacity')) {
+      context.handle(
+        _opacityMeta,
+        opacity.isAcceptableOrUnknown(data['opacity']!, _opacityMeta),
+      );
+    }
+    if (data.containsKey('blend_mode')) {
+      context.handle(
+        _blendModeMeta,
+        blendMode.isAcceptableOrUnknown(data['blend_mode']!, _blendModeMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CanvasLayer map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanvasLayer(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      canvasId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canvas_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}position'],
+      )!,
+      visible: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}visible'],
+      )!,
+      locked: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}locked'],
+      )!,
+      opacity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}opacity'],
+      )!,
+      blendMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}blend_mode'],
+      )!,
+      kind: $CanvasLayersTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CanvasLayersTable createAlias(String alias) {
+    return $CanvasLayersTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<CanvasLayerKind, int, int> $converterkind =
+      const EnumIndexConverter<CanvasLayerKind>(CanvasLayerKind.values);
+}
+
+class CanvasLayer extends DataClass implements Insertable<CanvasLayer> {
+  final String id;
+  final String canvasId;
+  final String name;
+
+  /// Fractional ordering position, lower layers paint first.
+  final double position;
+  final bool visible;
+  final bool locked;
+  final double opacity;
+  final String blendMode;
+  final CanvasLayerKind kind;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const CanvasLayer({
+    required this.id,
+    required this.canvasId,
+    required this.name,
+    required this.position,
+    required this.visible,
+    required this.locked,
+    required this.opacity,
+    required this.blendMode,
+    required this.kind,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['canvas_id'] = Variable<String>(canvasId);
+    map['name'] = Variable<String>(name);
+    map['position'] = Variable<double>(position);
+    map['visible'] = Variable<bool>(visible);
+    map['locked'] = Variable<bool>(locked);
+    map['opacity'] = Variable<double>(opacity);
+    map['blend_mode'] = Variable<String>(blendMode);
+    {
+      map['kind'] = Variable<int>(
+        $CanvasLayersTable.$converterkind.toSql(kind),
+      );
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CanvasLayersCompanion toCompanion(bool nullToAbsent) {
+    return CanvasLayersCompanion(
+      id: Value(id),
+      canvasId: Value(canvasId),
+      name: Value(name),
+      position: Value(position),
+      visible: Value(visible),
+      locked: Value(locked),
+      opacity: Value(opacity),
+      blendMode: Value(blendMode),
+      kind: Value(kind),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CanvasLayer.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanvasLayer(
+      id: serializer.fromJson<String>(json['id']),
+      canvasId: serializer.fromJson<String>(json['canvasId']),
+      name: serializer.fromJson<String>(json['name']),
+      position: serializer.fromJson<double>(json['position']),
+      visible: serializer.fromJson<bool>(json['visible']),
+      locked: serializer.fromJson<bool>(json['locked']),
+      opacity: serializer.fromJson<double>(json['opacity']),
+      blendMode: serializer.fromJson<String>(json['blendMode']),
+      kind: $CanvasLayersTable.$converterkind.fromJson(
+        serializer.fromJson<int>(json['kind']),
+      ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'canvasId': serializer.toJson<String>(canvasId),
+      'name': serializer.toJson<String>(name),
+      'position': serializer.toJson<double>(position),
+      'visible': serializer.toJson<bool>(visible),
+      'locked': serializer.toJson<bool>(locked),
+      'opacity': serializer.toJson<double>(opacity),
+      'blendMode': serializer.toJson<String>(blendMode),
+      'kind': serializer.toJson<int>(
+        $CanvasLayersTable.$converterkind.toJson(kind),
+      ),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  CanvasLayer copyWith({
+    String? id,
+    String? canvasId,
+    String? name,
+    double? position,
+    bool? visible,
+    bool? locked,
+    double? opacity,
+    String? blendMode,
+    CanvasLayerKind? kind,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => CanvasLayer(
+    id: id ?? this.id,
+    canvasId: canvasId ?? this.canvasId,
+    name: name ?? this.name,
+    position: position ?? this.position,
+    visible: visible ?? this.visible,
+    locked: locked ?? this.locked,
+    opacity: opacity ?? this.opacity,
+    blendMode: blendMode ?? this.blendMode,
+    kind: kind ?? this.kind,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CanvasLayer copyWithCompanion(CanvasLayersCompanion data) {
+    return CanvasLayer(
+      id: data.id.present ? data.id.value : this.id,
+      canvasId: data.canvasId.present ? data.canvasId.value : this.canvasId,
+      name: data.name.present ? data.name.value : this.name,
+      position: data.position.present ? data.position.value : this.position,
+      visible: data.visible.present ? data.visible.value : this.visible,
+      locked: data.locked.present ? data.locked.value : this.locked,
+      opacity: data.opacity.present ? data.opacity.value : this.opacity,
+      blendMode: data.blendMode.present ? data.blendMode.value : this.blendMode,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasLayer(')
+          ..write('id: $id, ')
+          ..write('canvasId: $canvasId, ')
+          ..write('name: $name, ')
+          ..write('position: $position, ')
+          ..write('visible: $visible, ')
+          ..write('locked: $locked, ')
+          ..write('opacity: $opacity, ')
+          ..write('blendMode: $blendMode, ')
+          ..write('kind: $kind, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    canvasId,
+    name,
+    position,
+    visible,
+    locked,
+    opacity,
+    blendMode,
+    kind,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanvasLayer &&
+          other.id == this.id &&
+          other.canvasId == this.canvasId &&
+          other.name == this.name &&
+          other.position == this.position &&
+          other.visible == this.visible &&
+          other.locked == this.locked &&
+          other.opacity == this.opacity &&
+          other.blendMode == this.blendMode &&
+          other.kind == this.kind &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CanvasLayersCompanion extends UpdateCompanion<CanvasLayer> {
+  final Value<String> id;
+  final Value<String> canvasId;
+  final Value<String> name;
+  final Value<double> position;
+  final Value<bool> visible;
+  final Value<bool> locked;
+  final Value<double> opacity;
+  final Value<String> blendMode;
+  final Value<CanvasLayerKind> kind;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const CanvasLayersCompanion({
+    this.id = const Value.absent(),
+    this.canvasId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.position = const Value.absent(),
+    this.visible = const Value.absent(),
+    this.locked = const Value.absent(),
+    this.opacity = const Value.absent(),
+    this.blendMode = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanvasLayersCompanion.insert({
+    required String id,
+    required String canvasId,
+    required String name,
+    required double position,
+    this.visible = const Value.absent(),
+    this.locked = const Value.absent(),
+    this.opacity = const Value.absent(),
+    this.blendMode = const Value.absent(),
+    this.kind = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       canvasId = Value(canvasId),
+       name = Value(name),
+       position = Value(position),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<CanvasLayer> custom({
+    Expression<String>? id,
+    Expression<String>? canvasId,
+    Expression<String>? name,
+    Expression<double>? position,
+    Expression<bool>? visible,
+    Expression<bool>? locked,
+    Expression<double>? opacity,
+    Expression<String>? blendMode,
+    Expression<int>? kind,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (canvasId != null) 'canvas_id': canvasId,
+      if (name != null) 'name': name,
+      if (position != null) 'position': position,
+      if (visible != null) 'visible': visible,
+      if (locked != null) 'locked': locked,
+      if (opacity != null) 'opacity': opacity,
+      if (blendMode != null) 'blend_mode': blendMode,
+      if (kind != null) 'kind': kind,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanvasLayersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? canvasId,
+    Value<String>? name,
+    Value<double>? position,
+    Value<bool>? visible,
+    Value<bool>? locked,
+    Value<double>? opacity,
+    Value<String>? blendMode,
+    Value<CanvasLayerKind>? kind,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return CanvasLayersCompanion(
+      id: id ?? this.id,
+      canvasId: canvasId ?? this.canvasId,
+      name: name ?? this.name,
+      position: position ?? this.position,
+      visible: visible ?? this.visible,
+      locked: locked ?? this.locked,
+      opacity: opacity ?? this.opacity,
+      blendMode: blendMode ?? this.blendMode,
+      kind: kind ?? this.kind,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (canvasId.present) {
+      map['canvas_id'] = Variable<String>(canvasId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<double>(position.value);
+    }
+    if (visible.present) {
+      map['visible'] = Variable<bool>(visible.value);
+    }
+    if (locked.present) {
+      map['locked'] = Variable<bool>(locked.value);
+    }
+    if (opacity.present) {
+      map['opacity'] = Variable<double>(opacity.value);
+    }
+    if (blendMode.present) {
+      map['blend_mode'] = Variable<String>(blendMode.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<int>(
+        $CanvasLayersTable.$converterkind.toSql(kind.value),
+      );
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasLayersCompanion(')
+          ..write('id: $id, ')
+          ..write('canvasId: $canvasId, ')
+          ..write('name: $name, ')
+          ..write('position: $position, ')
+          ..write('visible: $visible, ')
+          ..write('locked: $locked, ')
+          ..write('opacity: $opacity, ')
+          ..write('blendMode: $blendMode, ')
+          ..write('kind: $kind, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CanvasBookmarksTable extends CanvasBookmarks
+    with TableInfo<$CanvasBookmarksTable, CanvasBookmark> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanvasBookmarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _canvasIdMeta = const VerificationMeta(
+    'canvasId',
+  );
+  @override
+  late final GeneratedColumn<String> canvasId = GeneratedColumn<String>(
+    'canvas_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES canvases (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _vpTxMeta = const VerificationMeta('vpTx');
+  @override
+  late final GeneratedColumn<double> vpTx = GeneratedColumn<double>(
+    'vp_tx',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _vpTyMeta = const VerificationMeta('vpTy');
+  @override
+  late final GeneratedColumn<double> vpTy = GeneratedColumn<double>(
+    'vp_ty',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _vpScaleMeta = const VerificationMeta(
+    'vpScale',
+  );
+  @override
+  late final GeneratedColumn<double> vpScale = GeneratedColumn<double>(
+    'vp_scale',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _vpRotationMeta = const VerificationMeta(
+    'vpRotation',
+  );
+  @override
+  late final GeneratedColumn<double> vpRotation = GeneratedColumn<double>(
+    'vp_rotation',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    canvasId,
+    name,
+    vpTx,
+    vpTy,
+    vpScale,
+    vpRotation,
+    position,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canvas_bookmarks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanvasBookmark> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('canvas_id')) {
+      context.handle(
+        _canvasIdMeta,
+        canvasId.isAcceptableOrUnknown(data['canvas_id']!, _canvasIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_canvasIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('vp_tx')) {
+      context.handle(
+        _vpTxMeta,
+        vpTx.isAcceptableOrUnknown(data['vp_tx']!, _vpTxMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_vpTxMeta);
+    }
+    if (data.containsKey('vp_ty')) {
+      context.handle(
+        _vpTyMeta,
+        vpTy.isAcceptableOrUnknown(data['vp_ty']!, _vpTyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_vpTyMeta);
+    }
+    if (data.containsKey('vp_scale')) {
+      context.handle(
+        _vpScaleMeta,
+        vpScale.isAcceptableOrUnknown(data['vp_scale']!, _vpScaleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_vpScaleMeta);
+    }
+    if (data.containsKey('vp_rotation')) {
+      context.handle(
+        _vpRotationMeta,
+        vpRotation.isAcceptableOrUnknown(data['vp_rotation']!, _vpRotationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_vpRotationMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {canvasId, name};
+  @override
+  CanvasBookmark map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanvasBookmark(
+      canvasId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canvas_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      vpTx: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}vp_tx'],
+      )!,
+      vpTy: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}vp_ty'],
+      )!,
+      vpScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}vp_scale'],
+      )!,
+      vpRotation: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}vp_rotation'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+    );
+  }
+
+  @override
+  $CanvasBookmarksTable createAlias(String alias) {
+    return $CanvasBookmarksTable(attachedDatabase, alias);
+  }
+}
+
+class CanvasBookmark extends DataClass implements Insertable<CanvasBookmark> {
+  final String canvasId;
+  final String name;
+  final double vpTx;
+  final double vpTy;
+  final double vpScale;
+  final double vpRotation;
+  final int position;
+  const CanvasBookmark({
+    required this.canvasId,
+    required this.name,
+    required this.vpTx,
+    required this.vpTy,
+    required this.vpScale,
+    required this.vpRotation,
+    required this.position,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['canvas_id'] = Variable<String>(canvasId);
+    map['name'] = Variable<String>(name);
+    map['vp_tx'] = Variable<double>(vpTx);
+    map['vp_ty'] = Variable<double>(vpTy);
+    map['vp_scale'] = Variable<double>(vpScale);
+    map['vp_rotation'] = Variable<double>(vpRotation);
+    map['position'] = Variable<int>(position);
+    return map;
+  }
+
+  CanvasBookmarksCompanion toCompanion(bool nullToAbsent) {
+    return CanvasBookmarksCompanion(
+      canvasId: Value(canvasId),
+      name: Value(name),
+      vpTx: Value(vpTx),
+      vpTy: Value(vpTy),
+      vpScale: Value(vpScale),
+      vpRotation: Value(vpRotation),
+      position: Value(position),
+    );
+  }
+
+  factory CanvasBookmark.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanvasBookmark(
+      canvasId: serializer.fromJson<String>(json['canvasId']),
+      name: serializer.fromJson<String>(json['name']),
+      vpTx: serializer.fromJson<double>(json['vpTx']),
+      vpTy: serializer.fromJson<double>(json['vpTy']),
+      vpScale: serializer.fromJson<double>(json['vpScale']),
+      vpRotation: serializer.fromJson<double>(json['vpRotation']),
+      position: serializer.fromJson<int>(json['position']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'canvasId': serializer.toJson<String>(canvasId),
+      'name': serializer.toJson<String>(name),
+      'vpTx': serializer.toJson<double>(vpTx),
+      'vpTy': serializer.toJson<double>(vpTy),
+      'vpScale': serializer.toJson<double>(vpScale),
+      'vpRotation': serializer.toJson<double>(vpRotation),
+      'position': serializer.toJson<int>(position),
+    };
+  }
+
+  CanvasBookmark copyWith({
+    String? canvasId,
+    String? name,
+    double? vpTx,
+    double? vpTy,
+    double? vpScale,
+    double? vpRotation,
+    int? position,
+  }) => CanvasBookmark(
+    canvasId: canvasId ?? this.canvasId,
+    name: name ?? this.name,
+    vpTx: vpTx ?? this.vpTx,
+    vpTy: vpTy ?? this.vpTy,
+    vpScale: vpScale ?? this.vpScale,
+    vpRotation: vpRotation ?? this.vpRotation,
+    position: position ?? this.position,
+  );
+  CanvasBookmark copyWithCompanion(CanvasBookmarksCompanion data) {
+    return CanvasBookmark(
+      canvasId: data.canvasId.present ? data.canvasId.value : this.canvasId,
+      name: data.name.present ? data.name.value : this.name,
+      vpTx: data.vpTx.present ? data.vpTx.value : this.vpTx,
+      vpTy: data.vpTy.present ? data.vpTy.value : this.vpTy,
+      vpScale: data.vpScale.present ? data.vpScale.value : this.vpScale,
+      vpRotation: data.vpRotation.present
+          ? data.vpRotation.value
+          : this.vpRotation,
+      position: data.position.present ? data.position.value : this.position,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasBookmark(')
+          ..write('canvasId: $canvasId, ')
+          ..write('name: $name, ')
+          ..write('vpTx: $vpTx, ')
+          ..write('vpTy: $vpTy, ')
+          ..write('vpScale: $vpScale, ')
+          ..write('vpRotation: $vpRotation, ')
+          ..write('position: $position')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(canvasId, name, vpTx, vpTy, vpScale, vpRotation, position);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanvasBookmark &&
+          other.canvasId == this.canvasId &&
+          other.name == this.name &&
+          other.vpTx == this.vpTx &&
+          other.vpTy == this.vpTy &&
+          other.vpScale == this.vpScale &&
+          other.vpRotation == this.vpRotation &&
+          other.position == this.position);
+}
+
+class CanvasBookmarksCompanion extends UpdateCompanion<CanvasBookmark> {
+  final Value<String> canvasId;
+  final Value<String> name;
+  final Value<double> vpTx;
+  final Value<double> vpTy;
+  final Value<double> vpScale;
+  final Value<double> vpRotation;
+  final Value<int> position;
+  final Value<int> rowid;
+  const CanvasBookmarksCompanion({
+    this.canvasId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.vpTx = const Value.absent(),
+    this.vpTy = const Value.absent(),
+    this.vpScale = const Value.absent(),
+    this.vpRotation = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanvasBookmarksCompanion.insert({
+    required String canvasId,
+    required String name,
+    required double vpTx,
+    required double vpTy,
+    required double vpScale,
+    required double vpRotation,
+    required int position,
+    this.rowid = const Value.absent(),
+  }) : canvasId = Value(canvasId),
+       name = Value(name),
+       vpTx = Value(vpTx),
+       vpTy = Value(vpTy),
+       vpScale = Value(vpScale),
+       vpRotation = Value(vpRotation),
+       position = Value(position);
+  static Insertable<CanvasBookmark> custom({
+    Expression<String>? canvasId,
+    Expression<String>? name,
+    Expression<double>? vpTx,
+    Expression<double>? vpTy,
+    Expression<double>? vpScale,
+    Expression<double>? vpRotation,
+    Expression<int>? position,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (canvasId != null) 'canvas_id': canvasId,
+      if (name != null) 'name': name,
+      if (vpTx != null) 'vp_tx': vpTx,
+      if (vpTy != null) 'vp_ty': vpTy,
+      if (vpScale != null) 'vp_scale': vpScale,
+      if (vpRotation != null) 'vp_rotation': vpRotation,
+      if (position != null) 'position': position,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanvasBookmarksCompanion copyWith({
+    Value<String>? canvasId,
+    Value<String>? name,
+    Value<double>? vpTx,
+    Value<double>? vpTy,
+    Value<double>? vpScale,
+    Value<double>? vpRotation,
+    Value<int>? position,
+    Value<int>? rowid,
+  }) {
+    return CanvasBookmarksCompanion(
+      canvasId: canvasId ?? this.canvasId,
+      name: name ?? this.name,
+      vpTx: vpTx ?? this.vpTx,
+      vpTy: vpTy ?? this.vpTy,
+      vpScale: vpScale ?? this.vpScale,
+      vpRotation: vpRotation ?? this.vpRotation,
+      position: position ?? this.position,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (canvasId.present) {
+      map['canvas_id'] = Variable<String>(canvasId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (vpTx.present) {
+      map['vp_tx'] = Variable<double>(vpTx.value);
+    }
+    if (vpTy.present) {
+      map['vp_ty'] = Variable<double>(vpTy.value);
+    }
+    if (vpScale.present) {
+      map['vp_scale'] = Variable<double>(vpScale.value);
+    }
+    if (vpRotation.present) {
+      map['vp_rotation'] = Variable<double>(vpRotation.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasBookmarksCompanion(')
+          ..write('canvasId: $canvasId, ')
+          ..write('name: $name, ')
+          ..write('vpTx: $vpTx, ')
+          ..write('vpTy: $vpTy, ')
+          ..write('vpScale: $vpScale, ')
+          ..write('vpRotation: $vpRotation, ')
+          ..write('position: $position, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1213,6 +2904,20 @@ class $CanvasElementsTable extends CanvasElements
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES canvases (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _layerIdMeta = const VerificationMeta(
+    'layerId',
+  );
+  @override
+  late final GeneratedColumn<String> layerId = GeneratedColumn<String>(
+    'layer_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES canvas_layers (id) ON DELETE SET NULL',
     ),
   );
   @override
@@ -1322,6 +3027,7 @@ class $CanvasElementsTable extends CanvasElements
   List<GeneratedColumn> get $columns => [
     id,
     canvasId,
+    layerId,
     kind,
     x,
     y,
@@ -1357,6 +3063,12 @@ class $CanvasElementsTable extends CanvasElements
       );
     } else if (isInserting) {
       context.missing(_canvasIdMeta);
+    }
+    if (data.containsKey('layer_id')) {
+      context.handle(
+        _layerIdMeta,
+        layerId.isAcceptableOrUnknown(data['layer_id']!, _layerIdMeta),
+      );
     }
     if (data.containsKey('x')) {
       context.handle(_xMeta, x.isAcceptableOrUnknown(data['x']!, _xMeta));
@@ -1437,6 +3149,10 @@ class $CanvasElementsTable extends CanvasElements
         DriftSqlType.string,
         data['${effectivePrefix}canvas_id'],
       )!,
+      layerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}layer_id'],
+      ),
       kind: $CanvasElementsTable.$converterkind.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.int,
@@ -1494,6 +3210,7 @@ class $CanvasElementsTable extends CanvasElements
 class CanvasElement extends DataClass implements Insertable<CanvasElement> {
   final String id;
   final String canvasId;
+  final String? layerId;
   final ElementKind kind;
 
   /// World-space bounds — stored so the spatial index loads without
@@ -1512,6 +3229,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
   const CanvasElement({
     required this.id,
     required this.canvasId,
+    this.layerId,
     required this.kind,
     required this.x,
     required this.y,
@@ -1528,6 +3246,9 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['canvas_id'] = Variable<String>(canvasId);
+    if (!nullToAbsent || layerId != null) {
+      map['layer_id'] = Variable<String>(layerId);
+    }
     {
       map['kind'] = Variable<int>(
         $CanvasElementsTable.$converterkind.toSql(kind),
@@ -1549,6 +3270,9 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
     return CanvasElementsCompanion(
       id: Value(id),
       canvasId: Value(canvasId),
+      layerId: layerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(layerId),
       kind: Value(kind),
       x: Value(x),
       y: Value(y),
@@ -1570,6 +3294,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
     return CanvasElement(
       id: serializer.fromJson<String>(json['id']),
       canvasId: serializer.fromJson<String>(json['canvasId']),
+      layerId: serializer.fromJson<String?>(json['layerId']),
       kind: $CanvasElementsTable.$converterkind.fromJson(
         serializer.fromJson<int>(json['kind']),
       ),
@@ -1590,6 +3315,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'canvasId': serializer.toJson<String>(canvasId),
+      'layerId': serializer.toJson<String?>(layerId),
       'kind': serializer.toJson<int>(
         $CanvasElementsTable.$converterkind.toJson(kind),
       ),
@@ -1608,6 +3334,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
   CanvasElement copyWith({
     String? id,
     String? canvasId,
+    Value<String?> layerId = const Value.absent(),
     ElementKind? kind,
     double? x,
     double? y,
@@ -1621,6 +3348,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
   }) => CanvasElement(
     id: id ?? this.id,
     canvasId: canvasId ?? this.canvasId,
+    layerId: layerId.present ? layerId.value : this.layerId,
     kind: kind ?? this.kind,
     x: x ?? this.x,
     y: y ?? this.y,
@@ -1636,6 +3364,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
     return CanvasElement(
       id: data.id.present ? data.id.value : this.id,
       canvasId: data.canvasId.present ? data.canvasId.value : this.canvasId,
+      layerId: data.layerId.present ? data.layerId.value : this.layerId,
       kind: data.kind.present ? data.kind.value : this.kind,
       x: data.x.present ? data.x.value : this.x,
       y: data.y.present ? data.y.value : this.y,
@@ -1654,6 +3383,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
     return (StringBuffer('CanvasElement(')
           ..write('id: $id, ')
           ..write('canvasId: $canvasId, ')
+          ..write('layerId: $layerId, ')
           ..write('kind: $kind, ')
           ..write('x: $x, ')
           ..write('y: $y, ')
@@ -1672,6 +3402,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
   int get hashCode => Object.hash(
     id,
     canvasId,
+    layerId,
     kind,
     x,
     y,
@@ -1689,6 +3420,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
       (other is CanvasElement &&
           other.id == this.id &&
           other.canvasId == this.canvasId &&
+          other.layerId == this.layerId &&
           other.kind == this.kind &&
           other.x == this.x &&
           other.y == this.y &&
@@ -1704,6 +3436,7 @@ class CanvasElement extends DataClass implements Insertable<CanvasElement> {
 class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
   final Value<String> id;
   final Value<String> canvasId;
+  final Value<String?> layerId;
   final Value<ElementKind> kind;
   final Value<double> x;
   final Value<double> y;
@@ -1718,6 +3451,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
   const CanvasElementsCompanion({
     this.id = const Value.absent(),
     this.canvasId = const Value.absent(),
+    this.layerId = const Value.absent(),
     this.kind = const Value.absent(),
     this.x = const Value.absent(),
     this.y = const Value.absent(),
@@ -1733,6 +3467,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
   CanvasElementsCompanion.insert({
     required String id,
     required String canvasId,
+    this.layerId = const Value.absent(),
     required ElementKind kind,
     required double x,
     required double y,
@@ -1757,6 +3492,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
   static Insertable<CanvasElement> custom({
     Expression<String>? id,
     Expression<String>? canvasId,
+    Expression<String>? layerId,
     Expression<int>? kind,
     Expression<double>? x,
     Expression<double>? y,
@@ -1772,6 +3508,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (canvasId != null) 'canvas_id': canvasId,
+      if (layerId != null) 'layer_id': layerId,
       if (kind != null) 'kind': kind,
       if (x != null) 'x': x,
       if (y != null) 'y': y,
@@ -1789,6 +3526,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
   CanvasElementsCompanion copyWith({
     Value<String>? id,
     Value<String>? canvasId,
+    Value<String?>? layerId,
     Value<ElementKind>? kind,
     Value<double>? x,
     Value<double>? y,
@@ -1804,6 +3542,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
     return CanvasElementsCompanion(
       id: id ?? this.id,
       canvasId: canvasId ?? this.canvasId,
+      layerId: layerId ?? this.layerId,
       kind: kind ?? this.kind,
       x: x ?? this.x,
       y: y ?? this.y,
@@ -1826,6 +3565,9 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
     }
     if (canvasId.present) {
       map['canvas_id'] = Variable<String>(canvasId.value);
+    }
+    if (layerId.present) {
+      map['layer_id'] = Variable<String>(layerId.value);
     }
     if (kind.present) {
       map['kind'] = Variable<int>(
@@ -1870,6 +3612,7 @@ class CanvasElementsCompanion extends UpdateCompanion<CanvasElement> {
     return (StringBuffer('CanvasElementsCompanion(')
           ..write('id: $id, ')
           ..write('canvasId: $canvasId, ')
+          ..write('layerId: $layerId, ')
           ..write('kind: $kind, ')
           ..write('x: $x, ')
           ..write('y: $y, ')
@@ -4550,6 +6293,831 @@ class CanvasTextsCompanion extends UpdateCompanion<CanvasText> {
           ..write('noteText: $noteText, ')
           ..write('color: $color, ')
           ..write('fontSize: $fontSize, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CanvasShapesTable extends CanvasShapes
+    with TableInfo<$CanvasShapesTable, CanvasShape> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanvasShapesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _elementIdMeta = const VerificationMeta(
+    'elementId',
+  );
+  @override
+  late final GeneratedColumn<String> elementId = GeneratedColumn<String>(
+    'element_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES canvas_elements (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _shapeKindMeta = const VerificationMeta(
+    'shapeKind',
+  );
+  @override
+  late final GeneratedColumn<int> shapeKind = GeneratedColumn<int>(
+    'shape_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startXMeta = const VerificationMeta('startX');
+  @override
+  late final GeneratedColumn<double> startX = GeneratedColumn<double>(
+    'start_x',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startYMeta = const VerificationMeta('startY');
+  @override
+  late final GeneratedColumn<double> startY = GeneratedColumn<double>(
+    'start_y',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endXMeta = const VerificationMeta('endX');
+  @override
+  late final GeneratedColumn<double> endX = GeneratedColumn<double>(
+    'end_x',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endYMeta = const VerificationMeta('endY');
+  @override
+  late final GeneratedColumn<double> endY = GeneratedColumn<double>(
+    'end_y',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _strokeWidthMeta = const VerificationMeta(
+    'strokeWidth',
+  );
+  @override
+  late final GeneratedColumn<double> strokeWidth = GeneratedColumn<double>(
+    'stroke_width',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _arrowBodyKindMeta = const VerificationMeta(
+    'arrowBodyKind',
+  );
+  @override
+  late final GeneratedColumn<int> arrowBodyKind = GeneratedColumn<int>(
+    'arrow_body_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _arrowStartHeadMeta = const VerificationMeta(
+    'arrowStartHead',
+  );
+  @override
+  late final GeneratedColumn<int> arrowStartHead = GeneratedColumn<int>(
+    'arrow_start_head',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _arrowEndHeadMeta = const VerificationMeta(
+    'arrowEndHead',
+  );
+  @override
+  late final GeneratedColumn<int> arrowEndHead = GeneratedColumn<int>(
+    'arrow_end_head',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(2),
+  );
+  static const VerificationMeta _arrowHeadScaleMeta = const VerificationMeta(
+    'arrowHeadScale',
+  );
+  @override
+  late final GeneratedColumn<double> arrowHeadScale = GeneratedColumn<double>(
+    'arrow_head_scale',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
+  static const VerificationMeta _controlPointsJsonMeta = const VerificationMeta(
+    'controlPointsJson',
+  );
+  @override
+  late final GeneratedColumn<String> controlPointsJson =
+      GeneratedColumn<String>(
+        'control_points_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _arrowLegacyMeta = const VerificationMeta(
+    'arrowLegacy',
+  );
+  @override
+  late final GeneratedColumn<bool> arrowLegacy = GeneratedColumn<bool>(
+    'arrow_legacy',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("arrow_legacy" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    elementId,
+    shapeKind,
+    startX,
+    startY,
+    endX,
+    endY,
+    color,
+    strokeWidth,
+    arrowBodyKind,
+    arrowStartHead,
+    arrowEndHead,
+    arrowHeadScale,
+    controlPointsJson,
+    arrowLegacy,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canvas_shapes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanvasShape> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('element_id')) {
+      context.handle(
+        _elementIdMeta,
+        elementId.isAcceptableOrUnknown(data['element_id']!, _elementIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_elementIdMeta);
+    }
+    if (data.containsKey('shape_kind')) {
+      context.handle(
+        _shapeKindMeta,
+        shapeKind.isAcceptableOrUnknown(data['shape_kind']!, _shapeKindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_shapeKindMeta);
+    }
+    if (data.containsKey('start_x')) {
+      context.handle(
+        _startXMeta,
+        startX.isAcceptableOrUnknown(data['start_x']!, _startXMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startXMeta);
+    }
+    if (data.containsKey('start_y')) {
+      context.handle(
+        _startYMeta,
+        startY.isAcceptableOrUnknown(data['start_y']!, _startYMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startYMeta);
+    }
+    if (data.containsKey('end_x')) {
+      context.handle(
+        _endXMeta,
+        endX.isAcceptableOrUnknown(data['end_x']!, _endXMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endXMeta);
+    }
+    if (data.containsKey('end_y')) {
+      context.handle(
+        _endYMeta,
+        endY.isAcceptableOrUnknown(data['end_y']!, _endYMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endYMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('stroke_width')) {
+      context.handle(
+        _strokeWidthMeta,
+        strokeWidth.isAcceptableOrUnknown(
+          data['stroke_width']!,
+          _strokeWidthMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_strokeWidthMeta);
+    }
+    if (data.containsKey('arrow_body_kind')) {
+      context.handle(
+        _arrowBodyKindMeta,
+        arrowBodyKind.isAcceptableOrUnknown(
+          data['arrow_body_kind']!,
+          _arrowBodyKindMeta,
+        ),
+      );
+    }
+    if (data.containsKey('arrow_start_head')) {
+      context.handle(
+        _arrowStartHeadMeta,
+        arrowStartHead.isAcceptableOrUnknown(
+          data['arrow_start_head']!,
+          _arrowStartHeadMeta,
+        ),
+      );
+    }
+    if (data.containsKey('arrow_end_head')) {
+      context.handle(
+        _arrowEndHeadMeta,
+        arrowEndHead.isAcceptableOrUnknown(
+          data['arrow_end_head']!,
+          _arrowEndHeadMeta,
+        ),
+      );
+    }
+    if (data.containsKey('arrow_head_scale')) {
+      context.handle(
+        _arrowHeadScaleMeta,
+        arrowHeadScale.isAcceptableOrUnknown(
+          data['arrow_head_scale']!,
+          _arrowHeadScaleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('control_points_json')) {
+      context.handle(
+        _controlPointsJsonMeta,
+        controlPointsJson.isAcceptableOrUnknown(
+          data['control_points_json']!,
+          _controlPointsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('arrow_legacy')) {
+      context.handle(
+        _arrowLegacyMeta,
+        arrowLegacy.isAcceptableOrUnknown(
+          data['arrow_legacy']!,
+          _arrowLegacyMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {elementId};
+  @override
+  CanvasShape map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanvasShape(
+      elementId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}element_id'],
+      )!,
+      shapeKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}shape_kind'],
+      )!,
+      startX: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}start_x'],
+      )!,
+      startY: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}start_y'],
+      )!,
+      endX: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}end_x'],
+      )!,
+      endY: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}end_y'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color'],
+      )!,
+      strokeWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}stroke_width'],
+      )!,
+      arrowBodyKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}arrow_body_kind'],
+      )!,
+      arrowStartHead: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}arrow_start_head'],
+      )!,
+      arrowEndHead: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}arrow_end_head'],
+      )!,
+      arrowHeadScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}arrow_head_scale'],
+      )!,
+      controlPointsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}control_points_json'],
+      )!,
+      arrowLegacy: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}arrow_legacy'],
+      )!,
+    );
+  }
+
+  @override
+  $CanvasShapesTable createAlias(String alias) {
+    return $CanvasShapesTable(attachedDatabase, alias);
+  }
+}
+
+class CanvasShape extends DataClass implements Insertable<CanvasShape> {
+  final String elementId;
+  final int shapeKind;
+  final double startX;
+  final double startY;
+  final double endX;
+  final double endY;
+  final int color;
+  final double strokeWidth;
+  final int arrowBodyKind;
+  final int arrowStartHead;
+  final int arrowEndHead;
+  final double arrowHeadScale;
+  final String controlPointsJson;
+  final bool arrowLegacy;
+  const CanvasShape({
+    required this.elementId,
+    required this.shapeKind,
+    required this.startX,
+    required this.startY,
+    required this.endX,
+    required this.endY,
+    required this.color,
+    required this.strokeWidth,
+    required this.arrowBodyKind,
+    required this.arrowStartHead,
+    required this.arrowEndHead,
+    required this.arrowHeadScale,
+    required this.controlPointsJson,
+    required this.arrowLegacy,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['element_id'] = Variable<String>(elementId);
+    map['shape_kind'] = Variable<int>(shapeKind);
+    map['start_x'] = Variable<double>(startX);
+    map['start_y'] = Variable<double>(startY);
+    map['end_x'] = Variable<double>(endX);
+    map['end_y'] = Variable<double>(endY);
+    map['color'] = Variable<int>(color);
+    map['stroke_width'] = Variable<double>(strokeWidth);
+    map['arrow_body_kind'] = Variable<int>(arrowBodyKind);
+    map['arrow_start_head'] = Variable<int>(arrowStartHead);
+    map['arrow_end_head'] = Variable<int>(arrowEndHead);
+    map['arrow_head_scale'] = Variable<double>(arrowHeadScale);
+    map['control_points_json'] = Variable<String>(controlPointsJson);
+    map['arrow_legacy'] = Variable<bool>(arrowLegacy);
+    return map;
+  }
+
+  CanvasShapesCompanion toCompanion(bool nullToAbsent) {
+    return CanvasShapesCompanion(
+      elementId: Value(elementId),
+      shapeKind: Value(shapeKind),
+      startX: Value(startX),
+      startY: Value(startY),
+      endX: Value(endX),
+      endY: Value(endY),
+      color: Value(color),
+      strokeWidth: Value(strokeWidth),
+      arrowBodyKind: Value(arrowBodyKind),
+      arrowStartHead: Value(arrowStartHead),
+      arrowEndHead: Value(arrowEndHead),
+      arrowHeadScale: Value(arrowHeadScale),
+      controlPointsJson: Value(controlPointsJson),
+      arrowLegacy: Value(arrowLegacy),
+    );
+  }
+
+  factory CanvasShape.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanvasShape(
+      elementId: serializer.fromJson<String>(json['elementId']),
+      shapeKind: serializer.fromJson<int>(json['shapeKind']),
+      startX: serializer.fromJson<double>(json['startX']),
+      startY: serializer.fromJson<double>(json['startY']),
+      endX: serializer.fromJson<double>(json['endX']),
+      endY: serializer.fromJson<double>(json['endY']),
+      color: serializer.fromJson<int>(json['color']),
+      strokeWidth: serializer.fromJson<double>(json['strokeWidth']),
+      arrowBodyKind: serializer.fromJson<int>(json['arrowBodyKind']),
+      arrowStartHead: serializer.fromJson<int>(json['arrowStartHead']),
+      arrowEndHead: serializer.fromJson<int>(json['arrowEndHead']),
+      arrowHeadScale: serializer.fromJson<double>(json['arrowHeadScale']),
+      controlPointsJson: serializer.fromJson<String>(json['controlPointsJson']),
+      arrowLegacy: serializer.fromJson<bool>(json['arrowLegacy']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'elementId': serializer.toJson<String>(elementId),
+      'shapeKind': serializer.toJson<int>(shapeKind),
+      'startX': serializer.toJson<double>(startX),
+      'startY': serializer.toJson<double>(startY),
+      'endX': serializer.toJson<double>(endX),
+      'endY': serializer.toJson<double>(endY),
+      'color': serializer.toJson<int>(color),
+      'strokeWidth': serializer.toJson<double>(strokeWidth),
+      'arrowBodyKind': serializer.toJson<int>(arrowBodyKind),
+      'arrowStartHead': serializer.toJson<int>(arrowStartHead),
+      'arrowEndHead': serializer.toJson<int>(arrowEndHead),
+      'arrowHeadScale': serializer.toJson<double>(arrowHeadScale),
+      'controlPointsJson': serializer.toJson<String>(controlPointsJson),
+      'arrowLegacy': serializer.toJson<bool>(arrowLegacy),
+    };
+  }
+
+  CanvasShape copyWith({
+    String? elementId,
+    int? shapeKind,
+    double? startX,
+    double? startY,
+    double? endX,
+    double? endY,
+    int? color,
+    double? strokeWidth,
+    int? arrowBodyKind,
+    int? arrowStartHead,
+    int? arrowEndHead,
+    double? arrowHeadScale,
+    String? controlPointsJson,
+    bool? arrowLegacy,
+  }) => CanvasShape(
+    elementId: elementId ?? this.elementId,
+    shapeKind: shapeKind ?? this.shapeKind,
+    startX: startX ?? this.startX,
+    startY: startY ?? this.startY,
+    endX: endX ?? this.endX,
+    endY: endY ?? this.endY,
+    color: color ?? this.color,
+    strokeWidth: strokeWidth ?? this.strokeWidth,
+    arrowBodyKind: arrowBodyKind ?? this.arrowBodyKind,
+    arrowStartHead: arrowStartHead ?? this.arrowStartHead,
+    arrowEndHead: arrowEndHead ?? this.arrowEndHead,
+    arrowHeadScale: arrowHeadScale ?? this.arrowHeadScale,
+    controlPointsJson: controlPointsJson ?? this.controlPointsJson,
+    arrowLegacy: arrowLegacy ?? this.arrowLegacy,
+  );
+  CanvasShape copyWithCompanion(CanvasShapesCompanion data) {
+    return CanvasShape(
+      elementId: data.elementId.present ? data.elementId.value : this.elementId,
+      shapeKind: data.shapeKind.present ? data.shapeKind.value : this.shapeKind,
+      startX: data.startX.present ? data.startX.value : this.startX,
+      startY: data.startY.present ? data.startY.value : this.startY,
+      endX: data.endX.present ? data.endX.value : this.endX,
+      endY: data.endY.present ? data.endY.value : this.endY,
+      color: data.color.present ? data.color.value : this.color,
+      strokeWidth: data.strokeWidth.present
+          ? data.strokeWidth.value
+          : this.strokeWidth,
+      arrowBodyKind: data.arrowBodyKind.present
+          ? data.arrowBodyKind.value
+          : this.arrowBodyKind,
+      arrowStartHead: data.arrowStartHead.present
+          ? data.arrowStartHead.value
+          : this.arrowStartHead,
+      arrowEndHead: data.arrowEndHead.present
+          ? data.arrowEndHead.value
+          : this.arrowEndHead,
+      arrowHeadScale: data.arrowHeadScale.present
+          ? data.arrowHeadScale.value
+          : this.arrowHeadScale,
+      controlPointsJson: data.controlPointsJson.present
+          ? data.controlPointsJson.value
+          : this.controlPointsJson,
+      arrowLegacy: data.arrowLegacy.present
+          ? data.arrowLegacy.value
+          : this.arrowLegacy,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasShape(')
+          ..write('elementId: $elementId, ')
+          ..write('shapeKind: $shapeKind, ')
+          ..write('startX: $startX, ')
+          ..write('startY: $startY, ')
+          ..write('endX: $endX, ')
+          ..write('endY: $endY, ')
+          ..write('color: $color, ')
+          ..write('strokeWidth: $strokeWidth, ')
+          ..write('arrowBodyKind: $arrowBodyKind, ')
+          ..write('arrowStartHead: $arrowStartHead, ')
+          ..write('arrowEndHead: $arrowEndHead, ')
+          ..write('arrowHeadScale: $arrowHeadScale, ')
+          ..write('controlPointsJson: $controlPointsJson, ')
+          ..write('arrowLegacy: $arrowLegacy')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    elementId,
+    shapeKind,
+    startX,
+    startY,
+    endX,
+    endY,
+    color,
+    strokeWidth,
+    arrowBodyKind,
+    arrowStartHead,
+    arrowEndHead,
+    arrowHeadScale,
+    controlPointsJson,
+    arrowLegacy,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanvasShape &&
+          other.elementId == this.elementId &&
+          other.shapeKind == this.shapeKind &&
+          other.startX == this.startX &&
+          other.startY == this.startY &&
+          other.endX == this.endX &&
+          other.endY == this.endY &&
+          other.color == this.color &&
+          other.strokeWidth == this.strokeWidth &&
+          other.arrowBodyKind == this.arrowBodyKind &&
+          other.arrowStartHead == this.arrowStartHead &&
+          other.arrowEndHead == this.arrowEndHead &&
+          other.arrowHeadScale == this.arrowHeadScale &&
+          other.controlPointsJson == this.controlPointsJson &&
+          other.arrowLegacy == this.arrowLegacy);
+}
+
+class CanvasShapesCompanion extends UpdateCompanion<CanvasShape> {
+  final Value<String> elementId;
+  final Value<int> shapeKind;
+  final Value<double> startX;
+  final Value<double> startY;
+  final Value<double> endX;
+  final Value<double> endY;
+  final Value<int> color;
+  final Value<double> strokeWidth;
+  final Value<int> arrowBodyKind;
+  final Value<int> arrowStartHead;
+  final Value<int> arrowEndHead;
+  final Value<double> arrowHeadScale;
+  final Value<String> controlPointsJson;
+  final Value<bool> arrowLegacy;
+  final Value<int> rowid;
+  const CanvasShapesCompanion({
+    this.elementId = const Value.absent(),
+    this.shapeKind = const Value.absent(),
+    this.startX = const Value.absent(),
+    this.startY = const Value.absent(),
+    this.endX = const Value.absent(),
+    this.endY = const Value.absent(),
+    this.color = const Value.absent(),
+    this.strokeWidth = const Value.absent(),
+    this.arrowBodyKind = const Value.absent(),
+    this.arrowStartHead = const Value.absent(),
+    this.arrowEndHead = const Value.absent(),
+    this.arrowHeadScale = const Value.absent(),
+    this.controlPointsJson = const Value.absent(),
+    this.arrowLegacy = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CanvasShapesCompanion.insert({
+    required String elementId,
+    required int shapeKind,
+    required double startX,
+    required double startY,
+    required double endX,
+    required double endY,
+    required int color,
+    required double strokeWidth,
+    this.arrowBodyKind = const Value.absent(),
+    this.arrowStartHead = const Value.absent(),
+    this.arrowEndHead = const Value.absent(),
+    this.arrowHeadScale = const Value.absent(),
+    this.controlPointsJson = const Value.absent(),
+    this.arrowLegacy = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : elementId = Value(elementId),
+       shapeKind = Value(shapeKind),
+       startX = Value(startX),
+       startY = Value(startY),
+       endX = Value(endX),
+       endY = Value(endY),
+       color = Value(color),
+       strokeWidth = Value(strokeWidth);
+  static Insertable<CanvasShape> custom({
+    Expression<String>? elementId,
+    Expression<int>? shapeKind,
+    Expression<double>? startX,
+    Expression<double>? startY,
+    Expression<double>? endX,
+    Expression<double>? endY,
+    Expression<int>? color,
+    Expression<double>? strokeWidth,
+    Expression<int>? arrowBodyKind,
+    Expression<int>? arrowStartHead,
+    Expression<int>? arrowEndHead,
+    Expression<double>? arrowHeadScale,
+    Expression<String>? controlPointsJson,
+    Expression<bool>? arrowLegacy,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (elementId != null) 'element_id': elementId,
+      if (shapeKind != null) 'shape_kind': shapeKind,
+      if (startX != null) 'start_x': startX,
+      if (startY != null) 'start_y': startY,
+      if (endX != null) 'end_x': endX,
+      if (endY != null) 'end_y': endY,
+      if (color != null) 'color': color,
+      if (strokeWidth != null) 'stroke_width': strokeWidth,
+      if (arrowBodyKind != null) 'arrow_body_kind': arrowBodyKind,
+      if (arrowStartHead != null) 'arrow_start_head': arrowStartHead,
+      if (arrowEndHead != null) 'arrow_end_head': arrowEndHead,
+      if (arrowHeadScale != null) 'arrow_head_scale': arrowHeadScale,
+      if (controlPointsJson != null) 'control_points_json': controlPointsJson,
+      if (arrowLegacy != null) 'arrow_legacy': arrowLegacy,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CanvasShapesCompanion copyWith({
+    Value<String>? elementId,
+    Value<int>? shapeKind,
+    Value<double>? startX,
+    Value<double>? startY,
+    Value<double>? endX,
+    Value<double>? endY,
+    Value<int>? color,
+    Value<double>? strokeWidth,
+    Value<int>? arrowBodyKind,
+    Value<int>? arrowStartHead,
+    Value<int>? arrowEndHead,
+    Value<double>? arrowHeadScale,
+    Value<String>? controlPointsJson,
+    Value<bool>? arrowLegacy,
+    Value<int>? rowid,
+  }) {
+    return CanvasShapesCompanion(
+      elementId: elementId ?? this.elementId,
+      shapeKind: shapeKind ?? this.shapeKind,
+      startX: startX ?? this.startX,
+      startY: startY ?? this.startY,
+      endX: endX ?? this.endX,
+      endY: endY ?? this.endY,
+      color: color ?? this.color,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+      arrowBodyKind: arrowBodyKind ?? this.arrowBodyKind,
+      arrowStartHead: arrowStartHead ?? this.arrowStartHead,
+      arrowEndHead: arrowEndHead ?? this.arrowEndHead,
+      arrowHeadScale: arrowHeadScale ?? this.arrowHeadScale,
+      controlPointsJson: controlPointsJson ?? this.controlPointsJson,
+      arrowLegacy: arrowLegacy ?? this.arrowLegacy,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (elementId.present) {
+      map['element_id'] = Variable<String>(elementId.value);
+    }
+    if (shapeKind.present) {
+      map['shape_kind'] = Variable<int>(shapeKind.value);
+    }
+    if (startX.present) {
+      map['start_x'] = Variable<double>(startX.value);
+    }
+    if (startY.present) {
+      map['start_y'] = Variable<double>(startY.value);
+    }
+    if (endX.present) {
+      map['end_x'] = Variable<double>(endX.value);
+    }
+    if (endY.present) {
+      map['end_y'] = Variable<double>(endY.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
+    }
+    if (strokeWidth.present) {
+      map['stroke_width'] = Variable<double>(strokeWidth.value);
+    }
+    if (arrowBodyKind.present) {
+      map['arrow_body_kind'] = Variable<int>(arrowBodyKind.value);
+    }
+    if (arrowStartHead.present) {
+      map['arrow_start_head'] = Variable<int>(arrowStartHead.value);
+    }
+    if (arrowEndHead.present) {
+      map['arrow_end_head'] = Variable<int>(arrowEndHead.value);
+    }
+    if (arrowHeadScale.present) {
+      map['arrow_head_scale'] = Variable<double>(arrowHeadScale.value);
+    }
+    if (controlPointsJson.present) {
+      map['control_points_json'] = Variable<String>(controlPointsJson.value);
+    }
+    if (arrowLegacy.present) {
+      map['arrow_legacy'] = Variable<bool>(arrowLegacy.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasShapesCompanion(')
+          ..write('elementId: $elementId, ')
+          ..write('shapeKind: $shapeKind, ')
+          ..write('startX: $startX, ')
+          ..write('startY: $startY, ')
+          ..write('endX: $endX, ')
+          ..write('endY: $endY, ')
+          ..write('color: $color, ')
+          ..write('strokeWidth: $strokeWidth, ')
+          ..write('arrowBodyKind: $arrowBodyKind, ')
+          ..write('arrowStartHead: $arrowStartHead, ')
+          ..write('arrowEndHead: $arrowEndHead, ')
+          ..write('arrowHeadScale: $arrowHeadScale, ')
+          ..write('controlPointsJson: $controlPointsJson, ')
+          ..write('arrowLegacy: $arrowLegacy, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -10662,6 +13230,69 @@ class $AppSettingsTable extends AppSettings
         requiredDuringInsert: false,
         defaultValue: const Constant(0),
       ).withConverter<ThemeModeSetting>($AppSettingsTable.$converterthemeMode);
+  static const VerificationMeta _accentColorMeta = const VerificationMeta(
+    'accentColor',
+  );
+  @override
+  late final GeneratedColumn<int> accentColor = GeneratedColumn<int>(
+    'accent_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFFE8B84B),
+  );
+  static const VerificationMeta _backgroundColorMeta = const VerificationMeta(
+    'backgroundColor',
+  );
+  @override
+  late final GeneratedColumn<int> backgroundColor = GeneratedColumn<int>(
+    'background_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFF121212),
+  );
+  static const VerificationMeta _inkPaletteJsonMeta = const VerificationMeta(
+    'inkPaletteJson',
+  );
+  @override
+  late final GeneratedColumn<String> inkPaletteJson = GeneratedColumn<String>(
+    'ink_palette_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(
+      '[4294922129,4291316008,4281771008,4276755455,4294967295,4279318560]',
+    ),
+  );
+  static const VerificationMeta _stylusMappingJsonMeta = const VerificationMeta(
+    'stylusMappingJson',
+  );
+  @override
+  late final GeneratedColumn<String> stylusMappingJson =
+      GeneratedColumn<String>(
+        'stylus_mapping_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
+  static const VerificationMeta _penProfileJsonMeta = const VerificationMeta(
+    'penProfileJson',
+  );
+  @override
+  late final GeneratedColumn<String> penProfileJson = GeneratedColumn<String>(
+    'pen_profile_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
   static const VerificationMeta _defaultPomodoroWorkSecsMeta =
       const VerificationMeta('defaultPomodoroWorkSecs');
   @override
@@ -10768,6 +13399,11 @@ class $AppSettingsTable extends AppSettings
   List<GeneratedColumn> get $columns => [
     id,
     themeMode,
+    accentColor,
+    backgroundColor,
+    inkPaletteJson,
+    stylusMappingJson,
+    penProfileJson,
     defaultPomodoroWorkSecs,
     defaultPomodoroBreakSecs,
     defaultFlowBreakRatio,
@@ -10791,6 +13427,51 @@ class $AppSettingsTable extends AppSettings
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('accent_color')) {
+      context.handle(
+        _accentColorMeta,
+        accentColor.isAcceptableOrUnknown(
+          data['accent_color']!,
+          _accentColorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('background_color')) {
+      context.handle(
+        _backgroundColorMeta,
+        backgroundColor.isAcceptableOrUnknown(
+          data['background_color']!,
+          _backgroundColorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('ink_palette_json')) {
+      context.handle(
+        _inkPaletteJsonMeta,
+        inkPaletteJson.isAcceptableOrUnknown(
+          data['ink_palette_json']!,
+          _inkPaletteJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('stylus_mapping_json')) {
+      context.handle(
+        _stylusMappingJsonMeta,
+        stylusMappingJson.isAcceptableOrUnknown(
+          data['stylus_mapping_json']!,
+          _stylusMappingJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('pen_profile_json')) {
+      context.handle(
+        _penProfileJsonMeta,
+        penProfileJson.isAcceptableOrUnknown(
+          data['pen_profile_json']!,
+          _penProfileJsonMeta,
+        ),
+      );
     }
     if (data.containsKey('default_pomodoro_work_secs')) {
       context.handle(
@@ -10874,6 +13555,26 @@ class $AppSettingsTable extends AppSettings
           data['${effectivePrefix}theme_mode'],
         )!,
       ),
+      accentColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}accent_color'],
+      )!,
+      backgroundColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}background_color'],
+      )!,
+      inkPaletteJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ink_palette_json'],
+      )!,
+      stylusMappingJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stylus_mapping_json'],
+      )!,
+      penProfileJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pen_profile_json'],
+      )!,
       defaultPomodoroWorkSecs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}default_pomodoro_work_secs'],
@@ -10927,6 +13628,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   /// schema, so the single settings row is trivial to upsert.
   final String id;
   final ThemeModeSetting themeMode;
+  final int accentColor;
+  final int backgroundColor;
+  final String inkPaletteJson;
+  final String stylusMappingJson;
+  final String penProfileJson;
   final int defaultPomodoroWorkSecs;
   final int defaultPomodoroBreakSecs;
   final double defaultFlowBreakRatio;
@@ -10938,6 +13644,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   const AppSetting({
     required this.id,
     required this.themeMode,
+    required this.accentColor,
+    required this.backgroundColor,
+    required this.inkPaletteJson,
+    required this.stylusMappingJson,
+    required this.penProfileJson,
     required this.defaultPomodoroWorkSecs,
     required this.defaultPomodoroBreakSecs,
     required this.defaultFlowBreakRatio,
@@ -10956,6 +13667,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
         $AppSettingsTable.$converterthemeMode.toSql(themeMode),
       );
     }
+    map['accent_color'] = Variable<int>(accentColor);
+    map['background_color'] = Variable<int>(backgroundColor);
+    map['ink_palette_json'] = Variable<String>(inkPaletteJson);
+    map['stylus_mapping_json'] = Variable<String>(stylusMappingJson);
+    map['pen_profile_json'] = Variable<String>(penProfileJson);
     map['default_pomodoro_work_secs'] = Variable<int>(defaultPomodoroWorkSecs);
     map['default_pomodoro_break_secs'] = Variable<int>(
       defaultPomodoroBreakSecs,
@@ -10979,6 +13695,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     return AppSettingsCompanion(
       id: Value(id),
       themeMode: Value(themeMode),
+      accentColor: Value(accentColor),
+      backgroundColor: Value(backgroundColor),
+      inkPaletteJson: Value(inkPaletteJson),
+      stylusMappingJson: Value(stylusMappingJson),
+      penProfileJson: Value(penProfileJson),
       defaultPomodoroWorkSecs: Value(defaultPomodoroWorkSecs),
       defaultPomodoroBreakSecs: Value(defaultPomodoroBreakSecs),
       defaultFlowBreakRatio: Value(defaultFlowBreakRatio),
@@ -11000,6 +13721,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       themeMode: $AppSettingsTable.$converterthemeMode.fromJson(
         serializer.fromJson<int>(json['themeMode']),
       ),
+      accentColor: serializer.fromJson<int>(json['accentColor']),
+      backgroundColor: serializer.fromJson<int>(json['backgroundColor']),
+      inkPaletteJson: serializer.fromJson<String>(json['inkPaletteJson']),
+      stylusMappingJson: serializer.fromJson<String>(json['stylusMappingJson']),
+      penProfileJson: serializer.fromJson<String>(json['penProfileJson']),
       defaultPomodoroWorkSecs: serializer.fromJson<int>(
         json['defaultPomodoroWorkSecs'],
       ),
@@ -11030,6 +13756,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       'themeMode': serializer.toJson<int>(
         $AppSettingsTable.$converterthemeMode.toJson(themeMode),
       ),
+      'accentColor': serializer.toJson<int>(accentColor),
+      'backgroundColor': serializer.toJson<int>(backgroundColor),
+      'inkPaletteJson': serializer.toJson<String>(inkPaletteJson),
+      'stylusMappingJson': serializer.toJson<String>(stylusMappingJson),
+      'penProfileJson': serializer.toJson<String>(penProfileJson),
       'defaultPomodoroWorkSecs': serializer.toJson<int>(
         defaultPomodoroWorkSecs,
       ),
@@ -11052,6 +13783,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   AppSetting copyWith({
     String? id,
     ThemeModeSetting? themeMode,
+    int? accentColor,
+    int? backgroundColor,
+    String? inkPaletteJson,
+    String? stylusMappingJson,
+    String? penProfileJson,
     int? defaultPomodoroWorkSecs,
     int? defaultPomodoroBreakSecs,
     double? defaultFlowBreakRatio,
@@ -11063,6 +13799,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   }) => AppSetting(
     id: id ?? this.id,
     themeMode: themeMode ?? this.themeMode,
+    accentColor: accentColor ?? this.accentColor,
+    backgroundColor: backgroundColor ?? this.backgroundColor,
+    inkPaletteJson: inkPaletteJson ?? this.inkPaletteJson,
+    stylusMappingJson: stylusMappingJson ?? this.stylusMappingJson,
+    penProfileJson: penProfileJson ?? this.penProfileJson,
     defaultPomodoroWorkSecs:
         defaultPomodoroWorkSecs ?? this.defaultPomodoroWorkSecs,
     defaultPomodoroBreakSecs:
@@ -11079,6 +13820,21 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     return AppSetting(
       id: data.id.present ? data.id.value : this.id,
       themeMode: data.themeMode.present ? data.themeMode.value : this.themeMode,
+      accentColor: data.accentColor.present
+          ? data.accentColor.value
+          : this.accentColor,
+      backgroundColor: data.backgroundColor.present
+          ? data.backgroundColor.value
+          : this.backgroundColor,
+      inkPaletteJson: data.inkPaletteJson.present
+          ? data.inkPaletteJson.value
+          : this.inkPaletteJson,
+      stylusMappingJson: data.stylusMappingJson.present
+          ? data.stylusMappingJson.value
+          : this.stylusMappingJson,
+      penProfileJson: data.penProfileJson.present
+          ? data.penProfileJson.value
+          : this.penProfileJson,
       defaultPomodoroWorkSecs: data.defaultPomodoroWorkSecs.present
           ? data.defaultPomodoroWorkSecs.value
           : this.defaultPomodoroWorkSecs,
@@ -11111,6 +13867,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     return (StringBuffer('AppSetting(')
           ..write('id: $id, ')
           ..write('themeMode: $themeMode, ')
+          ..write('accentColor: $accentColor, ')
+          ..write('backgroundColor: $backgroundColor, ')
+          ..write('inkPaletteJson: $inkPaletteJson, ')
+          ..write('stylusMappingJson: $stylusMappingJson, ')
+          ..write('penProfileJson: $penProfileJson, ')
           ..write('defaultPomodoroWorkSecs: $defaultPomodoroWorkSecs, ')
           ..write('defaultPomodoroBreakSecs: $defaultPomodoroBreakSecs, ')
           ..write('defaultFlowBreakRatio: $defaultFlowBreakRatio, ')
@@ -11127,6 +13888,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   int get hashCode => Object.hash(
     id,
     themeMode,
+    accentColor,
+    backgroundColor,
+    inkPaletteJson,
+    stylusMappingJson,
+    penProfileJson,
     defaultPomodoroWorkSecs,
     defaultPomodoroBreakSecs,
     defaultFlowBreakRatio,
@@ -11142,6 +13908,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       (other is AppSetting &&
           other.id == this.id &&
           other.themeMode == this.themeMode &&
+          other.accentColor == this.accentColor &&
+          other.backgroundColor == this.backgroundColor &&
+          other.inkPaletteJson == this.inkPaletteJson &&
+          other.stylusMappingJson == this.stylusMappingJson &&
+          other.penProfileJson == this.penProfileJson &&
           other.defaultPomodoroWorkSecs == this.defaultPomodoroWorkSecs &&
           other.defaultPomodoroBreakSecs == this.defaultPomodoroBreakSecs &&
           other.defaultFlowBreakRatio == this.defaultFlowBreakRatio &&
@@ -11155,6 +13926,11 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
 class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   final Value<String> id;
   final Value<ThemeModeSetting> themeMode;
+  final Value<int> accentColor;
+  final Value<int> backgroundColor;
+  final Value<String> inkPaletteJson;
+  final Value<String> stylusMappingJson;
+  final Value<String> penProfileJson;
   final Value<int> defaultPomodoroWorkSecs;
   final Value<int> defaultPomodoroBreakSecs;
   final Value<double> defaultFlowBreakRatio;
@@ -11167,6 +13943,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   const AppSettingsCompanion({
     this.id = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.accentColor = const Value.absent(),
+    this.backgroundColor = const Value.absent(),
+    this.inkPaletteJson = const Value.absent(),
+    this.stylusMappingJson = const Value.absent(),
+    this.penProfileJson = const Value.absent(),
     this.defaultPomodoroWorkSecs = const Value.absent(),
     this.defaultPomodoroBreakSecs = const Value.absent(),
     this.defaultFlowBreakRatio = const Value.absent(),
@@ -11180,6 +13961,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   AppSettingsCompanion.insert({
     this.id = const Value.absent(),
     this.themeMode = const Value.absent(),
+    this.accentColor = const Value.absent(),
+    this.backgroundColor = const Value.absent(),
+    this.inkPaletteJson = const Value.absent(),
+    this.stylusMappingJson = const Value.absent(),
+    this.penProfileJson = const Value.absent(),
     this.defaultPomodoroWorkSecs = const Value.absent(),
     this.defaultPomodoroBreakSecs = const Value.absent(),
     this.defaultFlowBreakRatio = const Value.absent(),
@@ -11193,6 +13979,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   static Insertable<AppSetting> custom({
     Expression<String>? id,
     Expression<int>? themeMode,
+    Expression<int>? accentColor,
+    Expression<int>? backgroundColor,
+    Expression<String>? inkPaletteJson,
+    Expression<String>? stylusMappingJson,
+    Expression<String>? penProfileJson,
     Expression<int>? defaultPomodoroWorkSecs,
     Expression<int>? defaultPomodoroBreakSecs,
     Expression<double>? defaultFlowBreakRatio,
@@ -11206,6 +13997,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (themeMode != null) 'theme_mode': themeMode,
+      if (accentColor != null) 'accent_color': accentColor,
+      if (backgroundColor != null) 'background_color': backgroundColor,
+      if (inkPaletteJson != null) 'ink_palette_json': inkPaletteJson,
+      if (stylusMappingJson != null) 'stylus_mapping_json': stylusMappingJson,
+      if (penProfileJson != null) 'pen_profile_json': penProfileJson,
       if (defaultPomodoroWorkSecs != null)
         'default_pomodoro_work_secs': defaultPomodoroWorkSecs,
       if (defaultPomodoroBreakSecs != null)
@@ -11226,6 +14022,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   AppSettingsCompanion copyWith({
     Value<String>? id,
     Value<ThemeModeSetting>? themeMode,
+    Value<int>? accentColor,
+    Value<int>? backgroundColor,
+    Value<String>? inkPaletteJson,
+    Value<String>? stylusMappingJson,
+    Value<String>? penProfileJson,
     Value<int>? defaultPomodoroWorkSecs,
     Value<int>? defaultPomodoroBreakSecs,
     Value<double>? defaultFlowBreakRatio,
@@ -11239,6 +14040,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     return AppSettingsCompanion(
       id: id ?? this.id,
       themeMode: themeMode ?? this.themeMode,
+      accentColor: accentColor ?? this.accentColor,
+      backgroundColor: backgroundColor ?? this.backgroundColor,
+      inkPaletteJson: inkPaletteJson ?? this.inkPaletteJson,
+      stylusMappingJson: stylusMappingJson ?? this.stylusMappingJson,
+      penProfileJson: penProfileJson ?? this.penProfileJson,
       defaultPomodoroWorkSecs:
           defaultPomodoroWorkSecs ?? this.defaultPomodoroWorkSecs,
       defaultPomodoroBreakSecs:
@@ -11265,6 +14071,21 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
       map['theme_mode'] = Variable<int>(
         $AppSettingsTable.$converterthemeMode.toSql(themeMode.value),
       );
+    }
+    if (accentColor.present) {
+      map['accent_color'] = Variable<int>(accentColor.value);
+    }
+    if (backgroundColor.present) {
+      map['background_color'] = Variable<int>(backgroundColor.value);
+    }
+    if (inkPaletteJson.present) {
+      map['ink_palette_json'] = Variable<String>(inkPaletteJson.value);
+    }
+    if (stylusMappingJson.present) {
+      map['stylus_mapping_json'] = Variable<String>(stylusMappingJson.value);
+    }
+    if (penProfileJson.present) {
+      map['pen_profile_json'] = Variable<String>(penProfileJson.value);
     }
     if (defaultPomodoroWorkSecs.present) {
       map['default_pomodoro_work_secs'] = Variable<int>(
@@ -11313,6 +14134,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     return (StringBuffer('AppSettingsCompanion(')
           ..write('id: $id, ')
           ..write('themeMode: $themeMode, ')
+          ..write('accentColor: $accentColor, ')
+          ..write('backgroundColor: $backgroundColor, ')
+          ..write('inkPaletteJson: $inkPaletteJson, ')
+          ..write('stylusMappingJson: $stylusMappingJson, ')
+          ..write('penProfileJson: $penProfileJson, ')
           ..write('defaultPomodoroWorkSecs: $defaultPomodoroWorkSecs, ')
           ..write('defaultPomodoroBreakSecs: $defaultPomodoroBreakSecs, ')
           ..write('defaultFlowBreakRatio: $defaultFlowBreakRatio, ')
@@ -11332,12 +14158,17 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
   $ZennoDatabaseManager get managers => $ZennoDatabaseManager(this);
   late final $CanvasFoldersTable canvasFolders = $CanvasFoldersTable(this);
   late final $CanvasesTable canvases = $CanvasesTable(this);
+  late final $CanvasLayersTable canvasLayers = $CanvasLayersTable(this);
+  late final $CanvasBookmarksTable canvasBookmarks = $CanvasBookmarksTable(
+    this,
+  );
   late final $CanvasElementsTable canvasElements = $CanvasElementsTable(this);
   late final $InkStrokesTable inkStrokes = $InkStrokesTable(this);
   late final $PdfDocumentsTable pdfDocuments = $PdfDocumentsTable(this);
   late final $ImagesTable images = $ImagesTable(this);
   late final $CanvasLinksTable canvasLinks = $CanvasLinksTable(this);
   late final $CanvasTextsTable canvasTexts = $CanvasTextsTable(this);
+  late final $CanvasShapesTable canvasShapes = $CanvasShapesTable(this);
   late final $RitualChecklistsTable ritualChecklists = $RitualChecklistsTable(
     this,
   );
@@ -11369,6 +14200,18 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
   late final Index idxCanvasesUpdatedAt = Index(
     'idx_canvases_updated_at',
     'CREATE INDEX idx_canvases_updated_at ON canvases (updated_at)',
+  );
+  late final Index idxCanvasLayersCanvasId = Index(
+    'idx_canvas_layers_canvas_id',
+    'CREATE INDEX idx_canvas_layers_canvas_id ON canvas_layers (canvas_id)',
+  );
+  late final Index idxCanvasLayersCanvasIdPosition = Index(
+    'idx_canvas_layers_canvas_id_position',
+    'CREATE INDEX idx_canvas_layers_canvas_id_position ON canvas_layers (canvas_id, position)',
+  );
+  late final Index idxCanvasBookmarksCanvasPosition = Index(
+    'idx_canvas_bookmarks_canvas_position',
+    'CREATE INDEX idx_canvas_bookmarks_canvas_position ON canvas_bookmarks (canvas_id, position)',
   );
   late final Index idxCanvasElementsCanvasId = Index(
     'idx_canvas_elements_canvas_id',
@@ -11417,12 +14260,15 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     canvasFolders,
     canvases,
+    canvasLayers,
+    canvasBookmarks,
     canvasElements,
     inkStrokes,
     pdfDocuments,
     images,
     canvasLinks,
     canvasTexts,
+    canvasShapes,
     ritualChecklists,
     ritualChecklistItems,
     focusSessions,
@@ -11439,6 +14285,9 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     appSettings,
     idxCanvasesFolderId,
     idxCanvasesUpdatedAt,
+    idxCanvasLayersCanvasId,
+    idxCanvasLayersCanvasIdPosition,
+    idxCanvasBookmarksCanvasPosition,
     idxCanvasElementsCanvasId,
     idxCanvasElementsCanvasIdZIndex,
     idxFocusSessionsStartedAt,
@@ -11464,7 +14313,28 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
         'canvases',
         limitUpdateKind: UpdateKind.delete,
       ),
+      result: [TableUpdate('canvas_layers', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'canvases',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('canvas_bookmarks', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'canvases',
+        limitUpdateKind: UpdateKind.delete,
+      ),
       result: [TableUpdate('canvas_elements', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'canvas_layers',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('canvas_elements', kind: UpdateKind.update)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -11500,6 +14370,13 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('canvas_texts', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'canvas_elements',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('canvas_shapes', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -11597,6 +14474,9 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
       result: [TableUpdate('reflection_entries', kind: UpdateKind.delete)],
     ),
   ]);
+  @override
+  DriftDatabaseOptions get options =>
+      const DriftDatabaseOptions(storeDateTimeAsText: true);
 }
 
 typedef $$CanvasFoldersTableCreateCompanionBuilder =
@@ -11904,7 +14784,18 @@ typedef $$CanvasesTableCreateCompanionBuilder =
       Value<double> vpTy,
       Value<double> vpScale,
       Value<double> vpRotation,
+      Value<bool> rotationLocked,
       Value<BackgroundKind> backgroundKind,
+      Value<int> canvasBackgroundColor,
+      Value<int> gridColor,
+      Value<double> gridSpacing,
+      Value<double> gridOpacity,
+      Value<int> graphMajorInterval,
+      Value<int> activePenColor,
+      Value<double> activePenWidth,
+      Value<int> activePenWidthMode,
+      Value<StrokeTool> activePenTool,
+      Value<bool> pressureEnabled,
       Value<int> rowid,
     });
 typedef $$CanvasesTableUpdateCompanionBuilder =
@@ -11923,7 +14814,18 @@ typedef $$CanvasesTableUpdateCompanionBuilder =
       Value<double> vpTy,
       Value<double> vpScale,
       Value<double> vpRotation,
+      Value<bool> rotationLocked,
       Value<BackgroundKind> backgroundKind,
+      Value<int> canvasBackgroundColor,
+      Value<int> gridColor,
+      Value<double> gridSpacing,
+      Value<double> gridOpacity,
+      Value<int> graphMajorInterval,
+      Value<int> activePenColor,
+      Value<double> activePenWidth,
+      Value<int> activePenWidthMode,
+      Value<StrokeTool> activePenTool,
+      Value<bool> pressureEnabled,
       Value<int> rowid,
     });
 
@@ -11947,6 +14849,48 @@ final class $$CanvasesTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$CanvasLayersTable, List<CanvasLayer>>
+  _canvasLayersRefsTable(_$ZennoDatabase db) => MultiTypedResultKey.fromTable(
+    db.canvasLayers,
+    aliasName: $_aliasNameGenerator(db.canvases.id, db.canvasLayers.canvasId),
+  );
+
+  $$CanvasLayersTableProcessedTableManager get canvasLayersRefs {
+    final manager = $$CanvasLayersTableTableManager(
+      $_db,
+      $_db.canvasLayers,
+    ).filter((f) => f.canvasId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_canvasLayersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$CanvasBookmarksTable, List<CanvasBookmark>>
+  _canvasBookmarksRefsTable(_$ZennoDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.canvasBookmarks,
+        aliasName: $_aliasNameGenerator(
+          db.canvases.id,
+          db.canvasBookmarks.canvasId,
+        ),
+      );
+
+  $$CanvasBookmarksTableProcessedTableManager get canvasBookmarksRefs {
+    final manager = $$CanvasBookmarksTableTableManager(
+      $_db,
+      $_db.canvasBookmarks,
+    ).filter((f) => f.canvasId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _canvasBookmarksRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 
@@ -12092,10 +15036,66 @@ class $$CanvasesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get rotationLocked => $composableBuilder(
+    column: $table.rotationLocked,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnWithTypeConverterFilters<BackgroundKind, BackgroundKind, int>
   get backgroundKind => $composableBuilder(
     column: $table.backgroundKind,
     builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get canvasBackgroundColor => $composableBuilder(
+    column: $table.canvasBackgroundColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get gridColor => $composableBuilder(
+    column: $table.gridColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get gridSpacing => $composableBuilder(
+    column: $table.gridSpacing,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get gridOpacity => $composableBuilder(
+    column: $table.gridOpacity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get graphMajorInterval => $composableBuilder(
+    column: $table.graphMajorInterval,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get activePenColor => $composableBuilder(
+    column: $table.activePenColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get activePenWidth => $composableBuilder(
+    column: $table.activePenWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get activePenWidthMode => $composableBuilder(
+    column: $table.activePenWidthMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<StrokeTool, StrokeTool, int>
+  get activePenTool => $composableBuilder(
+    column: $table.activePenTool,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<bool> get pressureEnabled => $composableBuilder(
+    column: $table.pressureEnabled,
+    builder: (column) => ColumnFilters(column),
   );
 
   $$CanvasFoldersTableFilterComposer get folderId {
@@ -12119,6 +15119,56 @@ class $$CanvasesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> canvasLayersRefs(
+    Expression<bool> Function($$CanvasLayersTableFilterComposer f) f,
+  ) {
+    final $$CanvasLayersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasLayers,
+      getReferencedColumn: (t) => t.canvasId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasLayersTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasLayers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> canvasBookmarksRefs(
+    Expression<bool> Function($$CanvasBookmarksTableFilterComposer f) f,
+  ) {
+    final $$CanvasBookmarksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasBookmarks,
+      getReferencedColumn: (t) => t.canvasId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasBookmarksTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasBookmarks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> canvasElementsRefs(
@@ -12272,8 +15322,63 @@ class $$CanvasesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get rotationLocked => $composableBuilder(
+    column: $table.rotationLocked,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get backgroundKind => $composableBuilder(
     column: $table.backgroundKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get canvasBackgroundColor => $composableBuilder(
+    column: $table.canvasBackgroundColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get gridColor => $composableBuilder(
+    column: $table.gridColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get gridSpacing => $composableBuilder(
+    column: $table.gridSpacing,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get gridOpacity => $composableBuilder(
+    column: $table.gridOpacity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get graphMajorInterval => $composableBuilder(
+    column: $table.graphMajorInterval,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get activePenColor => $composableBuilder(
+    column: $table.activePenColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get activePenWidth => $composableBuilder(
+    column: $table.activePenWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get activePenWidthMode => $composableBuilder(
+    column: $table.activePenWidthMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get activePenTool => $composableBuilder(
+    column: $table.activePenTool,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get pressureEnabled => $composableBuilder(
+    column: $table.pressureEnabled,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -12361,11 +15466,65 @@ class $$CanvasesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get rotationLocked => $composableBuilder(
+    column: $table.rotationLocked,
+    builder: (column) => column,
+  );
+
   GeneratedColumnWithTypeConverter<BackgroundKind, int> get backgroundKind =>
       $composableBuilder(
         column: $table.backgroundKind,
         builder: (column) => column,
       );
+
+  GeneratedColumn<int> get canvasBackgroundColor => $composableBuilder(
+    column: $table.canvasBackgroundColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get gridColor =>
+      $composableBuilder(column: $table.gridColor, builder: (column) => column);
+
+  GeneratedColumn<double> get gridSpacing => $composableBuilder(
+    column: $table.gridSpacing,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get gridOpacity => $composableBuilder(
+    column: $table.gridOpacity,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get graphMajorInterval => $composableBuilder(
+    column: $table.graphMajorInterval,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get activePenColor => $composableBuilder(
+    column: $table.activePenColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get activePenWidth => $composableBuilder(
+    column: $table.activePenWidth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get activePenWidthMode => $composableBuilder(
+    column: $table.activePenWidthMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<StrokeTool, int> get activePenTool =>
+      $composableBuilder(
+        column: $table.activePenTool,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<bool> get pressureEnabled => $composableBuilder(
+    column: $table.pressureEnabled,
+    builder: (column) => column,
+  );
 
   $$CanvasFoldersTableAnnotationComposer get folderId {
     final $$CanvasFoldersTableAnnotationComposer composer = $composerBuilder(
@@ -12388,6 +15547,56 @@ class $$CanvasesTableAnnotationComposer
           ),
     );
     return composer;
+  }
+
+  Expression<T> canvasLayersRefs<T extends Object>(
+    Expression<T> Function($$CanvasLayersTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasLayersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasLayers,
+      getReferencedColumn: (t) => t.canvasId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasLayersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasLayers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> canvasBookmarksRefs<T extends Object>(
+    Expression<T> Function($$CanvasBookmarksTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasBookmarksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasBookmarks,
+      getReferencedColumn: (t) => t.canvasId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasBookmarksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasBookmarks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<T> canvasElementsRefs<T extends Object>(
@@ -12482,6 +15691,8 @@ class $$CanvasesTableTableManager
           Canvase,
           PrefetchHooks Function({
             bool folderId,
+            bool canvasLayersRefs,
+            bool canvasBookmarksRefs,
             bool canvasElementsRefs,
             bool focusSessionsRefs,
             bool cardCanvasAttachmentsRefs,
@@ -12514,7 +15725,18 @@ class $$CanvasesTableTableManager
                 Value<double> vpTy = const Value.absent(),
                 Value<double> vpScale = const Value.absent(),
                 Value<double> vpRotation = const Value.absent(),
+                Value<bool> rotationLocked = const Value.absent(),
                 Value<BackgroundKind> backgroundKind = const Value.absent(),
+                Value<int> canvasBackgroundColor = const Value.absent(),
+                Value<int> gridColor = const Value.absent(),
+                Value<double> gridSpacing = const Value.absent(),
+                Value<double> gridOpacity = const Value.absent(),
+                Value<int> graphMajorInterval = const Value.absent(),
+                Value<int> activePenColor = const Value.absent(),
+                Value<double> activePenWidth = const Value.absent(),
+                Value<int> activePenWidthMode = const Value.absent(),
+                Value<StrokeTool> activePenTool = const Value.absent(),
+                Value<bool> pressureEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CanvasesCompanion(
                 id: id,
@@ -12531,7 +15753,18 @@ class $$CanvasesTableTableManager
                 vpTy: vpTy,
                 vpScale: vpScale,
                 vpRotation: vpRotation,
+                rotationLocked: rotationLocked,
                 backgroundKind: backgroundKind,
+                canvasBackgroundColor: canvasBackgroundColor,
+                gridColor: gridColor,
+                gridSpacing: gridSpacing,
+                gridOpacity: gridOpacity,
+                graphMajorInterval: graphMajorInterval,
+                activePenColor: activePenColor,
+                activePenWidth: activePenWidth,
+                activePenWidthMode: activePenWidthMode,
+                activePenTool: activePenTool,
+                pressureEnabled: pressureEnabled,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12550,7 +15783,18 @@ class $$CanvasesTableTableManager
                 Value<double> vpTy = const Value.absent(),
                 Value<double> vpScale = const Value.absent(),
                 Value<double> vpRotation = const Value.absent(),
+                Value<bool> rotationLocked = const Value.absent(),
                 Value<BackgroundKind> backgroundKind = const Value.absent(),
+                Value<int> canvasBackgroundColor = const Value.absent(),
+                Value<int> gridColor = const Value.absent(),
+                Value<double> gridSpacing = const Value.absent(),
+                Value<double> gridOpacity = const Value.absent(),
+                Value<int> graphMajorInterval = const Value.absent(),
+                Value<int> activePenColor = const Value.absent(),
+                Value<double> activePenWidth = const Value.absent(),
+                Value<int> activePenWidthMode = const Value.absent(),
+                Value<StrokeTool> activePenTool = const Value.absent(),
+                Value<bool> pressureEnabled = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CanvasesCompanion.insert(
                 id: id,
@@ -12567,7 +15811,18 @@ class $$CanvasesTableTableManager
                 vpTy: vpTy,
                 vpScale: vpScale,
                 vpRotation: vpRotation,
+                rotationLocked: rotationLocked,
                 backgroundKind: backgroundKind,
+                canvasBackgroundColor: canvasBackgroundColor,
+                gridColor: gridColor,
+                gridSpacing: gridSpacing,
+                gridOpacity: gridOpacity,
+                graphMajorInterval: graphMajorInterval,
+                activePenColor: activePenColor,
+                activePenWidth: activePenWidth,
+                activePenWidthMode: activePenWidthMode,
+                activePenTool: activePenTool,
+                pressureEnabled: pressureEnabled,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -12581,6 +15836,8 @@ class $$CanvasesTableTableManager
           prefetchHooksCallback:
               ({
                 folderId = false,
+                canvasLayersRefs = false,
+                canvasBookmarksRefs = false,
                 canvasElementsRefs = false,
                 focusSessionsRefs = false,
                 cardCanvasAttachmentsRefs = false,
@@ -12588,6 +15845,8 @@ class $$CanvasesTableTableManager
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
+                    if (canvasLayersRefs) db.canvasLayers,
+                    if (canvasBookmarksRefs) db.canvasBookmarks,
                     if (canvasElementsRefs) db.canvasElements,
                     if (focusSessionsRefs) db.focusSessions,
                     if (cardCanvasAttachmentsRefs) db.cardCanvasAttachments,
@@ -12626,6 +15885,48 @@ class $$CanvasesTableTableManager
                       },
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (canvasLayersRefs)
+                        await $_getPrefetchedData<
+                          Canvase,
+                          $CanvasesTable,
+                          CanvasLayer
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CanvasesTableReferences
+                              ._canvasLayersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CanvasesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasLayersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.canvasId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (canvasBookmarksRefs)
+                        await $_getPrefetchedData<
+                          Canvase,
+                          $CanvasesTable,
+                          CanvasBookmark
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CanvasesTableReferences
+                              ._canvasBookmarksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CanvasesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasBookmarksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.canvasId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (canvasElementsRefs)
                         await $_getPrefetchedData<
                           Canvase,
@@ -12711,15 +16012,918 @@ typedef $$CanvasesTableProcessedTableManager =
       Canvase,
       PrefetchHooks Function({
         bool folderId,
+        bool canvasLayersRefs,
+        bool canvasBookmarksRefs,
         bool canvasElementsRefs,
         bool focusSessionsRefs,
         bool cardCanvasAttachmentsRefs,
       })
     >;
+typedef $$CanvasLayersTableCreateCompanionBuilder =
+    CanvasLayersCompanion Function({
+      required String id,
+      required String canvasId,
+      required String name,
+      required double position,
+      Value<bool> visible,
+      Value<bool> locked,
+      Value<double> opacity,
+      Value<String> blendMode,
+      Value<CanvasLayerKind> kind,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$CanvasLayersTableUpdateCompanionBuilder =
+    CanvasLayersCompanion Function({
+      Value<String> id,
+      Value<String> canvasId,
+      Value<String> name,
+      Value<double> position,
+      Value<bool> visible,
+      Value<bool> locked,
+      Value<double> opacity,
+      Value<String> blendMode,
+      Value<CanvasLayerKind> kind,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$CanvasLayersTableReferences
+    extends BaseReferences<_$ZennoDatabase, $CanvasLayersTable, CanvasLayer> {
+  $$CanvasLayersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $CanvasesTable _canvasIdTable(_$ZennoDatabase db) =>
+      db.canvases.createAlias(
+        $_aliasNameGenerator(db.canvasLayers.canvasId, db.canvases.id),
+      );
+
+  $$CanvasesTableProcessedTableManager get canvasId {
+    final $_column = $_itemColumn<String>('canvas_id')!;
+
+    final manager = $$CanvasesTableTableManager(
+      $_db,
+      $_db.canvases,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_canvasIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$CanvasElementsTable, List<CanvasElement>>
+  _canvasElementsRefsTable(_$ZennoDatabase db) => MultiTypedResultKey.fromTable(
+    db.canvasElements,
+    aliasName: $_aliasNameGenerator(
+      db.canvasLayers.id,
+      db.canvasElements.layerId,
+    ),
+  );
+
+  $$CanvasElementsTableProcessedTableManager get canvasElementsRefs {
+    final manager = $$CanvasElementsTableTableManager(
+      $_db,
+      $_db.canvasElements,
+    ).filter((f) => f.layerId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_canvasElementsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$CanvasLayersTableFilterComposer
+    extends Composer<_$ZennoDatabase, $CanvasLayersTable> {
+  $$CanvasLayersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get visible => $composableBuilder(
+    column: $table.visible,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get locked => $composableBuilder(
+    column: $table.locked,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get opacity => $composableBuilder(
+    column: $table.opacity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get blendMode => $composableBuilder(
+    column: $table.blendMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<CanvasLayerKind, CanvasLayerKind, int>
+  get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CanvasesTableFilterComposer get canvasId {
+    final $$CanvasesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableFilterComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> canvasElementsRefs(
+    Expression<bool> Function($$CanvasElementsTableFilterComposer f) f,
+  ) {
+    final $$CanvasElementsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.layerId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$CanvasLayersTableOrderingComposer
+    extends Composer<_$ZennoDatabase, $CanvasLayersTable> {
+  $$CanvasLayersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get visible => $composableBuilder(
+    column: $table.visible,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get locked => $composableBuilder(
+    column: $table.locked,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get opacity => $composableBuilder(
+    column: $table.opacity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get blendMode => $composableBuilder(
+    column: $table.blendMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CanvasesTableOrderingComposer get canvasId {
+    final $$CanvasesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableOrderingComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasLayersTableAnnotationComposer
+    extends Composer<_$ZennoDatabase, $CanvasLayersTable> {
+  $$CanvasLayersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<bool> get visible =>
+      $composableBuilder(column: $table.visible, builder: (column) => column);
+
+  GeneratedColumn<bool> get locked =>
+      $composableBuilder(column: $table.locked, builder: (column) => column);
+
+  GeneratedColumn<double> get opacity =>
+      $composableBuilder(column: $table.opacity, builder: (column) => column);
+
+  GeneratedColumn<String> get blendMode =>
+      $composableBuilder(column: $table.blendMode, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<CanvasLayerKind, int> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$CanvasesTableAnnotationComposer get canvasId {
+    final $$CanvasesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> canvasElementsRefs<T extends Object>(
+    Expression<T> Function($$CanvasElementsTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasElementsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.layerId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$CanvasLayersTableTableManager
+    extends
+        RootTableManager<
+          _$ZennoDatabase,
+          $CanvasLayersTable,
+          CanvasLayer,
+          $$CanvasLayersTableFilterComposer,
+          $$CanvasLayersTableOrderingComposer,
+          $$CanvasLayersTableAnnotationComposer,
+          $$CanvasLayersTableCreateCompanionBuilder,
+          $$CanvasLayersTableUpdateCompanionBuilder,
+          (CanvasLayer, $$CanvasLayersTableReferences),
+          CanvasLayer,
+          PrefetchHooks Function({bool canvasId, bool canvasElementsRefs})
+        > {
+  $$CanvasLayersTableTableManager(_$ZennoDatabase db, $CanvasLayersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanvasLayersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CanvasLayersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CanvasLayersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> canvasId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double> position = const Value.absent(),
+                Value<bool> visible = const Value.absent(),
+                Value<bool> locked = const Value.absent(),
+                Value<double> opacity = const Value.absent(),
+                Value<String> blendMode = const Value.absent(),
+                Value<CanvasLayerKind> kind = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasLayersCompanion(
+                id: id,
+                canvasId: canvasId,
+                name: name,
+                position: position,
+                visible: visible,
+                locked: locked,
+                opacity: opacity,
+                blendMode: blendMode,
+                kind: kind,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String canvasId,
+                required String name,
+                required double position,
+                Value<bool> visible = const Value.absent(),
+                Value<bool> locked = const Value.absent(),
+                Value<double> opacity = const Value.absent(),
+                Value<String> blendMode = const Value.absent(),
+                Value<CanvasLayerKind> kind = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasLayersCompanion.insert(
+                id: id,
+                canvasId: canvasId,
+                name: name,
+                position: position,
+                visible: visible,
+                locked: locked,
+                opacity: opacity,
+                blendMode: blendMode,
+                kind: kind,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CanvasLayersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({canvasId = false, canvasElementsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (canvasElementsRefs) db.canvasElements,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (canvasId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.canvasId,
+                                    referencedTable:
+                                        $$CanvasLayersTableReferences
+                                            ._canvasIdTable(db),
+                                    referencedColumn:
+                                        $$CanvasLayersTableReferences
+                                            ._canvasIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (canvasElementsRefs)
+                        await $_getPrefetchedData<
+                          CanvasLayer,
+                          $CanvasLayersTable,
+                          CanvasElement
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CanvasLayersTableReferences
+                              ._canvasElementsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CanvasLayersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasElementsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.layerId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$CanvasLayersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ZennoDatabase,
+      $CanvasLayersTable,
+      CanvasLayer,
+      $$CanvasLayersTableFilterComposer,
+      $$CanvasLayersTableOrderingComposer,
+      $$CanvasLayersTableAnnotationComposer,
+      $$CanvasLayersTableCreateCompanionBuilder,
+      $$CanvasLayersTableUpdateCompanionBuilder,
+      (CanvasLayer, $$CanvasLayersTableReferences),
+      CanvasLayer,
+      PrefetchHooks Function({bool canvasId, bool canvasElementsRefs})
+    >;
+typedef $$CanvasBookmarksTableCreateCompanionBuilder =
+    CanvasBookmarksCompanion Function({
+      required String canvasId,
+      required String name,
+      required double vpTx,
+      required double vpTy,
+      required double vpScale,
+      required double vpRotation,
+      required int position,
+      Value<int> rowid,
+    });
+typedef $$CanvasBookmarksTableUpdateCompanionBuilder =
+    CanvasBookmarksCompanion Function({
+      Value<String> canvasId,
+      Value<String> name,
+      Value<double> vpTx,
+      Value<double> vpTy,
+      Value<double> vpScale,
+      Value<double> vpRotation,
+      Value<int> position,
+      Value<int> rowid,
+    });
+
+final class $$CanvasBookmarksTableReferences
+    extends
+        BaseReferences<_$ZennoDatabase, $CanvasBookmarksTable, CanvasBookmark> {
+  $$CanvasBookmarksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $CanvasesTable _canvasIdTable(_$ZennoDatabase db) =>
+      db.canvases.createAlias(
+        $_aliasNameGenerator(db.canvasBookmarks.canvasId, db.canvases.id),
+      );
+
+  $$CanvasesTableProcessedTableManager get canvasId {
+    final $_column = $_itemColumn<String>('canvas_id')!;
+
+    final manager = $$CanvasesTableTableManager(
+      $_db,
+      $_db.canvases,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_canvasIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CanvasBookmarksTableFilterComposer
+    extends Composer<_$ZennoDatabase, $CanvasBookmarksTable> {
+  $$CanvasBookmarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get vpTx => $composableBuilder(
+    column: $table.vpTx,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get vpTy => $composableBuilder(
+    column: $table.vpTy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get vpScale => $composableBuilder(
+    column: $table.vpScale,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get vpRotation => $composableBuilder(
+    column: $table.vpRotation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CanvasesTableFilterComposer get canvasId {
+    final $$CanvasesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableFilterComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasBookmarksTableOrderingComposer
+    extends Composer<_$ZennoDatabase, $CanvasBookmarksTable> {
+  $$CanvasBookmarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get vpTx => $composableBuilder(
+    column: $table.vpTx,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get vpTy => $composableBuilder(
+    column: $table.vpTy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get vpScale => $composableBuilder(
+    column: $table.vpScale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get vpRotation => $composableBuilder(
+    column: $table.vpRotation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CanvasesTableOrderingComposer get canvasId {
+    final $$CanvasesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableOrderingComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasBookmarksTableAnnotationComposer
+    extends Composer<_$ZennoDatabase, $CanvasBookmarksTable> {
+  $$CanvasBookmarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get vpTx =>
+      $composableBuilder(column: $table.vpTx, builder: (column) => column);
+
+  GeneratedColumn<double> get vpTy =>
+      $composableBuilder(column: $table.vpTy, builder: (column) => column);
+
+  GeneratedColumn<double> get vpScale =>
+      $composableBuilder(column: $table.vpScale, builder: (column) => column);
+
+  GeneratedColumn<double> get vpRotation => $composableBuilder(
+    column: $table.vpRotation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  $$CanvasesTableAnnotationComposer get canvasId {
+    final $$CanvasesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasId,
+      referencedTable: $db.canvases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasBookmarksTableTableManager
+    extends
+        RootTableManager<
+          _$ZennoDatabase,
+          $CanvasBookmarksTable,
+          CanvasBookmark,
+          $$CanvasBookmarksTableFilterComposer,
+          $$CanvasBookmarksTableOrderingComposer,
+          $$CanvasBookmarksTableAnnotationComposer,
+          $$CanvasBookmarksTableCreateCompanionBuilder,
+          $$CanvasBookmarksTableUpdateCompanionBuilder,
+          (CanvasBookmark, $$CanvasBookmarksTableReferences),
+          CanvasBookmark,
+          PrefetchHooks Function({bool canvasId})
+        > {
+  $$CanvasBookmarksTableTableManager(
+    _$ZennoDatabase db,
+    $CanvasBookmarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanvasBookmarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CanvasBookmarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CanvasBookmarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> canvasId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double> vpTx = const Value.absent(),
+                Value<double> vpTy = const Value.absent(),
+                Value<double> vpScale = const Value.absent(),
+                Value<double> vpRotation = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasBookmarksCompanion(
+                canvasId: canvasId,
+                name: name,
+                vpTx: vpTx,
+                vpTy: vpTy,
+                vpScale: vpScale,
+                vpRotation: vpRotation,
+                position: position,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String canvasId,
+                required String name,
+                required double vpTx,
+                required double vpTy,
+                required double vpScale,
+                required double vpRotation,
+                required int position,
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasBookmarksCompanion.insert(
+                canvasId: canvasId,
+                name: name,
+                vpTx: vpTx,
+                vpTy: vpTy,
+                vpScale: vpScale,
+                vpRotation: vpRotation,
+                position: position,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CanvasBookmarksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({canvasId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (canvasId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.canvasId,
+                                referencedTable:
+                                    $$CanvasBookmarksTableReferences
+                                        ._canvasIdTable(db),
+                                referencedColumn:
+                                    $$CanvasBookmarksTableReferences
+                                        ._canvasIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CanvasBookmarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ZennoDatabase,
+      $CanvasBookmarksTable,
+      CanvasBookmark,
+      $$CanvasBookmarksTableFilterComposer,
+      $$CanvasBookmarksTableOrderingComposer,
+      $$CanvasBookmarksTableAnnotationComposer,
+      $$CanvasBookmarksTableCreateCompanionBuilder,
+      $$CanvasBookmarksTableUpdateCompanionBuilder,
+      (CanvasBookmark, $$CanvasBookmarksTableReferences),
+      CanvasBookmark,
+      PrefetchHooks Function({bool canvasId})
+    >;
 typedef $$CanvasElementsTableCreateCompanionBuilder =
     CanvasElementsCompanion Function({
       required String id,
       required String canvasId,
+      Value<String?> layerId,
       required ElementKind kind,
       required double x,
       required double y,
@@ -12736,6 +16940,7 @@ typedef $$CanvasElementsTableUpdateCompanionBuilder =
     CanvasElementsCompanion Function({
       Value<String> id,
       Value<String> canvasId,
+      Value<String?> layerId,
       Value<ElementKind> kind,
       Value<double> x,
       Value<double> y,
@@ -12771,6 +16976,25 @@ final class $$CanvasElementsTableReferences
       $_db.canvases,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_canvasIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $CanvasLayersTable _layerIdTable(_$ZennoDatabase db) =>
+      db.canvasLayers.createAlias(
+        $_aliasNameGenerator(db.canvasElements.layerId, db.canvasLayers.id),
+      );
+
+  $$CanvasLayersTableProcessedTableManager? get layerId {
+    final $_column = $_itemColumn<String>('layer_id');
+    if ($_column == null) return null;
+    final manager = $$CanvasLayersTableTableManager(
+      $_db,
+      $_db.canvasLayers,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_layerIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -12879,6 +17103,27 @@ final class $$CanvasElementsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$CanvasShapesTable, List<CanvasShape>>
+  _canvasShapesRefsTable(_$ZennoDatabase db) => MultiTypedResultKey.fromTable(
+    db.canvasShapes,
+    aliasName: $_aliasNameGenerator(
+      db.canvasElements.id,
+      db.canvasShapes.elementId,
+    ),
+  );
+
+  $$CanvasShapesTableProcessedTableManager get canvasShapesRefs {
+    final manager = $$CanvasShapesTableTableManager(
+      $_db,
+      $_db.canvasShapes,
+    ).filter((f) => f.elementId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_canvasShapesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CanvasElementsTableFilterComposer
@@ -12960,6 +17205,29 @@ class $$CanvasElementsTableFilterComposer
           }) => $$CanvasesTableFilterComposer(
             $db: $db,
             $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CanvasLayersTableFilterComposer get layerId {
+    final $$CanvasLayersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.layerId,
+      referencedTable: $db.canvasLayers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasLayersTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasLayers,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -13093,6 +17361,31 @@ class $$CanvasElementsTableFilterComposer
     );
     return f(composer);
   }
+
+  Expression<bool> canvasShapesRefs(
+    Expression<bool> Function($$CanvasShapesTableFilterComposer f) f,
+  ) {
+    final $$CanvasShapesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasShapes,
+      getReferencedColumn: (t) => t.elementId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasShapesTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasShapes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$CanvasElementsTableOrderingComposer
@@ -13181,6 +17474,29 @@ class $$CanvasElementsTableOrderingComposer
     );
     return composer;
   }
+
+  $$CanvasLayersTableOrderingComposer get layerId {
+    final $$CanvasLayersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.layerId,
+      referencedTable: $db.canvasLayers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasLayersTableOrderingComposer(
+            $db: $db,
+            $table: $db.canvasLayers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$CanvasElementsTableAnnotationComposer
@@ -13239,6 +17555,29 @@ class $$CanvasElementsTableAnnotationComposer
           }) => $$CanvasesTableAnnotationComposer(
             $db: $db,
             $table: $db.canvases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CanvasLayersTableAnnotationComposer get layerId {
+    final $$CanvasLayersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.layerId,
+      referencedTable: $db.canvasLayers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasLayersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasLayers,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -13372,6 +17711,31 @@ class $$CanvasElementsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> canvasShapesRefs<T extends Object>(
+    Expression<T> Function($$CanvasShapesTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasShapesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasShapes,
+      getReferencedColumn: (t) => t.elementId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasShapesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasShapes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$CanvasElementsTableTableManager
@@ -13389,11 +17753,13 @@ class $$CanvasElementsTableTableManager
           CanvasElement,
           PrefetchHooks Function({
             bool canvasId,
+            bool layerId,
             bool inkStrokesRefs,
             bool pdfDocumentsRefs,
             bool imagesRefs,
             bool canvasLinksRefs,
             bool canvasTextsRefs,
+            bool canvasShapesRefs,
           })
         > {
   $$CanvasElementsTableTableManager(
@@ -13413,6 +17779,7 @@ class $$CanvasElementsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> canvasId = const Value.absent(),
+                Value<String?> layerId = const Value.absent(),
                 Value<ElementKind> kind = const Value.absent(),
                 Value<double> x = const Value.absent(),
                 Value<double> y = const Value.absent(),
@@ -13427,6 +17794,7 @@ class $$CanvasElementsTableTableManager
               }) => CanvasElementsCompanion(
                 id: id,
                 canvasId: canvasId,
+                layerId: layerId,
                 kind: kind,
                 x: x,
                 y: y,
@@ -13443,6 +17811,7 @@ class $$CanvasElementsTableTableManager
               ({
                 required String id,
                 required String canvasId,
+                Value<String?> layerId = const Value.absent(),
                 required ElementKind kind,
                 required double x,
                 required double y,
@@ -13457,6 +17826,7 @@ class $$CanvasElementsTableTableManager
               }) => CanvasElementsCompanion.insert(
                 id: id,
                 canvasId: canvasId,
+                layerId: layerId,
                 kind: kind,
                 x: x,
                 y: y,
@@ -13480,11 +17850,13 @@ class $$CanvasElementsTableTableManager
           prefetchHooksCallback:
               ({
                 canvasId = false,
+                layerId = false,
                 inkStrokesRefs = false,
                 pdfDocumentsRefs = false,
                 imagesRefs = false,
                 canvasLinksRefs = false,
                 canvasTextsRefs = false,
+                canvasShapesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -13494,6 +17866,7 @@ class $$CanvasElementsTableTableManager
                     if (imagesRefs) db.images,
                     if (canvasLinksRefs) db.canvasLinks,
                     if (canvasTextsRefs) db.canvasTexts,
+                    if (canvasShapesRefs) db.canvasShapes,
                   ],
                   addJoins:
                       <
@@ -13522,6 +17895,21 @@ class $$CanvasElementsTableTableManager
                                     referencedColumn:
                                         $$CanvasElementsTableReferences
                                             ._canvasIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (layerId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.layerId,
+                                    referencedTable:
+                                        $$CanvasElementsTableReferences
+                                            ._layerIdTable(db),
+                                    referencedColumn:
+                                        $$CanvasElementsTableReferences
+                                            ._layerIdTable(db)
                                             .id,
                                   )
                                   as T;
@@ -13636,6 +18024,27 @@ class $$CanvasElementsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (canvasShapesRefs)
+                        await $_getPrefetchedData<
+                          CanvasElement,
+                          $CanvasElementsTable,
+                          CanvasShape
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CanvasElementsTableReferences
+                              ._canvasShapesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CanvasElementsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasShapesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.elementId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -13658,11 +18067,13 @@ typedef $$CanvasElementsTableProcessedTableManager =
       CanvasElement,
       PrefetchHooks Function({
         bool canvasId,
+        bool layerId,
         bool inkStrokesRefs,
         bool pdfDocumentsRefs,
         bool imagesRefs,
         bool canvasLinksRefs,
         bool canvasTextsRefs,
+        bool canvasShapesRefs,
       })
     >;
 typedef $$InkStrokesTableCreateCompanionBuilder =
@@ -15562,6 +19973,510 @@ typedef $$CanvasTextsTableProcessedTableManager =
       $$CanvasTextsTableUpdateCompanionBuilder,
       (CanvasText, $$CanvasTextsTableReferences),
       CanvasText,
+      PrefetchHooks Function({bool elementId})
+    >;
+typedef $$CanvasShapesTableCreateCompanionBuilder =
+    CanvasShapesCompanion Function({
+      required String elementId,
+      required int shapeKind,
+      required double startX,
+      required double startY,
+      required double endX,
+      required double endY,
+      required int color,
+      required double strokeWidth,
+      Value<int> arrowBodyKind,
+      Value<int> arrowStartHead,
+      Value<int> arrowEndHead,
+      Value<double> arrowHeadScale,
+      Value<String> controlPointsJson,
+      Value<bool> arrowLegacy,
+      Value<int> rowid,
+    });
+typedef $$CanvasShapesTableUpdateCompanionBuilder =
+    CanvasShapesCompanion Function({
+      Value<String> elementId,
+      Value<int> shapeKind,
+      Value<double> startX,
+      Value<double> startY,
+      Value<double> endX,
+      Value<double> endY,
+      Value<int> color,
+      Value<double> strokeWidth,
+      Value<int> arrowBodyKind,
+      Value<int> arrowStartHead,
+      Value<int> arrowEndHead,
+      Value<double> arrowHeadScale,
+      Value<String> controlPointsJson,
+      Value<bool> arrowLegacy,
+      Value<int> rowid,
+    });
+
+final class $$CanvasShapesTableReferences
+    extends BaseReferences<_$ZennoDatabase, $CanvasShapesTable, CanvasShape> {
+  $$CanvasShapesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $CanvasElementsTable _elementIdTable(_$ZennoDatabase db) =>
+      db.canvasElements.createAlias(
+        $_aliasNameGenerator(db.canvasShapes.elementId, db.canvasElements.id),
+      );
+
+  $$CanvasElementsTableProcessedTableManager get elementId {
+    final $_column = $_itemColumn<String>('element_id')!;
+
+    final manager = $$CanvasElementsTableTableManager(
+      $_db,
+      $_db.canvasElements,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_elementIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CanvasShapesTableFilterComposer
+    extends Composer<_$ZennoDatabase, $CanvasShapesTable> {
+  $$CanvasShapesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get shapeKind => $composableBuilder(
+    column: $table.shapeKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get startX => $composableBuilder(
+    column: $table.startX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get startY => $composableBuilder(
+    column: $table.startY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get endX => $composableBuilder(
+    column: $table.endX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get endY => $composableBuilder(
+    column: $table.endY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get arrowBodyKind => $composableBuilder(
+    column: $table.arrowBodyKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get arrowStartHead => $composableBuilder(
+    column: $table.arrowStartHead,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get arrowEndHead => $composableBuilder(
+    column: $table.arrowEndHead,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get arrowHeadScale => $composableBuilder(
+    column: $table.arrowHeadScale,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get controlPointsJson => $composableBuilder(
+    column: $table.controlPointsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get arrowLegacy => $composableBuilder(
+    column: $table.arrowLegacy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CanvasElementsTableFilterComposer get elementId {
+    final $$CanvasElementsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.elementId,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasShapesTableOrderingComposer
+    extends Composer<_$ZennoDatabase, $CanvasShapesTable> {
+  $$CanvasShapesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get shapeKind => $composableBuilder(
+    column: $table.shapeKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get startX => $composableBuilder(
+    column: $table.startX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get startY => $composableBuilder(
+    column: $table.startY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get endX => $composableBuilder(
+    column: $table.endX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get endY => $composableBuilder(
+    column: $table.endY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get arrowBodyKind => $composableBuilder(
+    column: $table.arrowBodyKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get arrowStartHead => $composableBuilder(
+    column: $table.arrowStartHead,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get arrowEndHead => $composableBuilder(
+    column: $table.arrowEndHead,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get arrowHeadScale => $composableBuilder(
+    column: $table.arrowHeadScale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get controlPointsJson => $composableBuilder(
+    column: $table.controlPointsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get arrowLegacy => $composableBuilder(
+    column: $table.arrowLegacy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CanvasElementsTableOrderingComposer get elementId {
+    final $$CanvasElementsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.elementId,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableOrderingComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasShapesTableAnnotationComposer
+    extends Composer<_$ZennoDatabase, $CanvasShapesTable> {
+  $$CanvasShapesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get shapeKind =>
+      $composableBuilder(column: $table.shapeKind, builder: (column) => column);
+
+  GeneratedColumn<double> get startX =>
+      $composableBuilder(column: $table.startX, builder: (column) => column);
+
+  GeneratedColumn<double> get startY =>
+      $composableBuilder(column: $table.startY, builder: (column) => column);
+
+  GeneratedColumn<double> get endX =>
+      $composableBuilder(column: $table.endX, builder: (column) => column);
+
+  GeneratedColumn<double> get endY =>
+      $composableBuilder(column: $table.endY, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<double> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get arrowBodyKind => $composableBuilder(
+    column: $table.arrowBodyKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get arrowStartHead => $composableBuilder(
+    column: $table.arrowStartHead,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get arrowEndHead => $composableBuilder(
+    column: $table.arrowEndHead,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get arrowHeadScale => $composableBuilder(
+    column: $table.arrowHeadScale,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get controlPointsJson => $composableBuilder(
+    column: $table.controlPointsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get arrowLegacy => $composableBuilder(
+    column: $table.arrowLegacy,
+    builder: (column) => column,
+  );
+
+  $$CanvasElementsTableAnnotationComposer get elementId {
+    final $$CanvasElementsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.elementId,
+      referencedTable: $db.canvasElements,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasElementsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasElements,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasShapesTableTableManager
+    extends
+        RootTableManager<
+          _$ZennoDatabase,
+          $CanvasShapesTable,
+          CanvasShape,
+          $$CanvasShapesTableFilterComposer,
+          $$CanvasShapesTableOrderingComposer,
+          $$CanvasShapesTableAnnotationComposer,
+          $$CanvasShapesTableCreateCompanionBuilder,
+          $$CanvasShapesTableUpdateCompanionBuilder,
+          (CanvasShape, $$CanvasShapesTableReferences),
+          CanvasShape,
+          PrefetchHooks Function({bool elementId})
+        > {
+  $$CanvasShapesTableTableManager(_$ZennoDatabase db, $CanvasShapesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CanvasShapesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CanvasShapesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CanvasShapesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> elementId = const Value.absent(),
+                Value<int> shapeKind = const Value.absent(),
+                Value<double> startX = const Value.absent(),
+                Value<double> startY = const Value.absent(),
+                Value<double> endX = const Value.absent(),
+                Value<double> endY = const Value.absent(),
+                Value<int> color = const Value.absent(),
+                Value<double> strokeWidth = const Value.absent(),
+                Value<int> arrowBodyKind = const Value.absent(),
+                Value<int> arrowStartHead = const Value.absent(),
+                Value<int> arrowEndHead = const Value.absent(),
+                Value<double> arrowHeadScale = const Value.absent(),
+                Value<String> controlPointsJson = const Value.absent(),
+                Value<bool> arrowLegacy = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasShapesCompanion(
+                elementId: elementId,
+                shapeKind: shapeKind,
+                startX: startX,
+                startY: startY,
+                endX: endX,
+                endY: endY,
+                color: color,
+                strokeWidth: strokeWidth,
+                arrowBodyKind: arrowBodyKind,
+                arrowStartHead: arrowStartHead,
+                arrowEndHead: arrowEndHead,
+                arrowHeadScale: arrowHeadScale,
+                controlPointsJson: controlPointsJson,
+                arrowLegacy: arrowLegacy,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String elementId,
+                required int shapeKind,
+                required double startX,
+                required double startY,
+                required double endX,
+                required double endY,
+                required int color,
+                required double strokeWidth,
+                Value<int> arrowBodyKind = const Value.absent(),
+                Value<int> arrowStartHead = const Value.absent(),
+                Value<int> arrowEndHead = const Value.absent(),
+                Value<double> arrowHeadScale = const Value.absent(),
+                Value<String> controlPointsJson = const Value.absent(),
+                Value<bool> arrowLegacy = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CanvasShapesCompanion.insert(
+                elementId: elementId,
+                shapeKind: shapeKind,
+                startX: startX,
+                startY: startY,
+                endX: endX,
+                endY: endY,
+                color: color,
+                strokeWidth: strokeWidth,
+                arrowBodyKind: arrowBodyKind,
+                arrowStartHead: arrowStartHead,
+                arrowEndHead: arrowEndHead,
+                arrowHeadScale: arrowHeadScale,
+                controlPointsJson: controlPointsJson,
+                arrowLegacy: arrowLegacy,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CanvasShapesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({elementId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (elementId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.elementId,
+                                referencedTable: $$CanvasShapesTableReferences
+                                    ._elementIdTable(db),
+                                referencedColumn: $$CanvasShapesTableReferences
+                                    ._elementIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CanvasShapesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ZennoDatabase,
+      $CanvasShapesTable,
+      CanvasShape,
+      $$CanvasShapesTableFilterComposer,
+      $$CanvasShapesTableOrderingComposer,
+      $$CanvasShapesTableAnnotationComposer,
+      $$CanvasShapesTableCreateCompanionBuilder,
+      $$CanvasShapesTableUpdateCompanionBuilder,
+      (CanvasShape, $$CanvasShapesTableReferences),
+      CanvasShape,
       PrefetchHooks Function({bool elementId})
     >;
 typedef $$RitualChecklistsTableCreateCompanionBuilder =
@@ -21605,6 +26520,11 @@ typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       Value<String> id,
       Value<ThemeModeSetting> themeMode,
+      Value<int> accentColor,
+      Value<int> backgroundColor,
+      Value<String> inkPaletteJson,
+      Value<String> stylusMappingJson,
+      Value<String> penProfileJson,
       Value<int> defaultPomodoroWorkSecs,
       Value<int> defaultPomodoroBreakSecs,
       Value<double> defaultFlowBreakRatio,
@@ -21619,6 +26539,11 @@ typedef $$AppSettingsTableUpdateCompanionBuilder =
     AppSettingsCompanion Function({
       Value<String> id,
       Value<ThemeModeSetting> themeMode,
+      Value<int> accentColor,
+      Value<int> backgroundColor,
+      Value<String> inkPaletteJson,
+      Value<String> stylusMappingJson,
+      Value<String> penProfileJson,
       Value<int> defaultPomodoroWorkSecs,
       Value<int> defaultPomodoroBreakSecs,
       Value<double> defaultFlowBreakRatio,
@@ -21648,6 +26573,31 @@ class $$AppSettingsTableFilterComposer
   get themeMode => $composableBuilder(
     column: $table.themeMode,
     builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get backgroundColor => $composableBuilder(
+    column: $table.backgroundColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get inkPaletteJson => $composableBuilder(
+    column: $table.inkPaletteJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stylusMappingJson => $composableBuilder(
+    column: $table.stylusMappingJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get penProfileJson => $composableBuilder(
+    column: $table.penProfileJson,
+    builder: (column) => ColumnFilters(column),
   );
 
   ColumnFilters<int> get defaultPomodoroWorkSecs => $composableBuilder(
@@ -21711,6 +26661,31 @@ class $$AppSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get backgroundColor => $composableBuilder(
+    column: $table.backgroundColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get inkPaletteJson => $composableBuilder(
+    column: $table.inkPaletteJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stylusMappingJson => $composableBuilder(
+    column: $table.stylusMappingJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get penProfileJson => $composableBuilder(
+    column: $table.penProfileJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get defaultPomodoroWorkSecs => $composableBuilder(
     column: $table.defaultPomodoroWorkSecs,
     builder: (column) => ColumnOrderings(column),
@@ -21766,6 +26741,31 @@ class $$AppSettingsTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<ThemeModeSetting, int> get themeMode =>
       $composableBuilder(column: $table.themeMode, builder: (column) => column);
+
+  GeneratedColumn<int> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get backgroundColor => $composableBuilder(
+    column: $table.backgroundColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get inkPaletteJson => $composableBuilder(
+    column: $table.inkPaletteJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get stylusMappingJson => $composableBuilder(
+    column: $table.stylusMappingJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get penProfileJson => $composableBuilder(
+    column: $table.penProfileJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get defaultPomodoroWorkSecs => $composableBuilder(
     column: $table.defaultPomodoroWorkSecs,
@@ -21842,6 +26842,11 @@ class $$AppSettingsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<ThemeModeSetting> themeMode = const Value.absent(),
+                Value<int> accentColor = const Value.absent(),
+                Value<int> backgroundColor = const Value.absent(),
+                Value<String> inkPaletteJson = const Value.absent(),
+                Value<String> stylusMappingJson = const Value.absent(),
+                Value<String> penProfileJson = const Value.absent(),
                 Value<int> defaultPomodoroWorkSecs = const Value.absent(),
                 Value<int> defaultPomodoroBreakSecs = const Value.absent(),
                 Value<double> defaultFlowBreakRatio = const Value.absent(),
@@ -21854,6 +26859,11 @@ class $$AppSettingsTableTableManager
               }) => AppSettingsCompanion(
                 id: id,
                 themeMode: themeMode,
+                accentColor: accentColor,
+                backgroundColor: backgroundColor,
+                inkPaletteJson: inkPaletteJson,
+                stylusMappingJson: stylusMappingJson,
+                penProfileJson: penProfileJson,
                 defaultPomodoroWorkSecs: defaultPomodoroWorkSecs,
                 defaultPomodoroBreakSecs: defaultPomodoroBreakSecs,
                 defaultFlowBreakRatio: defaultFlowBreakRatio,
@@ -21868,6 +26878,11 @@ class $$AppSettingsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<ThemeModeSetting> themeMode = const Value.absent(),
+                Value<int> accentColor = const Value.absent(),
+                Value<int> backgroundColor = const Value.absent(),
+                Value<String> inkPaletteJson = const Value.absent(),
+                Value<String> stylusMappingJson = const Value.absent(),
+                Value<String> penProfileJson = const Value.absent(),
                 Value<int> defaultPomodoroWorkSecs = const Value.absent(),
                 Value<int> defaultPomodoroBreakSecs = const Value.absent(),
                 Value<double> defaultFlowBreakRatio = const Value.absent(),
@@ -21880,6 +26895,11 @@ class $$AppSettingsTableTableManager
               }) => AppSettingsCompanion.insert(
                 id: id,
                 themeMode: themeMode,
+                accentColor: accentColor,
+                backgroundColor: backgroundColor,
+                inkPaletteJson: inkPaletteJson,
+                stylusMappingJson: stylusMappingJson,
+                penProfileJson: penProfileJson,
                 defaultPomodoroWorkSecs: defaultPomodoroWorkSecs,
                 defaultPomodoroBreakSecs: defaultPomodoroBreakSecs,
                 defaultFlowBreakRatio: defaultFlowBreakRatio,
@@ -21923,6 +26943,10 @@ class $ZennoDatabaseManager {
       $$CanvasFoldersTableTableManager(_db, _db.canvasFolders);
   $$CanvasesTableTableManager get canvases =>
       $$CanvasesTableTableManager(_db, _db.canvases);
+  $$CanvasLayersTableTableManager get canvasLayers =>
+      $$CanvasLayersTableTableManager(_db, _db.canvasLayers);
+  $$CanvasBookmarksTableTableManager get canvasBookmarks =>
+      $$CanvasBookmarksTableTableManager(_db, _db.canvasBookmarks);
   $$CanvasElementsTableTableManager get canvasElements =>
       $$CanvasElementsTableTableManager(_db, _db.canvasElements);
   $$InkStrokesTableTableManager get inkStrokes =>
@@ -21935,6 +26959,8 @@ class $ZennoDatabaseManager {
       $$CanvasLinksTableTableManager(_db, _db.canvasLinks);
   $$CanvasTextsTableTableManager get canvasTexts =>
       $$CanvasTextsTableTableManager(_db, _db.canvasTexts);
+  $$CanvasShapesTableTableManager get canvasShapes =>
+      $$CanvasShapesTableTableManager(_db, _db.canvasShapes);
   $$RitualChecklistsTableTableManager get ritualChecklists =>
       $$RitualChecklistsTableTableManager(_db, _db.ritualChecklists);
   $$RitualChecklistItemsTableTableManager get ritualChecklistItems =>

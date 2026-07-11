@@ -148,7 +148,7 @@ void main() {
       final ViewportState result = CanvasTransform.zoomAround(
         current: vp,
         focusScreen: focus,
-        scaleFactor: 100, // 32 * 100 would be 3200, well past maxScale.
+        scaleFactor: 4096, // 32 * 4096 is well past maxScale.
       );
       expect(result.scale, CanvasTransform.maxScale);
       expectOffsetClose(
@@ -207,11 +207,11 @@ void main() {
         start: start,
         anchorScreenAtStart: anchorAtStart,
         currentFocusScreen: currentFocus,
-        scaleFactor: 0.1, // 0.05 * 0.1 = 0.005, below minScale.
+        scaleFactor: 0.0001, // 0.05 * 0.0001 is below minScale.
         rotationDelta: 0,
       );
 
-      expect(result.scale, CanvasTransform.minScale);
+      expect(result.scale, closeTo(CanvasTransform.minScale, 1e-12));
       expectOffsetClose(
         CanvasTransform.toScreen(result, worldAnchor),
         currentFocus,
@@ -242,12 +242,17 @@ void main() {
   });
 
   group('clampScale', () {
+    test('wide bounds support overview and deep detail scales', () {
+      expect(CanvasTransform.minScale, 1 / 65536);
+      expect(CanvasTransform.maxScale, 65536);
+    });
+
     test('clamps below the minimum', () {
-      expect(CanvasTransform.clampScale(0.0001), CanvasTransform.minScale);
+      expect(CanvasTransform.clampScale(0.000001), CanvasTransform.minScale);
     });
 
     test('clamps above the maximum', () {
-      expect(CanvasTransform.clampScale(1000), CanvasTransform.maxScale);
+      expect(CanvasTransform.clampScale(100000), CanvasTransform.maxScale);
     });
 
     test('leaves an in-range value unchanged', () {
@@ -294,6 +299,7 @@ void main() {
 
     test('returns an exact stop unchanged', () {
       expect(CanvasTransform.snapScale(4.0), 4.0);
+      expect(CanvasTransform.snapScale(128.0), 128.0);
     });
 
     test('respects a custom tolerance', () {

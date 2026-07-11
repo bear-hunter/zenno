@@ -103,7 +103,9 @@ class _DistractionSheetState extends State<DistractionSheet> {
           const SizedBox(height: AppSpacing.lg),
           TextField(
             controller: _noteController,
-            autofocus: true,
+            // Keep the keyboard out of the way unless the user chooses to add
+            // context; logging a distraction should not create another one.
+            autofocus: false,
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
               labelText: 'Note (optional)',

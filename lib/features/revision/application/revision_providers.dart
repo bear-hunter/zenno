@@ -87,7 +87,7 @@ class RevisionBoardController implements KanbanController {
   }
 
   @override
-  Future<void> addCard({
+  Future<String?> addCard({
     required String columnId,
     required String title,
     String? subtitle,

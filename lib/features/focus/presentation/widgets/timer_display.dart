@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:zenno/config/theme/app_colors.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
+import 'package:zenno/core/widgets/aurora.dart';
 import 'package:zenno/features/focus/domain/timer_engine.dart';
 
 /// The large central timer read-out on the Active screen.
@@ -33,61 +36,102 @@ class TimerDisplay extends StatelessWidget {
     final accent = isBreak ? AppColors.flagGreen : colors.primary;
     final progress = _progress(snapshot);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _PhaseChip(label: _phaseLabel(snapshot), color: accent),
-        const SizedBox(height: AppSpacing.xl),
-        SizedBox(
-          width: 280,
-          height: 280,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox.expand(
-                child: CircularProgressIndicator(
-                  // Indeterminate-looking constant rim for an open-ended
-                  // stretch; a real progress arc for a fixed phase.
-                  value: isOpenEnded ? 1.0 : progress,
-                  strokeWidth: 10,
-                  backgroundColor: colors.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    isOpenEnded ? accent.withValues(alpha: 0.35) : accent,
-                  ),
-                ),
-              ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    figure,
-                    style: theme.textTheme.displayMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    isOpenEnded
-                        ? 'elapsed'
-                        : (isBreak ? 'break remaining' : 'work remaining'),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final diameter = constraints.maxWidth.isFinite
+            ? math.min(330.0, constraints.maxWidth)
+            : 330.0;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _PhaseChip(label: _phaseLabel(snapshot), color: accent),
+            const SizedBox(height: AppSpacing.xl),
+            Container(
+              key: const ValueKey('focus-timer-ring'),
+              width: diameter,
+              height: diameter,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.12),
+                    blurRadius: 48,
+                    spreadRadius: 6,
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        Text(
-          _cycleLine(snapshot),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colors.onSurfaceVariant,
-          ),
-        ),
-      ],
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.all(7),
+                      child: CircularProgressIndicator(
+                        value: 1,
+                        strokeWidth: 13,
+                        backgroundColor: Colors.transparent,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          colors.onSurface.withValues(alpha: 0.07),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: CircularProgressIndicator(
+                      // Indeterminate-looking constant rim for an open-ended
+                      // stretch; a real progress arc for a fixed phase.
+                      value: isOpenEnded ? 1.0 : progress,
+                      strokeWidth: 13,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isOpenEnded ? accent.withValues(alpha: 0.35) : accent,
+                      ),
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: diameter * 0.68,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            figure,
+                            style: theme.textTheme.displayMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        isOpenEnded
+                            ? 'elapsed'
+                            : (isBreak ? 'break remaining' : 'work remaining'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              _cycleLine(snapshot),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -112,7 +156,7 @@ class TimerDisplay extends StatelessWidget {
     final cycles = snapshot.cyclesCompleted;
     final focus = _format(snapshot.accumulatedFocus);
     final cycleWord = cycles == 1 ? 'cycle' : 'cycles';
-    return '$cycles $cycleWord  ·  $focus focused';
+    return '$cycles $cycleWord / $focus focused';
   }
 }
 
@@ -125,24 +169,10 @@ class _PhaseChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        label.toUpperCase(),
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: color,
-          letterSpacing: 1.2,
-        ),
-      ),
+    return AuroraPill(
+      label: label.toUpperCase(),
+      icon: Icons.bolt_outlined,
+      color: color,
     );
   }
 }

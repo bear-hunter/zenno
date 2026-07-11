@@ -423,6 +423,13 @@ abstract final class CanvasGeometry {
       a.x + (b.x - a.x) * t,
       a.y + (b.y - a.y) * t,
       a.pressure + (b.pressure - a.pressure) * t,
+      tiltX: a.tiltX + (b.tiltX - a.tiltX) * t,
+      tiltY: a.tiltY + (b.tiltY - a.tiltY) * t,
+      azimuth: a.azimuth + (b.azimuth - a.azimuth) * t,
+      timestampMicros:
+          a.timestampMicros +
+          ((b.timestampMicros - a.timestampMicros) * t).round(),
+      velocity: a.velocity + (b.velocity - a.velocity) * t,
     );
   }
 

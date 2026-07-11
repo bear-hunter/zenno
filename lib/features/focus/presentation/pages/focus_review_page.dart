@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:zenno/config/router/routes.dart';
+import 'package:zenno/canvas/canvas_editor_navigation.dart';
 import 'package:zenno/config/theme/app_colors.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/database.dart' hide RitualChecklist;
 import 'package:zenno/core/database/tables/focus_tables.dart';
+import 'package:zenno/core/widgets/app_dialog.dart';
 import 'package:zenno/features/focus/application/active_session_controller.dart';
 import 'package:zenno/features/focus/application/focus_providers.dart';
 import 'package:zenno/features/focus/data/ritual_repository.dart';
@@ -30,6 +30,10 @@ class FocusReviewPage extends ConsumerStatefulWidget {
 class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
   final TextEditingController _noteController = TextEditingController();
   int _postEnergy = 3;
+  bool _saving = false;
+  bool _discarding = false;
+  bool _allowPop = false;
+  bool _discardDialogOpen = false;
 
   @override
   void dispose() {
@@ -45,102 +49,144 @@ class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
     final snapshot = session.snapshot;
     final sessionId = session.sessionId;
 
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Session review'),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppSpacing.contentMaxWidth,
-            ),
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.xl),
-              children: [
-                // --- Summary ------------------------------------------
-                if (snapshot != null) _Summary(snapshot: snapshot),
-                const SizedBox(height: AppSpacing.xl),
-
-                // --- Post energy --------------------------------------
-                const _SectionTitle('How is your energy now?'),
-                const SizedBox(height: AppSpacing.md),
-                EnergyRatingSelector(
-                  value: _postEnergy,
-                  onChanged: (value) => setState(() => _postEnergy = value),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-
-                // --- Distractions -------------------------------------
-                const _SectionTitle('Distractions'),
-                const SizedBox(height: AppSpacing.sm),
-                if (sessionId != null) _DistractionReview(sessionId: sessionId),
-                const SizedBox(height: AppSpacing.xl),
-
-                if (session.config?.linkedCanvasId != null) ...[
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                    ),
-                    onPressed: () => context.push(
-                      Routes.canvasPath(session.config!.linkedCanvasId!),
-                    ),
-                    icon: const Icon(Icons.draw_outlined),
-                    label: const Text('Open canvas'),
+    return PopScope<void>(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_saving && !_discarding) _confirmDiscardReview();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Session review'),
+        ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppSpacing.contentMaxWidth,
+              ),
+              child: ListView(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                children: [
+                  if (snapshot != null) _Summary(snapshot: snapshot),
+                  const SizedBox(height: AppSpacing.xl),
+                  const _SectionTitle('How is your energy now?'),
+                  const SizedBox(height: AppSpacing.md),
+                  EnergyRatingSelector(
+                    value: _postEnergy,
+                    onChanged: (value) => setState(() => _postEnergy = value),
                   ),
                   const SizedBox(height: AppSpacing.xl),
+                  const _SectionTitle('Distractions'),
+                  const SizedBox(height: AppSpacing.sm),
+                  if (sessionId != null)
+                    _DistractionReview(sessionId: sessionId),
+                  const SizedBox(height: AppSpacing.xl),
+                  if (session.config?.linkedCanvasId != null) ...[
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                      onPressed: () => openCanvasEditor(
+                        context,
+                        session.config!.linkedCanvasId!,
+                      ),
+                      icon: const Icon(Icons.draw_outlined),
+                      label: const Text('Open canvas'),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                  ],
+                  const _SectionTitle('Tidy your ritual for next time'),
+                  const SizedBox(height: AppSpacing.sm),
+                  ritualItems.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (error, _) {
+                      debugPrint('Load ritual failed: $error');
+                      return Text(
+                        'Could not load ritual. Please try again.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      );
+                    },
+                    data: (items) => RitualChecklist(
+                      items: items,
+                      checkedItemIds: const <String>{},
+                      onToggle: null,
+                      onEdit: (id, label) => _guard(
+                        ritualController.editItem(id, label),
+                        failureMessage:
+                            'Could not rename ritual item. Please try again.',
+                      ),
+                      onRetire: (id) async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Retire ritual item?'),
+                            content: const Text(
+                              'This removes it from future rituals. Past sessions keep their snapshot.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text('Retire'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                        await _guard(
+                          ritualController.retireItem(id),
+                          failureMessage:
+                              'Could not retire ritual item. Please try again.',
+                        );
+                      },
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => _addRitualItem(ritualController),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add ritual item'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  const _SectionTitle('Session note'),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextField(
+                    controller: _noteController,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'How did it go? Anything to remember?',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(56),
+                    ),
+                    onPressed: _saving || _discarding
+                        ? null
+                        : () => _save(context),
+                    icon: _saving
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check),
+                    label: Text(_saving ? 'Saving…' : 'Save & finish'),
+                  ),
                 ],
-
-                // --- Ritual upkeep ------------------------------------
-                const _SectionTitle('Tidy your ritual for next time'),
-                const SizedBox(height: AppSpacing.sm),
-                ritualItems.when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (error, _) => Text('Could not load ritual: $error'),
-                  data: (items) => RitualChecklist(
-                    items: items,
-                    // The review screen edits the ritual, not session checks —
-                    // checkboxes are inert here.
-                    checkedItemIds: const <String>{},
-                    onToggle: (_) {},
-                    onEdit: ritualController.editItem,
-                    onRetire: ritualController.retireItem,
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _addRitualItem(ritualController),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add ritual item'),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-
-                // --- Note ---------------------------------------------
-                const _SectionTitle('Session note'),
-                const SizedBox(height: AppSpacing.sm),
-                TextField(
-                  controller: _noteController,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    hintText: 'How did it go? Anything to remember?',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56),
-                  ),
-                  onPressed: () => _save(context),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Save & finish'),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -176,18 +222,79 @@ class _FocusReviewPageState extends ConsumerState<FocusReviewPage> {
     controller.dispose();
     final trimmed = label?.trim();
     if (trimmed != null && trimmed.isNotEmpty) {
-      await ritualController.addItem(trimmed);
+      await _guard(
+        ritualController.addItem(trimmed),
+        failureMessage: 'Could not add ritual item. Please try again.',
+      );
     }
   }
 
   /// Persists the review and returns to the Focus Home screen.
   Future<void> _save(BuildContext context) async {
+    if (_saving || _discarding) return;
     final navigator = Navigator.of(context);
-    await ref
-        .read(activeSessionControllerProvider.notifier)
-        .submitReview(postEnergy: _postEnergy, notes: _noteController.text);
-    if (!navigator.mounted) return;
-    navigator.popUntil((route) => route.isFirst);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(activeSessionControllerProvider.notifier)
+          .submitReview(postEnergy: _postEnergy, notes: _noteController.text);
+      _allowPop = true;
+      if (!navigator.mounted) return;
+      navigator.popUntil((route) => route.isFirst);
+    } catch (error) {
+      debugPrint('Save focus review failed: $error');
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Could not save review. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _confirmDiscardReview() async {
+    if (_saving || _discarding || _discardDialogOpen) return;
+    _discardDialogOpen = true;
+    final discard = await confirmDiscardChanges(context);
+    _discardDialogOpen = false;
+    if (!discard || !mounted) return;
+    setState(() => _discarding = true);
+    try {
+      await ref.read(activeSessionControllerProvider.notifier).discard();
+    } catch (error) {
+      debugPrint('Discard focus review failed: $error');
+      if (mounted) {
+        setState(() => _discarding = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not discard the review. Please try again.'),
+          ),
+        );
+      }
+      return;
+    }
+    _allowPop = true;
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
+  Future<void> _guard(
+    Future<void> future, {
+    required String failureMessage,
+  }) async {
+    try {
+      await future;
+    } catch (error) {
+      debugPrint('$failureMessage: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(failureMessage)));
+    }
   }
 }
 
@@ -253,6 +360,18 @@ class _DistractionReview extends ConsumerWidget {
     return StreamBuilder<List<Distraction>>(
       stream: repo.watchDistractions(sessionId),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint('Load distractions failed: ${snapshot.error}');
+          return Text(
+            'Could not load distractions. Please try again.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
         final distractions = snapshot.data ?? const <Distraction>[];
         if (distractions.isEmpty) {
           return Text(

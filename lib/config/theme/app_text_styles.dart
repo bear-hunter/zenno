@@ -1,125 +1,115 @@
 import 'package:flutter/material.dart';
 
-/// Builds Zenno's [TextTheme].
+/// Builds Zenno's calm, editorial type hierarchy.
 ///
-/// Sizes sit slightly above the Material 3 phone defaults. Zenno runs on a
-/// tablet held at arm's length, so body and label text in particular get a
-/// modest bump for comfortable reading. Weights and the rough Material 3 type
-/// hierarchy are preserved.
+/// The scale stays readable at tablet distance without making utility screens
+/// feel like landing pages. Medium weights carry hierarchy; heavy weights are
+/// reserved for exceptional emphasis.
 abstract final class AppTextStyles {
   const AppTextStyles._();
 
-  /// A complete [TextTheme], with every glyph tinted [color] (the theme's
-  /// `onSurface`). Heights are set explicitly so multi-line text breathes.
   static TextTheme textTheme(Color color) {
+    TextStyle style({
+      required double size,
+      required double height,
+      required FontWeight weight,
+      double letterSpacing = 0,
+      String? fontFamily,
+    }) => TextStyle(
+      fontSize: size,
+      height: height,
+      fontWeight: weight,
+      letterSpacing: letterSpacing,
+      fontFamily: fontFamily,
+      color: color,
+    );
+
     return TextTheme(
-      // Display — reserved for large hero text; rarely used in-app.
-      displayLarge: TextStyle(
-        fontSize: 60,
+      displayLarge: style(
+        size: 52,
+        height: 1.08,
+        weight: FontWeight.w400,
+        letterSpacing: -0.6,
+        fontFamily: 'serif',
+      ),
+      displayMedium: style(
+        size: 44,
         height: 1.12,
-        fontWeight: FontWeight.w400,
-        letterSpacing: -0.25,
-        color: color,
+        weight: FontWeight.w400,
+        letterSpacing: -0.4,
+        fontFamily: 'serif',
       ),
-      displayMedium: TextStyle(
-        fontSize: 48,
+      displaySmall: style(
+        size: 36,
         height: 1.16,
-        fontWeight: FontWeight.w400,
-        color: color,
+        weight: FontWeight.w400,
+        letterSpacing: -0.25,
+        fontFamily: 'serif',
       ),
-      displaySmall: TextStyle(
-        fontSize: 38,
+      headlineLarge: style(
+        size: 32,
+        height: 1.2,
+        weight: FontWeight.w600,
+        letterSpacing: -0.25,
+        fontFamily: 'serif',
+      ),
+      headlineMedium: style(
+        size: 28,
         height: 1.22,
-        fontWeight: FontWeight.w400,
-        color: color,
+        weight: FontWeight.w600,
+        letterSpacing: -0.2,
+        fontFamily: 'serif',
       ),
-
-      // Headline — page titles, empty-state headings.
-      headlineLarge: TextStyle(
-        fontSize: 34,
+      headlineSmall: style(
+        size: 24,
         height: 1.25,
-        fontWeight: FontWeight.w600,
-        color: color,
+        weight: FontWeight.w600,
+        letterSpacing: -0.1,
+        fontFamily: 'serif',
       ),
-      headlineMedium: TextStyle(
-        fontSize: 30,
-        height: 1.29,
-        fontWeight: FontWeight.w600,
-        color: color,
+      titleLarge: style(
+        size: 21,
+        height: 1.3,
+        weight: FontWeight.w600,
+        letterSpacing: -0.1,
       ),
-      headlineSmall: TextStyle(
-        fontSize: 26,
-        height: 1.33,
-        fontWeight: FontWeight.w600,
-        color: color,
-      ),
-
-      // Title — card titles, section headers, app-bar titles.
-      titleLarge: TextStyle(
-        fontSize: 24,
-        height: 1.27,
-        fontWeight: FontWeight.w600,
-        color: color,
-      ),
-      titleMedium: TextStyle(
-        fontSize: 18,
+      titleMedium: style(size: 17, height: 1.4, weight: FontWeight.w600),
+      titleSmall: style(size: 15, height: 1.4, weight: FontWeight.w600),
+      bodyLarge: style(
+        size: 17,
         height: 1.5,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.1,
-        color: color,
+        weight: FontWeight.w400,
+        letterSpacing: 0.05,
       ),
-      titleSmall: TextStyle(
-        fontSize: 16,
-        height: 1.43,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.1,
-        color: color,
+      bodyMedium: style(
+        size: 15,
+        height: 1.48,
+        weight: FontWeight.w400,
+        letterSpacing: 0.05,
       ),
-
-      // Body — the workhorse styles for paragraphs and list content.
-      bodyLarge: TextStyle(
-        fontSize: 18,
-        height: 1.5,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0.15,
-        color: color,
-      ),
-      bodyMedium: TextStyle(
-        fontSize: 16,
-        height: 1.43,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0.2,
-        color: color,
-      ),
-      bodySmall: TextStyle(
-        fontSize: 14,
-        height: 1.33,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0.2,
-        color: color,
-      ),
-
-      // Label — buttons, chips, nav-rail labels, captions.
-      labelLarge: TextStyle(
-        fontSize: 16,
-        height: 1.43,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.1,
-        color: color,
-      ),
-      labelMedium: TextStyle(
-        fontSize: 14,
-        height: 1.33,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-        color: color,
-      ),
-      labelSmall: TextStyle(
-        fontSize: 12,
+      bodySmall: style(
+        size: 13,
         height: 1.45,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-        color: color,
+        weight: FontWeight.w400,
+        letterSpacing: 0.1,
+      ),
+      labelLarge: style(
+        size: 15,
+        height: 1.35,
+        weight: FontWeight.w600,
+        letterSpacing: 0.05,
+      ),
+      labelMedium: style(
+        size: 13,
+        height: 1.35,
+        weight: FontWeight.w600,
+        letterSpacing: 0.1,
+      ),
+      labelSmall: style(
+        size: 12,
+        height: 1.35,
+        weight: FontWeight.w600,
+        letterSpacing: 0.25,
       ),
     );
   }

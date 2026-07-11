@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -12,7 +15,13 @@ part 'library_providers.g.dart';
 /// Provides the singleton [LibraryRepository], wired to the app database.
 @riverpod
 LibraryRepository libraryRepository(Ref ref) {
-  return LibraryRepository(ref.watch(databaseProvider));
+  final repository = LibraryRepository(ref.watch(databaseProvider));
+  unawaited(
+    repository.cleanupOrphanedFiles().catchError((Object error) {
+      debugPrint('Library file cleanup failed: $error');
+    }),
+  );
+  return repository;
 }
 
 /// Current persisted [LibrarySort] for the library grid.
@@ -29,4 +38,14 @@ final librarySortProvider = Provider<LibrarySort>((ref) {
 final canvasListProvider = StreamProvider<List<Canvase>>((ref) {
   final sort = ref.watch(librarySortProvider);
   return ref.watch(libraryRepositoryProvider).watchCanvases(sort);
+});
+
+/// Streams only the title for one canvas, used by editor chrome.
+final canvasTitleProvider = StreamProvider.family<String?, String>((ref, id) {
+  return ref.watch(libraryRepositoryProvider).watchCanvasTitle(id);
+});
+
+/// Streams one-level canvas folders for the library.
+final canvasFolderListProvider = StreamProvider<List<CanvasFolder>>((ref) {
+  return ref.watch(libraryRepositoryProvider).watchFolders();
 });

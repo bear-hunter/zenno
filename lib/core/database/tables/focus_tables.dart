@@ -5,7 +5,7 @@ import 'package:zenno/core/database/tables/canvas_tables.dart';
 enum TimerKind { pomodoro, flowmodoro }
 
 /// Lifecycle state of a focus session.
-enum FocusSessionStatus { inProgress, completed, abandoned }
+enum FocusSessionStatus { inProgress, completed, abandoned, reviewPending }
 
 /// Whether a captured distraction originated from the user or the environment.
 enum DistractionKind { internal, external }

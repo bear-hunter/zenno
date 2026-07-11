@@ -9,9 +9,10 @@ library;
 /// delegate to that feature's repository, which owns all persistence. The
 /// widget itself never touches a database.
 ///
-/// Every method is a fire-and-forget `Future`: the UI is driven by a separate
-/// reactive read stream, so callers do not need the result, only completion
-/// (for error handling).
+/// Most methods are fire-and-forget `Future`s: the UI is driven by a separate
+/// reactive read stream, so callers need completion for error handling. Card
+/// creation may return the new card id so feature UIs can open post-add
+/// options without coupling the shared widget to feature details.
 abstract interface class KanbanController {
   /// Moves the card [cardId] into column [toColumnId] at fractional
   /// [newPosition]. Used both for cross-column moves and in-column reorders.
@@ -37,7 +38,9 @@ abstract interface class KanbanController {
   Future<void> removeColumn(String columnId);
 
   /// Adds a new card to column [columnId] at fractional [position].
-  Future<void> addCard({
+  ///
+  /// Returns the new card id when the backing implementation can provide it.
+  Future<String?> addCard({
     required String columnId,
     required String title,
     String? subtitle,
@@ -66,7 +69,13 @@ abstract final class KanbanPositions {
   /// The step taken when there is only one neighbour (an end insertion).
   static const double gap = 1024;
 
-  /// Returns a position that sorts strictly between [before] and [after].
+  /// Returns a position that sorts strictly between [before] and [after]
+  /// where possible.
+  ///
+  /// If neighbours are equal, inverted, or too close for a useful midpoint,
+  /// this returns a deterministic tail-side step instead of reusing a colliding
+  /// value. Repositories should still renormalise dense lists, but this avoids
+  /// the worst same-position drops.
   ///
   /// - both non-null  → their midpoint.
   /// - only [after]   → `after - gap` (insert at the head).
@@ -74,7 +83,10 @@ abstract final class KanbanPositions {
   /// - both null      → `0` (the first item in an empty list).
   static double between(double? before, double? after) {
     if (before != null && after != null) {
-      return before + (after - before) / 2;
+      final delta = after - before;
+      final midpoint = before + delta / 2;
+      if (midpoint > before && midpoint < after) return midpoint;
+      return before + gap;
     }
     if (after != null) {
       return after - gap;
