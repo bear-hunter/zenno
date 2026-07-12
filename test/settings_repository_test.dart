@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zenno/canvas/input/pen_profile.dart';
@@ -43,6 +44,7 @@ void main() {
     expect(settings.sessionLength, const Duration(seconds: 3000));
     expect(settings.keepScreenOnInFocus, isTrue);
     expect(settings.librarySort, LibrarySort.recent);
+    expect(settings.toolWheelPosition, isNull);
   });
 
   test('per-field update persists and re-reads', () async {
@@ -68,6 +70,7 @@ void main() {
         pressureCurve: PressureCurveKind.firm,
       ),
     );
+    await repo.setToolWheelPosition(const Offset(0.25, 0.75));
 
     final updated = await repo.readSettings();
 
@@ -95,6 +98,7 @@ void main() {
         pressureCurve: PressureCurveKind.firm,
       ),
     );
+    expect(updated.toolWheelPosition, const Offset(0.25, 0.75));
     // Untouched fields keep their defaults.
     expect(updated.pomodoroBreak, const Duration(seconds: 300));
   });
@@ -122,11 +126,50 @@ void main() {
       sessionLength: Duration(minutes: 120),
       keepScreenOnInFocus: false,
       librarySort: LibrarySort.created,
+      toolWheelPosition: Offset(0.4, 0.6),
     );
 
     await repo.save(model);
 
     expect(await repo.readSettings(), model);
+  });
+
+  test('tool-wheel position clamps axes before persisting', () async {
+    await repo.setToolWheelPosition(const Offset(-0.5, 1.5));
+
+    final updated = await repo.readSettings();
+
+    expect(updated.toolWheelPosition, const Offset(0, 1));
+  });
+
+  test('stored tool-wheel position is clamped while decoding', () async {
+    await repo.readSettings();
+    await (db.update(
+      db.appSettings,
+    )..where((settings) => settings.id.equals('singleton'))).write(
+      const AppSettingsCompanion(
+        toolWheelPositionJson: Value('{"x":-4,"y":3}'),
+      ),
+    );
+
+    final updated = await repo.readSettings();
+
+    expect(updated.toolWheelPosition, const Offset(0, 1));
+  });
+
+  test('invalid tool-wheel position falls back to the UI default', () async {
+    await repo.readSettings();
+    await (db.update(
+      db.appSettings,
+    )..where((settings) => settings.id.equals('singleton'))).write(
+      const AppSettingsCompanion(
+        toolWheelPositionJson: Value('{"x":"invalid","y":0.5}'),
+      ),
+    );
+
+    final updated = await repo.readSettings();
+
+    expect(updated.toolWheelPosition, isNull);
   });
 
   test('watchSettings emits the latest value after a write', () async {

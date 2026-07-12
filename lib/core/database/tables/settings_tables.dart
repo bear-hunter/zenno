@@ -27,6 +27,8 @@ class AppSettings extends Table {
   TextColumn get stylusMappingJson =>
       text().withDefault(const Constant('{}'))();
   TextColumn get penProfileJson => text().withDefault(const Constant('{}'))();
+  TextColumn get toolWheelPositionJson =>
+      text().withDefault(const Constant('{}'))();
 
   IntColumn get defaultPomodoroWorkSecs =>
       integer().withDefault(const Constant(1500))();

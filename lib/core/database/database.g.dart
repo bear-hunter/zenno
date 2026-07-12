@@ -13344,6 +13344,18 @@ class $AppSettingsTable extends AppSettings
     requiredDuringInsert: false,
     defaultValue: const Constant('{}'),
   );
+  static const VerificationMeta _toolWheelPositionJsonMeta =
+      const VerificationMeta('toolWheelPositionJson');
+  @override
+  late final GeneratedColumn<String> toolWheelPositionJson =
+      GeneratedColumn<String>(
+        'tool_wheel_position_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   static const VerificationMeta _defaultPomodoroWorkSecsMeta =
       const VerificationMeta('defaultPomodoroWorkSecs');
   @override
@@ -13455,6 +13467,7 @@ class $AppSettingsTable extends AppSettings
     inkPaletteJson,
     stylusMappingJson,
     penProfileJson,
+    toolWheelPositionJson,
     defaultPomodoroWorkSecs,
     defaultPomodoroBreakSecs,
     defaultFlowBreakRatio,
@@ -13521,6 +13534,15 @@ class $AppSettingsTable extends AppSettings
         penProfileJson.isAcceptableOrUnknown(
           data['pen_profile_json']!,
           _penProfileJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tool_wheel_position_json')) {
+      context.handle(
+        _toolWheelPositionJsonMeta,
+        toolWheelPositionJson.isAcceptableOrUnknown(
+          data['tool_wheel_position_json']!,
+          _toolWheelPositionJsonMeta,
         ),
       );
     }
@@ -13626,6 +13648,10 @@ class $AppSettingsTable extends AppSettings
         DriftSqlType.string,
         data['${effectivePrefix}pen_profile_json'],
       )!,
+      toolWheelPositionJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tool_wheel_position_json'],
+      )!,
       defaultPomodoroWorkSecs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}default_pomodoro_work_secs'],
@@ -13684,6 +13710,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   final String inkPaletteJson;
   final String stylusMappingJson;
   final String penProfileJson;
+  final String toolWheelPositionJson;
   final int defaultPomodoroWorkSecs;
   final int defaultPomodoroBreakSecs;
   final double defaultFlowBreakRatio;
@@ -13700,6 +13727,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     required this.inkPaletteJson,
     required this.stylusMappingJson,
     required this.penProfileJson,
+    required this.toolWheelPositionJson,
     required this.defaultPomodoroWorkSecs,
     required this.defaultPomodoroBreakSecs,
     required this.defaultFlowBreakRatio,
@@ -13723,6 +13751,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     map['ink_palette_json'] = Variable<String>(inkPaletteJson);
     map['stylus_mapping_json'] = Variable<String>(stylusMappingJson);
     map['pen_profile_json'] = Variable<String>(penProfileJson);
+    map['tool_wheel_position_json'] = Variable<String>(toolWheelPositionJson);
     map['default_pomodoro_work_secs'] = Variable<int>(defaultPomodoroWorkSecs);
     map['default_pomodoro_break_secs'] = Variable<int>(
       defaultPomodoroBreakSecs,
@@ -13751,6 +13780,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       inkPaletteJson: Value(inkPaletteJson),
       stylusMappingJson: Value(stylusMappingJson),
       penProfileJson: Value(penProfileJson),
+      toolWheelPositionJson: Value(toolWheelPositionJson),
       defaultPomodoroWorkSecs: Value(defaultPomodoroWorkSecs),
       defaultPomodoroBreakSecs: Value(defaultPomodoroBreakSecs),
       defaultFlowBreakRatio: Value(defaultFlowBreakRatio),
@@ -13777,6 +13807,9 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       inkPaletteJson: serializer.fromJson<String>(json['inkPaletteJson']),
       stylusMappingJson: serializer.fromJson<String>(json['stylusMappingJson']),
       penProfileJson: serializer.fromJson<String>(json['penProfileJson']),
+      toolWheelPositionJson: serializer.fromJson<String>(
+        json['toolWheelPositionJson'],
+      ),
       defaultPomodoroWorkSecs: serializer.fromJson<int>(
         json['defaultPomodoroWorkSecs'],
       ),
@@ -13812,6 +13845,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       'inkPaletteJson': serializer.toJson<String>(inkPaletteJson),
       'stylusMappingJson': serializer.toJson<String>(stylusMappingJson),
       'penProfileJson': serializer.toJson<String>(penProfileJson),
+      'toolWheelPositionJson': serializer.toJson<String>(toolWheelPositionJson),
       'defaultPomodoroWorkSecs': serializer.toJson<int>(
         defaultPomodoroWorkSecs,
       ),
@@ -13839,6 +13873,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     String? inkPaletteJson,
     String? stylusMappingJson,
     String? penProfileJson,
+    String? toolWheelPositionJson,
     int? defaultPomodoroWorkSecs,
     int? defaultPomodoroBreakSecs,
     double? defaultFlowBreakRatio,
@@ -13855,6 +13890,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     inkPaletteJson: inkPaletteJson ?? this.inkPaletteJson,
     stylusMappingJson: stylusMappingJson ?? this.stylusMappingJson,
     penProfileJson: penProfileJson ?? this.penProfileJson,
+    toolWheelPositionJson: toolWheelPositionJson ?? this.toolWheelPositionJson,
     defaultPomodoroWorkSecs:
         defaultPomodoroWorkSecs ?? this.defaultPomodoroWorkSecs,
     defaultPomodoroBreakSecs:
@@ -13886,6 +13922,9 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       penProfileJson: data.penProfileJson.present
           ? data.penProfileJson.value
           : this.penProfileJson,
+      toolWheelPositionJson: data.toolWheelPositionJson.present
+          ? data.toolWheelPositionJson.value
+          : this.toolWheelPositionJson,
       defaultPomodoroWorkSecs: data.defaultPomodoroWorkSecs.present
           ? data.defaultPomodoroWorkSecs.value
           : this.defaultPomodoroWorkSecs,
@@ -13923,6 +13962,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
           ..write('inkPaletteJson: $inkPaletteJson, ')
           ..write('stylusMappingJson: $stylusMappingJson, ')
           ..write('penProfileJson: $penProfileJson, ')
+          ..write('toolWheelPositionJson: $toolWheelPositionJson, ')
           ..write('defaultPomodoroWorkSecs: $defaultPomodoroWorkSecs, ')
           ..write('defaultPomodoroBreakSecs: $defaultPomodoroBreakSecs, ')
           ..write('defaultFlowBreakRatio: $defaultFlowBreakRatio, ')
@@ -13944,6 +13984,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     inkPaletteJson,
     stylusMappingJson,
     penProfileJson,
+    toolWheelPositionJson,
     defaultPomodoroWorkSecs,
     defaultPomodoroBreakSecs,
     defaultFlowBreakRatio,
@@ -13964,6 +14005,7 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
           other.inkPaletteJson == this.inkPaletteJson &&
           other.stylusMappingJson == this.stylusMappingJson &&
           other.penProfileJson == this.penProfileJson &&
+          other.toolWheelPositionJson == this.toolWheelPositionJson &&
           other.defaultPomodoroWorkSecs == this.defaultPomodoroWorkSecs &&
           other.defaultPomodoroBreakSecs == this.defaultPomodoroBreakSecs &&
           other.defaultFlowBreakRatio == this.defaultFlowBreakRatio &&
@@ -13982,6 +14024,7 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   final Value<String> inkPaletteJson;
   final Value<String> stylusMappingJson;
   final Value<String> penProfileJson;
+  final Value<String> toolWheelPositionJson;
   final Value<int> defaultPomodoroWorkSecs;
   final Value<int> defaultPomodoroBreakSecs;
   final Value<double> defaultFlowBreakRatio;
@@ -13999,6 +14042,7 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     this.inkPaletteJson = const Value.absent(),
     this.stylusMappingJson = const Value.absent(),
     this.penProfileJson = const Value.absent(),
+    this.toolWheelPositionJson = const Value.absent(),
     this.defaultPomodoroWorkSecs = const Value.absent(),
     this.defaultPomodoroBreakSecs = const Value.absent(),
     this.defaultFlowBreakRatio = const Value.absent(),
@@ -14017,6 +14061,7 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     this.inkPaletteJson = const Value.absent(),
     this.stylusMappingJson = const Value.absent(),
     this.penProfileJson = const Value.absent(),
+    this.toolWheelPositionJson = const Value.absent(),
     this.defaultPomodoroWorkSecs = const Value.absent(),
     this.defaultPomodoroBreakSecs = const Value.absent(),
     this.defaultFlowBreakRatio = const Value.absent(),
@@ -14035,6 +14080,7 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     Expression<String>? inkPaletteJson,
     Expression<String>? stylusMappingJson,
     Expression<String>? penProfileJson,
+    Expression<String>? toolWheelPositionJson,
     Expression<int>? defaultPomodoroWorkSecs,
     Expression<int>? defaultPomodoroBreakSecs,
     Expression<double>? defaultFlowBreakRatio,
@@ -14053,6 +14099,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
       if (inkPaletteJson != null) 'ink_palette_json': inkPaletteJson,
       if (stylusMappingJson != null) 'stylus_mapping_json': stylusMappingJson,
       if (penProfileJson != null) 'pen_profile_json': penProfileJson,
+      if (toolWheelPositionJson != null)
+        'tool_wheel_position_json': toolWheelPositionJson,
       if (defaultPomodoroWorkSecs != null)
         'default_pomodoro_work_secs': defaultPomodoroWorkSecs,
       if (defaultPomodoroBreakSecs != null)
@@ -14078,6 +14126,7 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     Value<String>? inkPaletteJson,
     Value<String>? stylusMappingJson,
     Value<String>? penProfileJson,
+    Value<String>? toolWheelPositionJson,
     Value<int>? defaultPomodoroWorkSecs,
     Value<int>? defaultPomodoroBreakSecs,
     Value<double>? defaultFlowBreakRatio,
@@ -14096,6 +14145,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
       inkPaletteJson: inkPaletteJson ?? this.inkPaletteJson,
       stylusMappingJson: stylusMappingJson ?? this.stylusMappingJson,
       penProfileJson: penProfileJson ?? this.penProfileJson,
+      toolWheelPositionJson:
+          toolWheelPositionJson ?? this.toolWheelPositionJson,
       defaultPomodoroWorkSecs:
           defaultPomodoroWorkSecs ?? this.defaultPomodoroWorkSecs,
       defaultPomodoroBreakSecs:
@@ -14137,6 +14188,11 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     }
     if (penProfileJson.present) {
       map['pen_profile_json'] = Variable<String>(penProfileJson.value);
+    }
+    if (toolWheelPositionJson.present) {
+      map['tool_wheel_position_json'] = Variable<String>(
+        toolWheelPositionJson.value,
+      );
     }
     if (defaultPomodoroWorkSecs.present) {
       map['default_pomodoro_work_secs'] = Variable<int>(
@@ -14190,6 +14246,7 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
           ..write('inkPaletteJson: $inkPaletteJson, ')
           ..write('stylusMappingJson: $stylusMappingJson, ')
           ..write('penProfileJson: $penProfileJson, ')
+          ..write('toolWheelPositionJson: $toolWheelPositionJson, ')
           ..write('defaultPomodoroWorkSecs: $defaultPomodoroWorkSecs, ')
           ..write('defaultPomodoroBreakSecs: $defaultPomodoroBreakSecs, ')
           ..write('defaultFlowBreakRatio: $defaultFlowBreakRatio, ')
@@ -26597,6 +26654,7 @@ typedef $$AppSettingsTableCreateCompanionBuilder =
       Value<String> inkPaletteJson,
       Value<String> stylusMappingJson,
       Value<String> penProfileJson,
+      Value<String> toolWheelPositionJson,
       Value<int> defaultPomodoroWorkSecs,
       Value<int> defaultPomodoroBreakSecs,
       Value<double> defaultFlowBreakRatio,
@@ -26616,6 +26674,7 @@ typedef $$AppSettingsTableUpdateCompanionBuilder =
       Value<String> inkPaletteJson,
       Value<String> stylusMappingJson,
       Value<String> penProfileJson,
+      Value<String> toolWheelPositionJson,
       Value<int> defaultPomodoroWorkSecs,
       Value<int> defaultPomodoroBreakSecs,
       Value<double> defaultFlowBreakRatio,
@@ -26669,6 +26728,11 @@ class $$AppSettingsTableFilterComposer
 
   ColumnFilters<String> get penProfileJson => $composableBuilder(
     column: $table.penProfileJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toolWheelPositionJson => $composableBuilder(
+    column: $table.toolWheelPositionJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -26758,6 +26822,11 @@ class $$AppSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get toolWheelPositionJson => $composableBuilder(
+    column: $table.toolWheelPositionJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get defaultPomodoroWorkSecs => $composableBuilder(
     column: $table.defaultPomodoroWorkSecs,
     builder: (column) => ColumnOrderings(column),
@@ -26836,6 +26905,11 @@ class $$AppSettingsTableAnnotationComposer
 
   GeneratedColumn<String> get penProfileJson => $composableBuilder(
     column: $table.penProfileJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get toolWheelPositionJson => $composableBuilder(
+    column: $table.toolWheelPositionJson,
     builder: (column) => column,
   );
 
@@ -26919,6 +26993,7 @@ class $$AppSettingsTableTableManager
                 Value<String> inkPaletteJson = const Value.absent(),
                 Value<String> stylusMappingJson = const Value.absent(),
                 Value<String> penProfileJson = const Value.absent(),
+                Value<String> toolWheelPositionJson = const Value.absent(),
                 Value<int> defaultPomodoroWorkSecs = const Value.absent(),
                 Value<int> defaultPomodoroBreakSecs = const Value.absent(),
                 Value<double> defaultFlowBreakRatio = const Value.absent(),
@@ -26936,6 +27011,7 @@ class $$AppSettingsTableTableManager
                 inkPaletteJson: inkPaletteJson,
                 stylusMappingJson: stylusMappingJson,
                 penProfileJson: penProfileJson,
+                toolWheelPositionJson: toolWheelPositionJson,
                 defaultPomodoroWorkSecs: defaultPomodoroWorkSecs,
                 defaultPomodoroBreakSecs: defaultPomodoroBreakSecs,
                 defaultFlowBreakRatio: defaultFlowBreakRatio,
@@ -26955,6 +27031,7 @@ class $$AppSettingsTableTableManager
                 Value<String> inkPaletteJson = const Value.absent(),
                 Value<String> stylusMappingJson = const Value.absent(),
                 Value<String> penProfileJson = const Value.absent(),
+                Value<String> toolWheelPositionJson = const Value.absent(),
                 Value<int> defaultPomodoroWorkSecs = const Value.absent(),
                 Value<int> defaultPomodoroBreakSecs = const Value.absent(),
                 Value<double> defaultFlowBreakRatio = const Value.absent(),
@@ -26972,6 +27049,7 @@ class $$AppSettingsTableTableManager
                 inkPaletteJson: inkPaletteJson,
                 stylusMappingJson: stylusMappingJson,
                 penProfileJson: penProfileJson,
+                toolWheelPositionJson: toolWheelPositionJson,
                 defaultPomodoroWorkSecs: defaultPomodoroWorkSecs,
                 defaultPomodoroBreakSecs: defaultPomodoroBreakSecs,
                 defaultFlowBreakRatio: defaultFlowBreakRatio,

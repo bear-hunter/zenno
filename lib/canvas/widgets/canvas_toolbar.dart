@@ -62,6 +62,8 @@ class CanvasToolbar extends StatefulWidget {
     this.trailingMenu,
     this.palette = _defaultSwatches,
     this.onPaletteChanged,
+    this.toolWheelPosition,
+    this.onToolWheelPositionChanged,
     this.controlsLockedOpen = false,
     super.key,
   });
@@ -79,6 +81,12 @@ class CanvasToolbar extends StatefulWidget {
   final Widget? trailingMenu;
   final List<int> palette;
   final ValueChanged<List<int>>? onPaletteChanged;
+
+  /// Normalized position of the movable wheel cluster within the safe area.
+  final Offset? toolWheelPosition;
+
+  /// Persists a normalized wheel position after a drag finishes.
+  final FutureOr<void> Function(Offset)? onToolWheelPositionChanged;
 
   /// Retained for compatibility with page-owned title editing state.
   final bool controlsLockedOpen;
@@ -116,6 +124,7 @@ class CanvasToolbar extends StatefulWidget {
     'canvas-minimal-tool-menu',
   );
   static const Key wheelCenterKey = ValueKey<String>('canvas-wheel-center');
+  static const Key toolClusterKey = ValueKey<String>('canvas-tool-cluster');
   static const Key paletteDockKey = ValueKey<String>('canvas-palette-dock');
   static const Key minimalSaveErrorKey = ValueKey<String>(
     'canvas-minimal-save-error',
@@ -149,6 +158,7 @@ class CanvasToolbar extends StatefulWidget {
 /// wheel without persisting transient UI state into canvas data.
 class CanvasToolbarState extends State<CanvasToolbar> {
   _WheelPage _wheelPage = _WheelPage.tools;
+  Offset? _localToolWheelPosition;
 
   /// Reveals the contextual side of the persistent wheel.
   ///
@@ -178,6 +188,46 @@ class CanvasToolbarState extends State<CanvasToolbar> {
     });
   }
 
+  void _handleToolWheelDragUpdate(
+    Offset normalizedDelta,
+    Offset defaultPosition,
+  ) {
+    final current =
+        _localToolWheelPosition ?? widget.toolWheelPosition ?? defaultPosition;
+    setState(() {
+      _localToolWheelPosition = Offset(
+        (current.dx + normalizedDelta.dx).clamp(0.0, 1.0).toDouble(),
+        (current.dy + normalizedDelta.dy).clamp(0.0, 1.0).toDouble(),
+      );
+    });
+  }
+
+  void _persistToolWheelPosition() {
+    final position = _localToolWheelPosition;
+    final persist = widget.onToolWheelPositionChanged;
+    if (position == null || persist == null) return;
+    unawaited(_saveToolWheelPosition(persist, position));
+  }
+
+  Future<void> _saveToolWheelPosition(
+    FutureOr<void> Function(Offset) persist,
+    Offset position,
+  ) async {
+    try {
+      await persist(position);
+    } catch (error) {
+      debugPrint('Save tool-wheel position failed: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not save wheel position. Move it again to retry.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return _CanvasToolbarContent(
@@ -187,6 +237,9 @@ class CanvasToolbarState extends State<CanvasToolbar> {
       trailingMenu: widget.trailingMenu,
       palette: widget.palette,
       onPaletteChanged: widget.onPaletteChanged,
+      toolWheelPosition: _localToolWheelPosition ?? widget.toolWheelPosition,
+      onToolWheelDragUpdate: _handleToolWheelDragUpdate,
+      onToolWheelDragEnd: _persistToolWheelPosition,
       wheelPage: _wheelPage,
       onWheelPageChanged: (page) => setState(() => _wheelPage = page),
       onCenterTap: _handleCenterTap,
@@ -202,6 +255,9 @@ class _CanvasToolbarContent extends StatelessWidget {
     required this.trailingMenu,
     required this.palette,
     required this.onPaletteChanged,
+    required this.toolWheelPosition,
+    required this.onToolWheelDragUpdate,
+    required this.onToolWheelDragEnd,
     required this.wheelPage,
     required this.onWheelPageChanged,
     required this.onCenterTap,
@@ -213,6 +269,10 @@ class _CanvasToolbarContent extends StatelessWidget {
   final Widget? trailingMenu;
   final List<int> palette;
   final ValueChanged<List<int>>? onPaletteChanged;
+  final Offset? toolWheelPosition;
+  final void Function(Offset normalizedDelta, Offset defaultPosition)
+  onToolWheelDragUpdate;
+  final VoidCallback onToolWheelDragEnd;
   final _WheelPage wheelPage;
   final ValueChanged<_WheelPage> onWheelPageChanged;
   final VoidCallback onCenterTap;
@@ -234,7 +294,13 @@ class _CanvasToolbarContent extends StatelessWidget {
   static const List<int> _defaultSwatches = CanvasToolbar._defaultSwatches;
   static const double _rotationStep = 0.2617993877991494; // 15 degrees.
   static const List<double> _widths = <double>[1, 2, 4, 8, 12, 20];
+  static const double _wheelLeft = 8;
   static const double _wheelTop = 60;
+  static const double _clusterMargin = 8;
+  static const double _paletteGap = 8;
+  static const double _paletteHeight = 32;
+  static const double _sideButtonGap = 4;
+  static const double _sideButtonWidth = 34;
 
   @override
   Widget build(BuildContext context) {
@@ -244,12 +310,76 @@ class _CanvasToolbarContent extends StatelessWidget {
         return SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final double wheelSize = constraints.maxWidth >= 720 ? 176 : 156;
-              final List<_WheelAction> wheelActions = _wheelActions(context);
-              final double paletteWidth = math.min(
-                wheelSize,
-                math.max(0, constraints.maxWidth - 16),
+              final double preferredWheelSize = constraints.maxWidth >= 720
+                  ? 176
+                  : 156;
+              final double availableWheelWidth =
+                  constraints.maxWidth -
+                  (_clusterMargin * 2) -
+                  _sideButtonGap -
+                  _sideButtonWidth;
+              final double availableWheelHeight =
+                  constraints.maxHeight -
+                  (_clusterMargin * 2) -
+                  _paletteGap -
+                  _paletteHeight;
+              final double wheelSize = math.min(
+                preferredWheelSize,
+                math.max(
+                  120,
+                  math.min(availableWheelWidth, availableWheelHeight),
+                ),
               );
+              final List<_WheelAction> wheelActions = _wheelActions(context);
+              final double clusterWidth =
+                  wheelSize + _sideButtonGap + _sideButtonWidth;
+              final double clusterHeight =
+                  wheelSize + _paletteGap + _paletteHeight;
+              final double maxLeft = math.max(
+                _clusterMargin,
+                constraints.maxWidth - clusterWidth - _clusterMargin,
+              );
+              final double availableMaxTop =
+                  constraints.maxHeight - clusterHeight - _clusterMargin;
+              final double minTop = availableMaxTop >= _wheelTop
+                  ? _wheelTop
+                  : _clusterMargin;
+              final double maxTop = math.max(minTop, availableMaxTop);
+              final double defaultLeft = _wheelLeft
+                  .clamp(_clusterMargin, maxLeft)
+                  .toDouble();
+              final double defaultTop = _wheelTop
+                  .clamp(minTop, maxTop)
+                  .toDouble();
+              final double horizontalRange = maxLeft - _clusterMargin;
+              final double verticalRange = maxTop - minTop;
+              final Offset defaultPosition = Offset(
+                horizontalRange == 0
+                    ? 0
+                    : (defaultLeft - _clusterMargin) / horizontalRange,
+                verticalRange == 0 ? 0 : (defaultTop - minTop) / verticalRange,
+              );
+              final Offset normalizedPosition = toolWheelPosition == null
+                  ? defaultPosition
+                  : Offset(
+                      toolWheelPosition!.dx.clamp(0.0, 1.0).toDouble(),
+                      toolWheelPosition!.dy.clamp(0.0, 1.0).toDouble(),
+                    );
+              final Offset clusterOrigin = Offset(
+                _clusterMargin + normalizedPosition.dx * horizontalRange,
+                minTop + normalizedPosition.dy * verticalRange,
+              );
+
+              void moveToolCluster(Offset pixelDelta) {
+                onToolWheelDragUpdate(
+                  Offset(
+                    horizontalRange == 0 ? 0 : pixelDelta.dx / horizontalRange,
+                    verticalRange == 0 ? 0 : pixelDelta.dy / verticalRange,
+                  ),
+                  defaultPosition,
+                );
+              }
+
               double actionRight = 8;
               final List<Widget> cornerActions = <Widget>[];
 
@@ -329,81 +459,109 @@ class _CanvasToolbarContent extends StatelessWidget {
                     ),
                   ...cornerActions,
                   Positioned(
-                    key: compactDrawingPadKey,
-                    top: _wheelTop,
-                    left: 8,
-                    width: wheelSize,
-                    height: wheelSize,
-                    child: _RadialWheel(
-                      key: CanvasToolbar.minimalToolMenuKey,
-                      actions: wheelActions,
-                      properties: _wheelPropertyActions(context),
-                      activeColor: Color(controller.penColor),
-                      centerIcon: _wheelCenterIcon,
-                      centerLabel: _wheelCenterLabel,
-                      centerTooltip: _wheelCenterTooltip,
-                      centerKey: CanvasToolbar.wheelCenterKey,
-                      onCenterTap: _effectiveWheelPage == _WheelPage.tools
-                          ? controller.activeToolWheelPreset.kind.isInk
-                                ? () => _showActiveColorPicker(context)
-                                : () => _showToolSettings(context)
-                          : onCenterTap,
-                      onCenterLongPress:
-                          _effectiveWheelPage == _WheelPage.tools &&
-                              controller.activeToolWheelPreset.kind.isInk &&
-                              onPaletteChanged != null
-                          ? () => _showPaletteEditor(
-                              context,
-                              palette.isEmpty ? _defaultSwatches : palette,
-                            )
-                          : _effectiveWheelPage == _WheelPage.context ||
-                                _effectiveWheelPage == _WheelPage.selection
-                          ? () => _showToolSettings(context)
-                          : null,
-                    ),
-                  ),
-                  if (_effectiveWheelPage == _WheelPage.tools)
-                    Positioned(
-                      top: _wheelTop + 22,
-                      left: 8 + wheelSize + 4,
-                      child: Column(
-                        children: <Widget>[
-                          _WheelSideButton(
-                            icon: Icons.undo,
-                            tooltip: 'Undo',
-                            onPressed: controller.canUndo
-                                ? controller.undo
-                                : null,
+                    key: CanvasToolbar.toolClusterKey,
+                    left: clusterOrigin.dx,
+                    top: clusterOrigin.dy,
+                    width: clusterWidth,
+                    height: clusterHeight,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: <Widget>[
+                        Positioned(
+                          key: compactDrawingPadKey,
+                          left: 0,
+                          top: 0,
+                          width: wheelSize,
+                          height: wheelSize,
+                          child: Semantics(
+                            container: true,
+                            label: 'Tool wheel',
+                            hint: 'Drag the outer ring to move it',
+                            child: _RadialWheel(
+                              key: CanvasToolbar.minimalToolMenuKey,
+                              actions: wheelActions,
+                              properties: _wheelPropertyActions(context),
+                              activeColor: Color(controller.penColor),
+                              centerIcon: _wheelCenterIcon,
+                              centerLabel: _wheelCenterLabel,
+                              centerTooltip: _wheelCenterTooltip,
+                              centerKey: CanvasToolbar.wheelCenterKey,
+                              onDragUpdate: moveToolCluster,
+                              onDragEnd: onToolWheelDragEnd,
+                              onCenterTap:
+                                  _effectiveWheelPage == _WheelPage.tools
+                                  ? controller.activeToolWheelPreset.kind.isInk
+                                        ? () => _showActiveColorPicker(context)
+                                        : () => _showToolSettings(context)
+                                  : onCenterTap,
+                              onCenterLongPress:
+                                  _effectiveWheelPage == _WheelPage.tools &&
+                                      controller
+                                          .activeToolWheelPreset
+                                          .kind
+                                          .isInk &&
+                                      onPaletteChanged != null
+                                  ? () => _showPaletteEditor(
+                                      context,
+                                      palette.isEmpty
+                                          ? _defaultSwatches
+                                          : palette,
+                                    )
+                                  : _effectiveWheelPage == _WheelPage.context ||
+                                        _effectiveWheelPage ==
+                                            _WheelPage.selection
+                                  ? () => _showToolSettings(context)
+                                  : null,
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          _WheelSideButton(
-                            icon: Icons.redo,
-                            tooltip: 'Redo',
-                            onPressed: controller.canRedo
-                                ? controller.redo
-                                : null,
+                        ),
+                        if (_effectiveWheelPage == _WheelPage.tools)
+                          Positioned(
+                            top: 22,
+                            left: wheelSize + _sideButtonGap,
+                            child: Column(
+                              children: <Widget>[
+                                _WheelSideButton(
+                                  icon: Icons.undo,
+                                  tooltip: 'Undo',
+                                  onPressed: controller.canUndo
+                                      ? controller.undo
+                                      : null,
+                                ),
+                                const SizedBox(height: 6),
+                                _WheelSideButton(
+                                  icon: Icons.redo,
+                                  tooltip: 'Redo',
+                                  onPressed: controller.canRedo
+                                      ? controller.redo
+                                      : null,
+                                ),
+                                const SizedBox(height: 6),
+                                _WheelSideButton(
+                                  key: canvasSettingsDockKey,
+                                  icon: Icons.more_horiz,
+                                  tooltip: 'Canvas actions',
+                                  onPressed: () =>
+                                      onWheelPageChanged(_WheelPage.more),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          _WheelSideButton(
-                            key: canvasSettingsDockKey,
-                            icon: Icons.more_horiz,
-                            tooltip: 'Canvas actions',
-                            onPressed: () =>
-                                onWheelPageChanged(_WheelPage.more),
+                        Positioned(
+                          key: CanvasToolbar.paletteDockKey,
+                          top: wheelSize + _paletteGap,
+                          left: 0,
+                          width: wheelSize,
+                          height: _paletteHeight,
+                          child: _PaletteDock(
+                            colors: palette.isEmpty
+                                ? _defaultSwatches
+                                : palette,
+                            selectedColor: controller.penColor,
+                            onSelect: controller.setPenRgbColor,
                           ),
-                        ],
-                      ),
-                    ),
-                  Positioned(
-                    key: CanvasToolbar.paletteDockKey,
-                    top: _wheelTop + wheelSize - 4,
-                    left: 8,
-                    width: paletteWidth,
-                    height: 32,
-                    child: _PaletteDock(
-                      colors: palette.isEmpty ? _defaultSwatches : palette,
-                      selectedColor: controller.penColor,
-                      onSelect: controller.setPenRgbColor,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -2469,6 +2627,8 @@ class _RadialWheel extends StatelessWidget {
     required this.centerLabel,
     required this.centerTooltip,
     required this.onCenterTap,
+    this.onDragUpdate,
+    this.onDragEnd,
     this.centerKey,
     this.onCenterLongPress,
     super.key,
@@ -2482,6 +2642,8 @@ class _RadialWheel extends StatelessWidget {
   final String centerTooltip;
   final VoidCallback onCenterTap;
   final VoidCallback? onCenterLongPress;
+  final ValueChanged<Offset>? onDragUpdate;
+  final VoidCallback? onDragEnd;
   final Key? centerKey;
 
   @override
@@ -2538,6 +2700,12 @@ class _RadialWheel extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: actions[index].onTap,
                         onLongPress: actions[index].onLongPress,
+                        onPanUpdate: onDragUpdate == null
+                            ? null
+                            : (details) => onDragUpdate!(details.delta),
+                        onPanEnd: onDragEnd == null
+                            ? null
+                            : (_) => onDragEnd!(),
                       ),
                     ),
                   ),
@@ -2567,6 +2735,12 @@ class _RadialWheel extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: actions[index].onTap,
                         onLongPress: actions[index].onLongPress,
+                        onPanUpdate: onDragUpdate == null
+                            ? null
+                            : (details) => onDragUpdate!(details.delta),
+                        onPanEnd: onDragEnd == null
+                            ? null
+                            : (_) => onDragEnd!(),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[

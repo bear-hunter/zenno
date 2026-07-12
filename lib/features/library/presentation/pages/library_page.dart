@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,6 +21,22 @@ import 'package:zenno/features/settings/application/settings_providers.dart';
 class LibraryPage extends ConsumerStatefulWidget {
   const LibraryPage({super.key});
 
+  /// Stable key for a folder's expand/collapse control.
+  static ValueKey<String> folderToggleKey(String? folderId) =>
+      ValueKey('library-folder-toggle-${folderId ?? 'unfiled'}');
+
+  /// Stable key for the header area that accepts dragged canvases.
+  static ValueKey<String> folderDropTargetKey(String? folderId) =>
+      ValueKey('library-folder-drop-${folderId ?? 'unfiled'}');
+
+  /// Stable key for a folder's expanded grid or empty state.
+  static ValueKey<String> folderContentsKey(String? folderId) =>
+      ValueKey('library-folder-contents-${folderId ?? 'unfiled'}');
+
+  /// Stable key for a draggable canvas card.
+  static ValueKey<String> canvasDragKey(String canvasId) =>
+      ValueKey('library-canvas-drag-$canvasId');
+
   @override
   ConsumerState<LibraryPage> createState() => _LibraryPageState();
 }
@@ -26,6 +44,7 @@ class LibraryPage extends ConsumerStatefulWidget {
 class _LibraryPageState extends ConsumerState<LibraryPage> {
   bool _creating = false;
   final TextEditingController _searchController = TextEditingController();
+  final Set<String?> _collapsedFolderIds = <String?>{};
 
   @override
   void initState() {
@@ -43,6 +62,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 
   void _onSearchChanged() {
     setState(() {});
+  }
+
+  void _toggleFolder(String? folderId) {
+    setState(() {
+      if (!_collapsedFolderIds.add(folderId)) {
+        _collapsedFolderIds.remove(folderId);
+      }
+    });
   }
 
   /// Human-readable label for a [LibrarySort] menu entry.
@@ -183,6 +210,32 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     }
   }
 
+  Future<void> _moveCanvasToFolder(
+    Canvase canvas,
+    String? targetFolderId,
+  ) async {
+    if (canvas.folderId == targetFolderId) return;
+    try {
+      await ref
+          .read(libraryRepositoryProvider)
+          .moveCanvasToFolder(canvas.id, targetFolderId);
+      if (!mounted) return;
+      setState(() => _collapsedFolderIds.remove(targetFolderId));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Canvas moved')));
+    } catch (error) {
+      debugPrint('Move canvas failed: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not move canvas. Please try again.'),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final canvases = ref.watch(canvasListProvider);
@@ -238,6 +291,9 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         canvases: _filterCanvases(items, folderItems, query),
         folders: _filterFolders(items, folderItems, query),
         isFiltering: query.isNotEmpty,
+        collapsedFolderIds: _collapsedFolderIds,
+        onToggleFolder: _toggleFolder,
+        onMoveCanvas: _moveCanvasToFolder,
         onRenameFolder: (folder) => _renameFolder(context, folder),
         onDeleteFolder: (folder) => _deleteFolder(context, folder),
       );
@@ -465,6 +521,9 @@ class _LibraryFoldersView extends StatelessWidget {
     required this.canvases,
     required this.folders,
     required this.isFiltering,
+    required this.collapsedFolderIds,
+    required this.onToggleFolder,
+    required this.onMoveCanvas,
     required this.onRenameFolder,
     required this.onDeleteFolder,
   });
@@ -472,6 +531,9 @@ class _LibraryFoldersView extends StatelessWidget {
   final List<Canvase> canvases;
   final List<CanvasFolder> folders;
   final bool isFiltering;
+  final Set<String?> collapsedFolderIds;
+  final ValueChanged<String?> onToggleFolder;
+  final Future<void> Function(Canvase canvas, String? folderId) onMoveCanvas;
   final ValueChanged<CanvasFolder> onRenameFolder;
   final ValueChanged<CanvasFolder> onDeleteFolder;
 
@@ -505,19 +567,33 @@ class _LibraryFoldersView extends StatelessWidget {
       slivers: [
         for (final folder in folders) ...[
           _FolderHeader(
+            folderId: folder.id,
             label: folder.name,
             count: (canvasesByFolder[folder.id] ?? const <Canvase>[]).length,
+            isExpanded: isFiltering || !collapsedFolderIds.contains(folder.id),
+            onToggle: isFiltering ? null : () => onToggleFolder(folder.id),
+            onCanvasDropped: (canvas) => onMoveCanvas(canvas, folder.id),
             onRename: () => onRenameFolder(folder),
             onDelete: () => onDeleteFolder(folder),
           ),
-          _CanvasGrid(
-            canvases: canvasesByFolder[folder.id] ?? const <Canvase>[],
-            folders: folders,
-          ),
+          if (isFiltering || !collapsedFolderIds.contains(folder.id))
+            _CanvasGrid(
+              folderId: folder.id,
+              canvases: canvasesByFolder[folder.id] ?? const <Canvase>[],
+              folders: folders,
+            ),
         ],
         if (unfiled.isNotEmpty || folders.isNotEmpty) ...[
-          _FolderHeader(label: 'Unfiled', count: unfiled.length),
-          _CanvasGrid(canvases: unfiled, folders: folders),
+          _FolderHeader(
+            folderId: null,
+            label: 'Unfiled',
+            count: unfiled.length,
+            isExpanded: isFiltering || !collapsedFolderIds.contains(null),
+            onToggle: isFiltering ? null : () => onToggleFolder(null),
+            onCanvasDropped: (canvas) => onMoveCanvas(canvas, null),
+          ),
+          if (isFiltering || !collapsedFolderIds.contains(null))
+            _CanvasGrid(folderId: null, canvases: unfiled, folders: folders),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 96)),
       ],
@@ -527,14 +603,22 @@ class _LibraryFoldersView extends StatelessWidget {
 
 class _FolderHeader extends StatelessWidget {
   const _FolderHeader({
+    required this.folderId,
     required this.label,
     required this.count,
+    required this.isExpanded,
+    required this.onToggle,
+    required this.onCanvasDropped,
     this.onRename,
     this.onDelete,
   });
 
+  final String? folderId;
   final String label;
   final int count;
+  final bool isExpanded;
+  final VoidCallback? onToggle;
+  final Future<void> Function(Canvase canvas) onCanvasDropped;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -542,70 +626,108 @@ class _FolderHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xl,
-          AppSpacing.xl,
-          AppSpacing.xl,
-          AppSpacing.md,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.folder_outlined,
-              size: 20,
-              color: theme.colorScheme.primary,
+      child: DragTarget<Canvase>(
+        key: LibraryPage.folderDropTargetKey(folderId),
+        onWillAcceptWithDetails: (details) => details.data.folderId != folderId,
+        onAcceptWithDetails: (details) {
+          unawaited(onCanvasDropped(details.data));
+        },
+        builder: (context, candidateData, rejectedData) {
+          final isHovering = candidateData.isNotEmpty;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl,
+              AppSpacing.xl,
+              AppSpacing.xl,
+              AppSpacing.md,
             ),
-            const SizedBox(width: AppSpacing.sm),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium,
+            decoration: BoxDecoration(
+              color: isHovering
+                  ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                  : Colors.transparent,
+              border: Border.all(
+                color: isHovering
+                    ? theme.colorScheme.primary
+                    : Colors.transparent,
               ),
+              borderRadius: BorderRadius.circular(AppRadii.md),
             ),
-            const SizedBox(width: AppSpacing.md),
-            Text(
-              '$count ${count == 1 ? 'canvas' : 'canvases'}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
-            if (onRename != null || onDelete != null)
-              PopupMenuButton<_FolderAction>(
-                tooltip: 'Folder options',
-                onSelected: (action) {
-                  switch (action) {
-                    case _FolderAction.rename:
-                      onRename?.call();
-                    case _FolderAction.delete:
-                      onDelete?.call();
-                  }
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _FolderAction.rename,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Rename'),
-                    ),
+            child: Row(
+              children: [
+                IconButton(
+                  key: LibraryPage.folderToggleKey(folderId),
+                  onPressed: onToggle,
+                  tooltip: onToggle == null
+                      ? 'Folders stay expanded while searching'
+                      : '${isExpanded ? 'Collapse' : 'Expand'} $label',
+                  icon: Icon(
+                    isExpanded ? Icons.expand_more : Icons.chevron_right,
                   ),
-                  PopupMenuItem(
-                    value: _FolderAction.delete,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.delete_outline),
-                      title: Text('Delete'),
-                    ),
+                ),
+                Icon(
+                  folderId == null
+                      ? Icons.inbox_outlined
+                      : isExpanded
+                      ? Icons.folder_open_outlined
+                      : Icons.folder_outlined,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium,
                   ),
-                ],
-              ),
-          ],
-        ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  '$count ${count == 1 ? 'canvas' : 'canvases'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Divider(color: theme.colorScheme.outlineVariant),
+                ),
+                if (onRename != null || onDelete != null)
+                  PopupMenuButton<_FolderAction>(
+                    tooltip: 'Folder options',
+                    onSelected: (action) {
+                      switch (action) {
+                        case _FolderAction.rename:
+                          onRename?.call();
+                        case _FolderAction.delete:
+                          onDelete?.call();
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _FolderAction.rename,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Rename'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _FolderAction.delete,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.delete_outline),
+                          title: Text('Delete'),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -614,8 +736,13 @@ class _FolderHeader extends StatelessWidget {
 enum _FolderAction { rename, delete }
 
 class _CanvasGrid extends StatelessWidget {
-  const _CanvasGrid({required this.canvases, required this.folders});
+  const _CanvasGrid({
+    required this.folderId,
+    required this.canvases,
+    required this.folders,
+  });
 
+  final String? folderId;
   final List<Canvase> canvases;
   final List<CanvasFolder> folders;
 
@@ -623,6 +750,7 @@ class _CanvasGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     if (canvases.isEmpty) {
       return SliverToBoxAdapter(
+        key: LibraryPage.folderContentsKey(folderId),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.xl,
@@ -640,12 +768,69 @@ class _CanvasGrid extends StatelessWidget {
       );
     }
     return SliverPadding(
+      key: LibraryPage.folderContentsKey(folderId),
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       sliver: SliverGrid.builder(
         gridDelegate: _LibraryFoldersView._gridDelegate,
         itemCount: canvases.length,
-        itemBuilder: (context, index) =>
-            CanvasCard(canvas: canvases[index], folders: folders),
+        itemBuilder: (context, index) {
+          final canvas = canvases[index];
+          return MouseRegion(
+            cursor: SystemMouseCursors.grab,
+            child: LongPressDraggable<Canvase>(
+              key: LibraryPage.canvasDragKey(canvas.id),
+              data: canvas,
+              feedback: _CanvasDragFeedback(canvas: canvas),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: CanvasCard(canvas: canvas, folders: folders),
+              ),
+              child: CanvasCard(canvas: canvas, folders: folders),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CanvasDragFeedback extends StatelessWidget {
+  const _CanvasDragFeedback({required this.canvas});
+
+  final Canvase canvas;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 240),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.drive_file_move_outline,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Flexible(
+                child: Text(
+                  canvas.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
