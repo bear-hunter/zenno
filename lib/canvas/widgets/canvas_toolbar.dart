@@ -86,7 +86,7 @@ class CanvasToolbar extends StatefulWidget {
   final Offset? toolWheelPosition;
 
   /// Persists a normalized wheel position after a drag finishes.
-  final ValueChanged<Offset>? onToolWheelPositionChanged;
+  final FutureOr<void> Function(Offset)? onToolWheelPositionChanged;
 
   /// Retained for compatibility with page-owned title editing state.
   final bool controlsLockedOpen;
@@ -204,8 +204,27 @@ class CanvasToolbarState extends State<CanvasToolbar> {
 
   void _persistToolWheelPosition() {
     final position = _localToolWheelPosition;
-    if (position != null) {
-      widget.onToolWheelPositionChanged?.call(position);
+    final persist = widget.onToolWheelPositionChanged;
+    if (position == null || persist == null) return;
+    unawaited(_saveToolWheelPosition(persist, position));
+  }
+
+  Future<void> _saveToolWheelPosition(
+    FutureOr<void> Function(Offset) persist,
+    Offset position,
+  ) async {
+    try {
+      await persist(position);
+    } catch (error) {
+      debugPrint('Save tool-wheel position failed: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not save wheel position. Move it again to retry.',
+          ),
+        ),
+      );
     }
   }
 
@@ -299,9 +318,17 @@ class _CanvasToolbarContent extends StatelessWidget {
                   (_clusterMargin * 2) -
                   _sideButtonGap -
                   _sideButtonWidth;
+              final double availableWheelHeight =
+                  constraints.maxHeight -
+                  (_clusterMargin * 2) -
+                  _paletteGap -
+                  _paletteHeight;
               final double wheelSize = math.min(
                 preferredWheelSize,
-                math.max(120, availableWheelWidth),
+                math.max(
+                  120,
+                  math.min(availableWheelWidth, availableWheelHeight),
+                ),
               );
               final List<_WheelAction> wheelActions = _wheelActions(context);
               final double clusterWidth =
@@ -312,25 +339,25 @@ class _CanvasToolbarContent extends StatelessWidget {
                 _clusterMargin,
                 constraints.maxWidth - clusterWidth - _clusterMargin,
               );
-              final double maxTop = math.max(
-                _clusterMargin,
-                constraints.maxHeight - clusterHeight - _clusterMargin,
-              );
+              final double availableMaxTop =
+                  constraints.maxHeight - clusterHeight - _clusterMargin;
+              final double minTop = availableMaxTop >= _wheelTop
+                  ? _wheelTop
+                  : _clusterMargin;
+              final double maxTop = math.max(minTop, availableMaxTop);
               final double defaultLeft = _wheelLeft
                   .clamp(_clusterMargin, maxLeft)
                   .toDouble();
               final double defaultTop = _wheelTop
-                  .clamp(_clusterMargin, maxTop)
+                  .clamp(minTop, maxTop)
                   .toDouble();
               final double horizontalRange = maxLeft - _clusterMargin;
-              final double verticalRange = maxTop - _clusterMargin;
+              final double verticalRange = maxTop - minTop;
               final Offset defaultPosition = Offset(
                 horizontalRange == 0
                     ? 0
                     : (defaultLeft - _clusterMargin) / horizontalRange,
-                verticalRange == 0
-                    ? 0
-                    : (defaultTop - _clusterMargin) / verticalRange,
+                verticalRange == 0 ? 0 : (defaultTop - minTop) / verticalRange,
               );
               final Offset normalizedPosition = toolWheelPosition == null
                   ? defaultPosition
@@ -340,7 +367,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                     );
               final Offset clusterOrigin = Offset(
                 _clusterMargin + normalizedPosition.dx * horizontalRange,
-                _clusterMargin + normalizedPosition.dy * verticalRange,
+                minTop + normalizedPosition.dy * verticalRange,
               );
 
               void moveToolCluster(Offset pixelDelta) {

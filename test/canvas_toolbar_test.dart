@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
 
@@ -17,7 +18,7 @@ Future<void> _pumpToolbar(
   CanvasController controller, {
   ValueChanged<List<int>>? onPaletteChanged,
   Offset? toolWheelPosition,
-  ValueChanged<Offset>? onToolWheelPositionChanged,
+  FutureOr<void> Function(Offset)? onToolWheelPositionChanged,
   Widget? title,
   List<int> palette = const <int>[],
   bool includeCanvas = false,
@@ -424,6 +425,81 @@ void main() {
     },
   );
 
+  testWidgets('wheel cluster fits a short split-screen viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(
+      tester,
+      controller,
+      mediaQuery: const MediaQueryData(size: Size(320, 200)),
+    );
+
+    final Rect cluster = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    expect(cluster.left, greaterThanOrEqualTo(0));
+    expect(cluster.top, greaterThanOrEqualTo(0));
+    expect(cluster.right, lessThanOrEqualTo(320));
+    expect(cluster.bottom, lessThanOrEqualTo(200));
+  });
+
+  testWidgets('canceled wheel drag persists the visible position', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    final reportedPositions = <Offset>[];
+    await _pumpToolbar(
+      tester,
+      controller,
+      onToolWheelPositionChanged: reportedPositions.add,
+    );
+
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(_presetButton(1)),
+    );
+    await drag.moveBy(const Offset(20, 20));
+    await tester.pump();
+    await drag.moveBy(const Offset(100, 80));
+    await tester.pump();
+    await drag.cancel();
+    await tester.pump();
+
+    expect(reportedPositions, hasLength(1));
+  });
+
+  testWidgets('wheel position save failure is visible', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(
+      tester,
+      controller,
+      onToolWheelPositionChanged: (position) async {
+        throw StateError('Write unavailable');
+      },
+    );
+
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(_presetButton(1)),
+    );
+    await drag.moveBy(const Offset(20, 20));
+    await tester.pump();
+    await drag.moveBy(const Offset(100, 80));
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Could not save wheel position. Move it again to retry.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('huge wheel drags clamp the cluster inside safe insets', (
     tester,
   ) async {
@@ -438,6 +514,7 @@ void main() {
       tester,
       controller,
       mediaQuery: const MediaQueryData(size: Size(320, 600), padding: padding),
+      toolWheelPosition: const Offset(0.5, 0.5),
     );
 
     void expectClusterInsideSafeArea() {
@@ -466,6 +543,10 @@ void main() {
       find.byKey(CanvasToolbar.toolClusterKey),
     );
     expect(topLeftCluster.top, lessThan(clusterBefore.top));
+    final Rect backButton = tester.getRect(
+      find.byKey(CanvasToolbar.minimalBackKey),
+    );
+    expect(topLeftCluster.top, greaterThanOrEqualTo(backButton.bottom + 8));
 
     final TestGesture dragToBottomRight = await tester.startGesture(
       tester.getCenter(_presetButton(2)),
