@@ -357,6 +357,30 @@ void main() {
     );
   });
 
+  testWidgets('orientation reset and rotation lock stay visible', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    controller.setViewport(
+      controller.viewport.copyWith(scale: 1.75, rotation: math.pi / 4),
+    );
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    expect(find.byKey(CanvasToolbar.resetOrientationKey), findsOneWidget);
+    expect(find.byKey(CanvasToolbar.rotationLockKey), findsOneWidget);
+
+    await tester.tap(find.byKey(CanvasToolbar.resetOrientationKey));
+    await tester.pump();
+    expect(controller.viewport.rotation, 0);
+    expect(controller.viewport.scale, 1.75);
+
+    await tester.tap(find.byKey(CanvasToolbar.rotationLockKey));
+    await tester.pump();
+    expect(controller.rotationLocked, isTrue);
+    expect(find.byTooltip('Unlock rotation'), findsOneWidget);
+  });
+
   testWidgets(
     'outer favorite drag moves and persists the complete wheel cluster',
     (tester) async {
@@ -662,7 +686,13 @@ void main() {
     await tester.pump();
     expect(find.byTooltip('Back to more actions'), findsOneWidget);
     expect(find.byTooltip('Enable snap to grid'), findsOneWidget);
-    expect(find.byTooltip('Lock rotation'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(CanvasToolbar.compactDrawingPadKey),
+        matching: find.byTooltip('Lock rotation'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Reset view'), findsOneWidget);
     expect(_swatch(0), findsOneWidget);
 
@@ -689,7 +719,10 @@ void main() {
     await tester.pump();
     expect(controller.snapToGridEnabled, isTrue);
 
-    final Finder rotation = find.byTooltip('Lock rotation');
+    final Finder rotation = find.descendant(
+      of: find.byKey(CanvasToolbar.compactDrawingPadKey),
+      matching: find.byTooltip('Lock rotation'),
+    );
     await tester.tap(rotation);
     await tester.pump();
     expect(controller.rotationLocked, isTrue);

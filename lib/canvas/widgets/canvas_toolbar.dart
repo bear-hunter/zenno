@@ -136,6 +136,10 @@ class CanvasToolbar extends StatefulWidget {
   static const Key zoomPercentageKey = ValueKey<String>(
     'canvas-zoom-percentage',
   );
+  static const Key resetOrientationKey = ValueKey<String>(
+    'canvas-reset-orientation',
+  );
+  static const Key rotationLockKey = ValueKey<String>('canvas-rotation-lock');
   static const Key paletteDockKey = ValueKey<String>('canvas-palette-dock');
   static const Key minimalSaveErrorKey = ValueKey<String>(
     'canvas-minimal-save-error',
@@ -447,6 +451,27 @@ class _CanvasToolbarContent extends StatelessWidget {
                 ),
                 width: 64,
                 circular: false,
+              );
+              addCornerAction(
+                _HudButton(
+                  key: CanvasToolbar.resetOrientationKey,
+                  icon: Icons.screen_rotation_alt_outlined,
+                  tooltip: 'Reset to default orientation',
+                  onPressed: controller.resetRotation,
+                ),
+              );
+              addCornerAction(
+                _HudButton(
+                  key: CanvasToolbar.rotationLockKey,
+                  icon: controller.rotationLocked
+                      ? Icons.lock_outline
+                      : Icons.lock_open_outlined,
+                  tooltip: controller.rotationLocked
+                      ? 'Unlock rotation'
+                      : 'Lock rotation',
+                  selected: controller.rotationLocked,
+                  onPressed: controller.toggleRotationLock,
+                ),
               );
 
               final double titleLeft = onBack == null ? 8 : 60;
