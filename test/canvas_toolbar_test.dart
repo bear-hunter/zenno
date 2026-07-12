@@ -332,6 +332,31 @@ void main() {
     expect(find.byKey(CanvasToolbar.minimalBackKey), findsOneWidget);
   });
 
+  testWidgets('zoom percentage stays visible and resets the view to 100%', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    controller.setViewport(controller.viewport.copyWith(scale: 1.75));
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    const zoomKey = ValueKey<String>('canvas-zoom-percentage');
+    expect(find.byKey(zoomKey), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(zoomKey), matching: find.text('175%')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(zoomKey));
+    await tester.pump();
+
+    expect(controller.viewport.scale, 1);
+    expect(
+      find.descendant(of: find.byKey(zoomKey), matching: find.text('100%')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'outer favorite drag moves and persists the complete wheel cluster',
     (tester) async {
