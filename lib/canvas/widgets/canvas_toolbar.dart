@@ -52,6 +52,14 @@ String _toolWheelCenterLabel(ToolWheelSlotKind kind) => switch (kind) {
   _ => _toolWheelSlotLabel(kind),
 };
 
+String _zoomPercentageLabel(double scale) {
+  final double percent = scale * 100;
+  if (percent >= 10) return '${percent.round()}%';
+  if (percent >= 1) return '${percent.toStringAsFixed(1)}%';
+  if (percent >= 0.01) return '${percent.toStringAsFixed(2)}%';
+  return '<0.01%';
+}
+
 /// Responsive, content-first chrome for the infinite canvas editor.
 class CanvasToolbar extends StatefulWidget {
   /// Creates controls bound to [controller].
@@ -125,6 +133,13 @@ class CanvasToolbar extends StatefulWidget {
   );
   static const Key wheelCenterKey = ValueKey<String>('canvas-wheel-center');
   static const Key toolClusterKey = ValueKey<String>('canvas-tool-cluster');
+  static const Key zoomPercentageKey = ValueKey<String>(
+    'canvas-zoom-percentage',
+  );
+  static const Key resetOrientationKey = ValueKey<String>(
+    'canvas-reset-orientation',
+  );
+  static const Key rotationLockKey = ValueKey<String>('canvas-rotation-lock');
   static const Key paletteDockKey = ValueKey<String>('canvas-palette-dock');
   static const Key minimalSaveErrorKey = ValueKey<String>(
     'canvas-minimal-save-error',
@@ -383,15 +398,21 @@ class _CanvasToolbarContent extends StatelessWidget {
               double actionRight = 8;
               final List<Widget> cornerActions = <Widget>[];
 
-              void addCornerAction(Widget child) {
+              void addCornerAction(
+                Widget child, {
+                double width = 44,
+                bool circular = true,
+              }) {
                 cornerActions.add(
                   Positioned(
                     top: 8,
                     right: actionRight,
-                    child: _FloatingSurface.circular(child: child),
+                    child: circular
+                        ? _FloatingSurface.circular(child: child)
+                        : _FloatingSurface(child: child),
                   ),
                 );
-                actionRight += 48;
+                actionRight += width + 4;
               }
 
               if (trailingMenu != null) {
@@ -402,6 +423,56 @@ class _CanvasToolbarContent extends StatelessWidget {
               if (controller.hasUnsavedWrites) {
                 addCornerAction(_saveWarningButton(context));
               }
+              addCornerAction(
+                Tooltip(
+                  message: 'Reset zoom to 100%',
+                  child: SizedBox(
+                    width: 64,
+                    height: 44,
+                    child: TextButton(
+                      key: CanvasToolbar.zoomPercentageKey,
+                      onPressed: controller.zoomTo100,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadii.sm),
+                        ),
+                      ),
+                      child: Text(
+                        _zoomPercentageLabel(controller.viewport.scale),
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ),
+                width: 64,
+                circular: false,
+              );
+              addCornerAction(
+                _HudButton(
+                  key: CanvasToolbar.resetOrientationKey,
+                  icon: Icons.screen_rotation_alt_outlined,
+                  tooltip: 'Reset to default orientation',
+                  onPressed: controller.resetRotation,
+                ),
+              );
+              addCornerAction(
+                _HudButton(
+                  key: CanvasToolbar.rotationLockKey,
+                  icon: controller.rotationLocked
+                      ? Icons.lock_outline
+                      : Icons.lock_open_outlined,
+                  tooltip: controller.rotationLocked
+                      ? 'Unlock rotation'
+                      : 'Lock rotation',
+                  selected: controller.rotationLocked,
+                  onPressed: controller.toggleRotationLock,
+                ),
+              );
 
               final double titleLeft = onBack == null ? 8 : 60;
               final double titleRight = actionRight;
