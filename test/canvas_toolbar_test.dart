@@ -118,6 +118,17 @@ void main() {
     expect(_swatch(5), findsOneWidget);
   });
 
+  testWidgets('tablet tool wheel is twenty percent larger', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    final Size wheelSize = tester.getSize(
+      find.byKey(CanvasToolbar.compactDrawingPadKey),
+    );
+    expect(wheelSize, const Size.square(211.2));
+  });
+
   testWidgets('eight wheel sectors are stable remembered favorites', (
     tester,
   ) async {

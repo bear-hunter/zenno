@@ -13,6 +13,8 @@ import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
+const double _toolWheelScale = 1.2;
+
 IconData _toolWheelSlotIcon(ToolWheelSlotKind kind) => switch (kind) {
   ToolWheelSlotKind.pen => Icons.brush_outlined,
   ToolWheelSlotKind.pencil => Icons.edit_outlined,
@@ -326,8 +328,8 @@ class _CanvasToolbarContent extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final double preferredWheelSize = constraints.maxWidth >= 720
-                  ? 176
-                  : 156;
+                  ? 176 * _toolWheelScale
+                  : 156 * _toolWheelScale;
               final double availableWheelWidth =
                   constraints.maxWidth -
                   (_clusterMargin * 2) -
@@ -2063,7 +2065,7 @@ Future<void> showCanvasQuickToolMenuAt({
   if (overlay == null || !overlay.hasSize) {
     return;
   }
-  const double wheelSize = 176;
+  const double wheelSize = 176 * _toolWheelScale;
   final Object? action = await showGeneralDialog<Object>(
     context: context,
     barrierDismissible: true,
