@@ -13,6 +13,8 @@ import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
+const double _toolWheelScale = 1.2;
+
 IconData _toolWheelSlotIcon(ToolWheelSlotKind kind) => switch (kind) {
   ToolWheelSlotKind.pen => Icons.brush_outlined,
   ToolWheelSlotKind.pencil => Icons.edit_outlined,
@@ -326,8 +328,8 @@ class _CanvasToolbarContent extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final double preferredWheelSize = constraints.maxWidth >= 720
-                  ? 176
-                  : 156;
+                  ? 176 * _toolWheelScale
+                  : 156 * _toolWheelScale;
               final double availableWheelWidth =
                   constraints.maxWidth -
                   (_clusterMargin * 2) -
@@ -552,7 +554,12 @@ class _CanvasToolbarContent extends StatelessWidget {
                               key: CanvasToolbar.minimalToolMenuKey,
                               actions: wheelActions,
                               properties: _wheelPropertyActions(context),
-                              activeColor: Color(controller.penColor),
+                              activeColor:
+                                  _effectiveWheelPage == _WheelPage.tools
+                                  ? Color(controller.penColor)
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer,
                               centerIcon: _wheelCenterIcon,
                               centerLabel: _wheelCenterLabel,
                               centerTooltip: _wheelCenterTooltip,
@@ -736,8 +743,6 @@ class _CanvasToolbarContent extends StatelessWidget {
         }
       case _MoreAction.gestureGuide:
         _showGestureGuide(context);
-      case _MoreAction.clear:
-        unawaited(_confirmClear(context));
     }
   }
 
@@ -801,32 +806,6 @@ class _CanvasToolbarContent extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmClear(BuildContext context) async {
-    final bool confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Clear canvas?'),
-            content: const Text(
-              'Remove everything from this canvas? You can undo this while '
-              'the canvas remains open.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Clear'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (confirmed) controller.clear();
-  }
-
   void _showAndroidOnly(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$feature is available in the Android app.')),
@@ -857,10 +836,10 @@ class _CanvasToolbarContent extends StatelessWidget {
     ),
     _WheelPage.context ||
     _WheelPage.selection ||
-    _WheelPage.more => Icons.apps_rounded,
+    _WheelPage.more => Icons.arrow_back_rounded,
     _WheelPage.insert ||
     _WheelPage.appearance ||
-    _WheelPage.view => Icons.more_horiz,
+    _WheelPage.view => Icons.arrow_back_rounded,
   };
 
   String get _wheelCenterLabel => switch (_effectiveWheelPage) {
@@ -1155,14 +1134,6 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.tune,
         label: 'View and gestures',
         onTap: () => onWheelPageChanged(_WheelPage.view),
-      ),
-      _WheelAction(
-        icon: Icons.delete_sweep_outlined,
-        label: 'Clear canvas',
-        destructive: true,
-        onTap: controller.elements.isEmpty
-            ? null
-            : () => _runMoreAction(context, _MoreAction.clear),
       ),
     ];
   }
@@ -2074,7 +2045,6 @@ enum _MoreAction {
   resetView,
   palette,
   gestureGuide,
-  clear,
 }
 
 enum _QuickMenuAction { contextSettings }
@@ -2095,7 +2065,7 @@ Future<void> showCanvasQuickToolMenuAt({
   if (overlay == null || !overlay.hasSize) {
     return;
   }
-  const double wheelSize = 176;
+  const double wheelSize = 176 * _toolWheelScale;
   final Object? action = await showGeneralDialog<Object>(
     context: context,
     barrierDismissible: true,
@@ -2735,6 +2705,8 @@ class _RadialWheel extends StatelessWidget {
         final double gap = math.min(0.045, sweep * 0.12);
         final double firstStart = -math.pi / 2 - sweep / 2;
         final double iconRadius = (outerRadius + innerRadius) / 2;
+        const double actionExtent = 40;
+        final double actionLabelSize = size >= 150 ? 7 : 6.2;
         final Color centerForeground = activeColor.computeLuminance() > 0.42
             ? Colors.black
             : Colors.white;
@@ -2790,9 +2762,9 @@ class _RadialWheel extends StatelessWidget {
                   top:
                       center.dy +
                       math.sin(-math.pi / 2 + index * sweep) * iconRadius -
-                      20,
-                  width: 40,
-                  height: 40,
+                      actionExtent / 2,
+                  width: actionExtent,
+                  height: actionExtent,
                   child: Tooltip(
                     message: actions[index].label,
                     child: Semantics(
@@ -2817,13 +2789,7 @@ class _RadialWheel extends StatelessWidget {
                           children: <Widget>[
                             Icon(
                               actions[index].icon,
-                              size: actions[index].valueLabel == null
-                                  ? size >= 170
-                                        ? 21
-                                        : 19
-                                  : size >= 170
-                                  ? 18
-                                  : 16,
+                              size: size >= 170 ? 18 : 16,
                               color: actions[index].destructive
                                   ? Theme.of(context).colorScheme.error
                                   : actions[index].onTap == null
@@ -2838,12 +2804,43 @@ class _RadialWheel extends StatelessWidget {
                                                 context,
                                               ).colorScheme.onSurfaceVariant),
                             ),
+                            const SizedBox(height: 1),
+                            Flexible(
+                              child: Text(
+                                actions[index].label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      fontSize: actionLabelSize,
+                                      height: 0.95,
+                                      fontWeight: actions[index].selected
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: actions[index].destructive
+                                          ? Theme.of(context).colorScheme.error
+                                          : actions[index].onTap == null
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.3)
+                                          : actions[index].selected
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onPrimaryContainer
+                                          : Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
                             if (actions[index].valueLabel case final label?)
                               Text(
                                 label,
                                 style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(
-                                      fontSize: 7.5,
+                                      fontSize: actionLabelSize,
                                       height: 1,
                                       fontWeight: FontWeight.w700,
                                       color: Theme.of(
@@ -3023,8 +3020,10 @@ class _RadialWheelPainter extends CustomPainter {
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.8
-          ..color = colors.outlineVariant.withValues(alpha: 0.72),
+          ..strokeWidth = action.selected ? 1.8 : 0.8
+          ..color = action.selected
+              ? colors.primary
+              : colors.outlineVariant.withValues(alpha: 0.72),
       );
     }
   }

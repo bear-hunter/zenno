@@ -57,6 +57,18 @@ Finder _swatch(int index) => find.byKey(
   ValueKey<String>('${CanvasToolbar.swatchButtonKeyPrefix}-$index'),
 );
 
+String _expectedWheelLabel(ToolWheelSlotKind kind) => switch (kind) {
+  ToolWheelSlotKind.pen => 'Pen',
+  ToolWheelSlotKind.pencil => 'Pencil',
+  ToolWheelSlotKind.highlighter => 'Highlighter',
+  ToolWheelSlotKind.marker => 'Marker',
+  ToolWheelSlotKind.airbrush => 'Airbrush',
+  ToolWheelSlotKind.fill => 'Freeform fill',
+  ToolWheelSlotKind.eraser => 'Eraser',
+  ToolWheelSlotKind.lasso => 'Select',
+  _ => throw StateError('Unexpected default tool-wheel kind: $kind'),
+};
+
 void _expectOffsetsClose(Offset actual, Offset expected, {double epsilon = 1}) {
   expect(actual.dx, closeTo(expected.dx, epsilon));
   expect(actual.dy, closeTo(expected.dy, epsilon));
@@ -106,6 +118,17 @@ void main() {
     expect(_swatch(5), findsOneWidget);
   });
 
+  testWidgets('tablet tool wheel is twenty percent larger', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    final Size wheelSize = tester.getSize(
+      find.byKey(CanvasToolbar.compactDrawingPadKey),
+    );
+    expect(wheelSize, const Size.square(211.2));
+  });
+
   testWidgets('eight wheel sectors are stable remembered favorites', (
     tester,
   ) async {
@@ -125,6 +148,13 @@ void main() {
     ];
     for (var index = 0; index < kinds.length; index++) {
       expect(_presetButton(index), findsOneWidget);
+      expect(
+        find.descendant(
+          of: _presetButton(index),
+          matching: find.text(_expectedWheelLabel(kinds[index])),
+        ),
+        findsOneWidget,
+      );
       expect(controller.toolWheelPresets[index].kind, kinds[index]);
     }
     expect(find.byKey(CanvasToolbar.canvasSettingsDockKey), findsOneWidget);
@@ -678,7 +708,7 @@ void main() {
     expect(find.byTooltip('Export'), findsOneWidget);
     expect(find.byTooltip('Appearance'), findsOneWidget);
     expect(find.byTooltip('View and gestures'), findsOneWidget);
-    expect(find.byTooltip('Clear canvas'), findsOneWidget);
+    expect(find.byTooltip('Clear canvas'), findsNothing);
     expect(find.byTooltip('Show drawing tools'), findsOneWidget);
     expect(_swatch(0), findsOneWidget);
 
@@ -901,9 +931,9 @@ void main() {
     await tester.longPress(_presetButton(1));
     await tester.pumpAndSettle();
     expect(find.text('Replace favorite 2'), findsOneWidget);
-    expect(find.text('Freeform fill'), findsOneWidget);
-    expect(find.text('Marker'), findsOneWidget);
-    expect(find.text('Airbrush'), findsOneWidget);
+    expect(find.text('Freeform fill'), findsNWidgets(2));
+    expect(find.text('Marker'), findsNWidgets(2));
+    expect(find.text('Airbrush'), findsNWidgets(2));
     await tester.tap(find.text('Pen').last);
     await tester.pumpAndSettle();
 
@@ -941,7 +971,7 @@ void main() {
     expect(find.byTooltip('Back to more actions'), findsNothing);
   });
 
-  testWidgets('clear canvas remains confirmed through More', (tester) async {
+  testWidgets('More never exposes a clear-canvas action', (tester) async {
     final controller = CanvasController()
       ..addElementToStore(
         const TextElement(
@@ -957,15 +987,9 @@ void main() {
     await _pumpToolbar(tester, controller);
 
     await _openMore(tester);
-    final Finder clear = find.byTooltip('Clear canvas');
-    await tester.tap(clear);
-    await tester.pumpAndSettle();
-    expect(find.text('Clear canvas?'), findsOneWidget);
+    expect(find.byTooltip('Clear canvas'), findsNothing);
+    expect(find.text('Clear canvas?'), findsNothing);
     expect(controller.elements, hasLength(1));
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Clear'));
-    await tester.pumpAndSettle();
-    expect(controller.elements, isEmpty);
   });
 }
 
