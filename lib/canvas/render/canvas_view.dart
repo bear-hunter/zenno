@@ -1483,6 +1483,14 @@ class _CanvasViewState extends State<CanvasView> {
                       children: [
                         RepaintBoundary(
                           child: CustomPaint(
+                            painter: PaperTexturePainter(
+                              viewport: viewport,
+                              style: _controller.paperStyle,
+                            ),
+                          ),
+                        ),
+                        RepaintBoundary(
+                          child: CustomPaint(
                             painter: GridPainter(
                               viewport: viewport,
                               style: _controller.paperStyle,

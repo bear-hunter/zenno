@@ -3,6 +3,9 @@ import 'package:drift/drift.dart';
 /// How a canvas background grid is rendered.
 enum BackgroundKind { blank, grid, lined, dotted, isometric, triangle }
 
+/// A subtle procedural surface drawn beneath the canvas guide pattern.
+enum PaperTexture { clean, grain, fibers, crosshatch }
+
 /// The visual/behavioural type of a positioned canvas element.
 enum ElementKind { stroke, pdf, link, image, text, card, shape }
 
@@ -54,6 +57,10 @@ class Canvases extends Table {
   RealColumn get gridOpacity => real().withDefault(const Constant(0.14))();
   IntColumn get graphMajorInterval =>
       integer().withDefault(const Constant(4))();
+  IntColumn get paperTexture =>
+      intEnum<PaperTexture>().withDefault(const Constant(0))();
+  RealColumn get paperTextureOpacity =>
+      real().withDefault(const Constant(0.06))();
   IntColumn get activePenColor =>
       integer().withDefault(const Constant(0xFFFFFFFF))();
   RealColumn get activePenWidth => real().withDefault(const Constant(4))();

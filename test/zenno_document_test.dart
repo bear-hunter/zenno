@@ -18,6 +18,8 @@ void main() {
           kind: BackgroundKind.isometric,
           gridSpacing: 32,
           gridOpacity: 0.25,
+          texture: PaperTexture.fibers,
+          textureOpacity: 0.09,
         ),
       );
     addTearDown(controller.dispose);
@@ -65,6 +67,8 @@ void main() {
 
     expect(document.version, ZennoDocumentCodec.currentVersion);
     expect(document.paperStyle.kind, BackgroundKind.isometric);
+    expect(document.paperStyle.texture, PaperTexture.fibers);
+    expect(document.paperStyle.textureOpacity, 0.09);
     expect(document.layers.map((layer) => layer.name), contains('Sketch'));
     expect(document.elements, hasLength(2));
     final InkElement ink = document.elements.whereType<InkElement>().single;

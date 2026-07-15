@@ -10,6 +10,8 @@ import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/canvas_layer.dart';
 import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
+import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/render/grid_painter.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
@@ -111,6 +113,8 @@ class CanvasToolbar extends StatefulWidget {
       'canvas-paper-background-preset';
   static const String paperGridPresetButtonKeyPrefix =
       'canvas-paper-grid-preset';
+  static const String paperMoodButtonKeyPrefix = 'canvas-paper-mood';
+  static const String paperTextureButtonKeyPrefix = 'canvas-paper-texture';
   static const Key importImageKey = ValueKey<String>('canvas-import-image');
   static const Key importPdfKey = ValueKey<String>('canvas-import-pdf');
   static const Key paperSettingsPanelKey = ValueKey<String>(
@@ -1124,6 +1128,11 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.file_download_outlined,
         label: 'Export',
         onTap: () => _runMoreAction(context, _MoreAction.export),
+      ),
+      _WheelAction(
+        icon: Icons.wallpaper_outlined,
+        label: 'Paper',
+        onTap: () => _runMoreAction(context, _MoreAction.paper),
       ),
       _WheelAction(
         icon: Icons.palette_outlined,
@@ -4219,6 +4228,18 @@ class _PresetSwatchButton extends StatelessWidget {
   }
 }
 
+class _PaperMood {
+  const _PaperMood({
+    required this.name,
+    required this.description,
+    required this.style,
+  });
+
+  final String name;
+  final String description;
+  final CanvasPaperStyle style;
+}
+
 class _PaperDialog extends StatefulWidget {
   const _PaperDialog({required this.initial});
 
@@ -4230,6 +4251,80 @@ class _PaperDialog extends StatefulWidget {
 
 class _PaperDialogState extends State<_PaperDialog> {
   late CanvasPaperStyle _style = widget.initial;
+
+  static const List<_PaperMood> _moods = <_PaperMood>[
+    _PaperMood(
+      name: 'Midnight',
+      description: 'Quiet graph',
+      style: CanvasPaperStyle(),
+    ),
+    _PaperMood(
+      name: 'Warm notes',
+      description: 'Soft ruled paper',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.lined,
+        backgroundColor: 0xFFF7F1DE,
+        gridColor: 0xFF6B7280,
+        gridSpacing: 36,
+        gridOpacity: 0.24,
+        texture: PaperTexture.fibers,
+        textureOpacity: 0.08,
+      ),
+    ),
+    _PaperMood(
+      name: 'Blueprint',
+      description: 'Technical grid',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.grid,
+        backgroundColor: 0xFF0B3A5B,
+        gridColor: 0xFF8EC5FF,
+        gridSpacing: 40,
+        gridOpacity: 0.24,
+        graphMajorInterval: 5,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.05,
+      ),
+    ),
+    _PaperMood(
+      name: 'Dot journal',
+      description: 'Bright and open',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.dotted,
+        backgroundColor: 0xFFFFFFFF,
+        gridColor: 0xFF111820,
+        gridSpacing: 36,
+        gridOpacity: 0.34,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.035,
+      ),
+    ),
+    _PaperMood(
+      name: 'Forest',
+      description: 'Isometric sketch',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.isometric,
+        backgroundColor: 0xFF10322B,
+        gridColor: 0xFF91C7B1,
+        gridSpacing: 48,
+        gridOpacity: 0.18,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.05,
+      ),
+    ),
+    _PaperMood(
+      name: 'Charcoal',
+      description: 'Dim triangular grid',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.triangle,
+        backgroundColor: 0xFF101016,
+        gridColor: 0xFFB7CFE3,
+        gridSpacing: 56,
+        gridOpacity: 0.16,
+        texture: PaperTexture.crosshatch,
+        textureOpacity: 0.045,
+      ),
+    ),
+  ];
 
   static const List<int> _backgroundPresets = <int>[
     0xFF172331,
@@ -4319,6 +4414,32 @@ class _PaperDialogState extends State<_PaperDialog> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                _PaperPreview(style: _style, height: 96),
+                const SizedBox(height: 14),
+                Text('Quick papers', style: labelStyle),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 118,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _moods.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final _PaperMood mood = _moods[index];
+                      return _PaperMoodCard(
+                        key: ValueKey<String>(
+                          '${CanvasToolbar.paperMoodButtonKeyPrefix}-$index',
+                        ),
+                        mood: mood,
+                        selected: _style == mood.style,
+                        onTap: () => setState(() => _style = mood.style),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text('Structure', style: labelStyle),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -4368,6 +4489,57 @@ class _PaperDialogState extends State<_PaperDialog> {
                   ],
                 ),
                 const SizedBox(height: 14),
+                Text('Texture', style: labelStyle),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _PaperTextureButton(
+                      texture: PaperTexture.clean,
+                      icon: Icons.texture_outlined,
+                      label: 'Clean',
+                      selected: _style.texture == PaperTexture.clean,
+                      onTap: () => _setTexture(PaperTexture.clean),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.grain,
+                      icon: Icons.grain,
+                      label: 'Grain',
+                      selected: _style.texture == PaperTexture.grain,
+                      onTap: () => _setTexture(PaperTexture.grain),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.fibers,
+                      icon: Icons.horizontal_rule,
+                      label: 'Fibers',
+                      selected: _style.texture == PaperTexture.fibers,
+                      onTap: () => _setTexture(PaperTexture.fibers),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.crosshatch,
+                      icon: Icons.grid_3x3,
+                      label: 'Hatch',
+                      selected: _style.texture == PaperTexture.crosshatch,
+                      onTap: () => _setTexture(PaperTexture.crosshatch),
+                    ),
+                  ],
+                ),
+                if (_style.texture != PaperTexture.clean) ...[
+                  const SizedBox(height: 8),
+                  _ExportSlider(
+                    label: 'Texture strength',
+                    value: _style.textureOpacity.clamp(0.01, 0.2),
+                    min: 0.01,
+                    max: 0.2,
+                    divisions: 19,
+                    valueLabel: '${(_style.textureOpacity * 100).round()}%',
+                    onChanged: (value) => setState(
+                      () => _style = _style.copyWith(textureOpacity: value),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
                 _PaperPresetSection(
                   title: 'Background',
                   value: Color(_style.backgroundColor),
@@ -4382,7 +4554,7 @@ class _PaperDialogState extends State<_PaperDialog> {
                 ),
                 const SizedBox(height: 12),
                 _PaperPresetSection(
-                  title: 'Graph',
+                  title: 'Guides',
                   value: Color(_style.gridColor),
                   presets: _gridPresets,
                   keyPrefix: CanvasToolbar.paperGridPresetButtonKeyPrefix,
@@ -4392,7 +4564,7 @@ class _PaperDialogState extends State<_PaperDialog> {
                   onCustom: _pickGrid,
                 ),
                 const SizedBox(height: 14),
-                Text('Graph options', style: labelStyle),
+                Text('Guide options', style: labelStyle),
                 const SizedBox(height: 8),
                 _ExportSlider(
                   label: 'Spacing',
@@ -4453,6 +4625,170 @@ class _PaperDialogState extends State<_PaperDialog> {
 
   void _setKind(BackgroundKind kind) {
     setState(() => _style = _style.copyWith(kind: kind));
+  }
+
+  void _setTexture(PaperTexture texture) {
+    setState(() => _style = _style.copyWith(texture: texture));
+  }
+}
+
+class _PaperPreview extends StatelessWidget {
+  const _PaperPreview({required this.style, required this.height});
+
+  final CanvasPaperStyle style;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Color(style.backgroundColor),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: PaperTexturePainter(
+              viewport: ViewportState.initial,
+              style: style,
+            ),
+          ),
+          CustomPaint(
+            painter: GridPainter(viewport: ViewportState.initial, style: style),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaperMoodCard extends StatelessWidget {
+  const _PaperMoodCard({
+    required this.mood,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final _PaperMood mood;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 146,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: selected
+              ? colors.primary.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? colors.primary : colors.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PaperPreview(style: mood.style, height: 62),
+            const SizedBox(height: 5),
+            Text(
+              mood.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              mood.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaperTextureButton extends StatelessWidget {
+  const _PaperTextureButton({
+    required this.texture,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final PaperTexture texture;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final Color foreground = selected
+        ? colors.primary
+        : colors.onSurfaceVariant;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        key: ValueKey<String>(
+          '${CanvasToolbar.paperTextureButtonKeyPrefix}-$texture',
+        ),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 92,
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.primary.withValues(alpha: 0.16)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected
+                  ? colors.primary.withValues(alpha: 0.58)
+                  : colors.outlineVariant,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: foreground),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
