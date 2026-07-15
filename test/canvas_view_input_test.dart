@@ -389,6 +389,67 @@ void main() {
     await first.up();
   });
 
+  testWidgets('small accidental pinch rotation snaps back to upright', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    await tester.pump();
+
+    final TestGesture first = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    final TestGesture second = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    const double angle = 2 * math.pi / 180;
+
+    await first.down(const Offset(100, 100));
+    await second.down(const Offset(200, 100));
+    await tester.pump();
+    await second.moveTo(
+      Offset(100 + math.cos(angle) * 100, 100 + math.sin(angle) * 100),
+    );
+    await tester.pump();
+
+    expect(controller.viewport.rotation, closeTo(angle, 0.001));
+
+    await second.up();
+    await tester.pump();
+
+    expect(controller.viewport.rotation, 0);
+    await first.up();
+  });
+
+  testWidgets('intentional pinch rotation remains unchanged', (tester) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    await tester.pump();
+
+    final TestGesture first = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    final TestGesture second = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    const double angle = 8 * math.pi / 180;
+
+    await first.down(const Offset(100, 100));
+    await second.down(const Offset(200, 100));
+    await tester.pump();
+    await second.moveTo(
+      Offset(100 + math.cos(angle) * 100, 100 + math.sin(angle) * 100),
+    );
+    await tester.pump();
+    await second.up();
+    await tester.pump();
+
+    expect(controller.viewport.rotation, closeTo(angle, 0.001));
+    await first.up();
+  });
+
   testWidgets('finger drag on selected content moves it directly', (
     tester,
   ) async {
