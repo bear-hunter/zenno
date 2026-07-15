@@ -3,6 +3,7 @@
         android:label="Zenno"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:hasFragileUserData="true"
         android:largeHeap="true">
         <activity
             android:name=".MainActivity"
