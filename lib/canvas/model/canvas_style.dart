@@ -277,6 +277,8 @@ class CanvasPaperStyle {
     this.gridSpacing = 48,
     this.gridOpacity = 0.14,
     this.graphMajorInterval = 4,
+    this.texture = PaperTexture.clean,
+    this.textureOpacity = 0.06,
   });
 
   final BackgroundKind kind;
@@ -285,6 +287,8 @@ class CanvasPaperStyle {
   final double gridSpacing;
   final double gridOpacity;
   final int graphMajorInterval;
+  final PaperTexture texture;
+  final double textureOpacity;
 
   CanvasPaperStyle copyWith({
     BackgroundKind? kind,
@@ -293,6 +297,8 @@ class CanvasPaperStyle {
     double? gridSpacing,
     double? gridOpacity,
     int? graphMajorInterval,
+    PaperTexture? texture,
+    double? textureOpacity,
   }) {
     return CanvasPaperStyle(
       kind: kind ?? this.kind,
@@ -301,6 +307,8 @@ class CanvasPaperStyle {
       gridSpacing: gridSpacing ?? this.gridSpacing,
       gridOpacity: gridOpacity ?? this.gridOpacity,
       graphMajorInterval: graphMajorInterval ?? this.graphMajorInterval,
+      texture: texture ?? this.texture,
+      textureOpacity: textureOpacity ?? this.textureOpacity,
     );
   }
 
@@ -313,7 +321,9 @@ class CanvasPaperStyle {
             other.gridColor == gridColor &&
             other.gridSpacing == gridSpacing &&
             other.gridOpacity == gridOpacity &&
-            other.graphMajorInterval == graphMajorInterval;
+            other.graphMajorInterval == graphMajorInterval &&
+            other.texture == texture &&
+            other.textureOpacity == textureOpacity;
   }
 
   @override
@@ -324,6 +334,8 @@ class CanvasPaperStyle {
     gridSpacing,
     gridOpacity,
     graphMajorInterval,
+    texture,
+    textureOpacity,
   );
 }
 

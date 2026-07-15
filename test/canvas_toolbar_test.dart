@@ -800,8 +800,6 @@ void main() {
     await _pumpToolbar(tester, controller);
 
     await _openMore(tester);
-    await tester.tap(find.byTooltip('Appearance'));
-    await tester.pump();
     final Finder paper = find.byTooltip('Paper');
     await tester.tap(paper);
     await tester.pumpAndSettle();
@@ -810,27 +808,34 @@ void main() {
       tester.getRect(find.byKey(CanvasToolbar.paperSettingsPanelKey)).left,
       closeTo(18, 0.1),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperKindButtonKeyPrefix}-BackgroundKind.lined',
-        ),
+    final Finder lined = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperKindButtonKeyPrefix}-BackgroundKind.lined',
       ),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperBackgroundPresetButtonKeyPrefix}-5',
-        ),
+    await tester.ensureVisible(lined);
+    await tester.tap(lined);
+    final Finder background = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperBackgroundPresetButtonKeyPrefix}-5',
       ),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperGridPresetButtonKeyPrefix}-1',
-        ),
+    await tester.ensureVisible(background);
+    await tester.tap(background);
+    final Finder grid = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperGridPresetButtonKeyPrefix}-1',
       ),
     );
+    await tester.ensureVisible(grid);
+    await tester.tap(grid);
+    final Finder texture = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperTextureButtonKeyPrefix}-PaperTexture.crosshatch',
+      ),
+    );
+    await tester.ensureVisible(texture);
+    await tester.tap(texture);
     await tester.pump();
     final Finder save = find.widgetWithText(FilledButton, 'Save');
     await tester.ensureVisible(save);
@@ -841,6 +846,34 @@ void main() {
     expect(controller.paperStyle.kind, BackgroundKind.lined);
     expect(controller.paperStyle.backgroundColor, 0xFFF7F1DE);
     expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
+    expect(controller.paperStyle.texture, PaperTexture.crosshatch);
+  });
+
+  testWidgets('quick paper moods apply a complete canvas look', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    await _openMore(tester);
+    await tester.tap(find.byTooltip('Paper'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('${CanvasToolbar.paperMoodButtonKeyPrefix}-2'),
+      ),
+    );
+    await tester.pump();
+    final Finder save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pump();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(controller.paperStyle.kind, BackgroundKind.grid);
+    expect(controller.paperStyle.backgroundColor, 0xFF0B3A5B);
+    expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
+    expect(controller.paperStyle.texture, PaperTexture.grain);
+    expect(controller.paperStyle.textureOpacity, 0.05);
   });
 
   testWidgets('selection does not replace the eight favorite slots', (
