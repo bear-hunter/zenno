@@ -3,7 +3,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:zenno/config/router/routes.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/database_exceptions.dart';
 import 'package:zenno/core/database/tables/settings_tables.dart';
@@ -83,6 +85,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Cell membrane'), findsOneWidget);
     await _disposeLibrary(tester);
+  });
+
+  testWidgets('folder menu creates a canvas inside that folder', (
+    tester,
+  ) async {
+    final db = ZennoDatabase(NativeDatabase.memory());
+    final repository = LibraryRepository(db);
+    final folderId = await repository.createFolder('Biology');
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (context, state) => const LibraryPage()),
+        GoRoute(
+          path: Routes.canvas,
+          builder: (context, state) =>
+              Scaffold(body: Text('Canvas ${state.pathParameters['id']}')),
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        libraryRepositoryProvider.overrideWithValue(repository),
+        librarySortProvider.overrideWithValue(LibrarySort.recent),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      router.dispose();
+      container.dispose();
+      await db.close();
+    });
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1200);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Folder options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create canvas'));
+    await tester.pumpAndSettle();
+
+    final canvases = await db.select(db.canvases).get();
+    expect(canvases, hasLength(1));
+    expect(canvases.single.folderId, folderId);
+    expect(find.text('Canvas ${canvases.single.id}'), findsOneWidget);
   });
 
   testWidgets('dragging a canvas moves it once and expands its destination', (
