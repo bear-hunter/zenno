@@ -1365,10 +1365,14 @@ class _CanvasViewState extends State<CanvasView> {
   void _syncTouchGesture() {
     final touches = _touchPositions;
     if (touches.length < 2) {
+      final bool endedPinch = _pinchStartViewport != null;
       _pinchStartViewport = null;
       _pinchStartMidpoint = null;
       _pinchStartDistance = null;
       _pinchStartAngle = null;
+      if (endedPinch) {
+        _controller.snapRotationToCardinalIfClose();
+      }
       return;
     }
     final Offset a = touches[0];

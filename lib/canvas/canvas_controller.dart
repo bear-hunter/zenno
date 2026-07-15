@@ -1437,6 +1437,35 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     notifyListeners();
   }
 
+  /// Snaps a nearly-upright viewport to the nearest quarter turn.
+  ///
+  /// This removes tiny accidental twists from pinch-to-zoom while preserving
+  /// deliberate canvas rotations. The visible center stays anchored so the
+  /// correction does not shift the user's work under their hand.
+  void snapRotationToCardinalIfClose() {
+    const double quarterTurn = math.pi / 2;
+    const double threshold = math.pi / 60; // 3 degrees.
+    final double target =
+        (viewport.rotation / quarterTurn).roundToDouble() * quarterTurn;
+    final double delta = _normalizeRadians(target - viewport.rotation);
+    if (delta == 0 || delta.abs() > threshold) {
+      return;
+    }
+    final Offset focus = _viewportSize.isEmpty
+        ? Offset.zero
+        : Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final ViewportState snapped = CanvasTransform.interactiveUpdate(
+      start: viewport,
+      anchorScreenAtStart: focus,
+      currentFocusScreen: focus,
+      scaleFactor: 1,
+      rotationDelta: delta,
+    );
+    setViewport(
+      snapped.copyWith(rotation: _normalizeRadians(snapped.rotation)),
+    );
+  }
+
   /// Toggles whether pinch gestures may rotate the viewport.
   void toggleRotationLock() {
     rotationLocked = !rotationLocked;
