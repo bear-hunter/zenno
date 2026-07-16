@@ -1,6 +1,9 @@
 package com.bearhunter.zenno
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import io.flutter.embedding.android.FlutterActivity
@@ -12,11 +15,27 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val STYLUS_PROXIMITY_CHANNEL =
             "com.bearhunter.zenno/stylus_proximity"
+        private const val STYLUS_HOVER_LEASE_MS = 300L
     }
 
+    private val proximityHandler = Handler(Looper.getMainLooper())
     private var stylusInProximity = false
+    private var stylusContactActive = false
     private var stylusDeviceId: Int? = null
+    private var lastStylusHoverUptimeMs = 0L
+    private var proximityExpiryScheduled = false
     private var stylusProximityChannel: MethodChannel? = null
+    private val expireStylusProximity = Runnable {
+        proximityExpiryScheduled = false
+        if (!stylusInProximity || stylusContactActive) return@Runnable
+        val remainingMs = STYLUS_HOVER_LEASE_MS -
+            (SystemClock.uptimeMillis() - lastStylusHoverUptimeMs)
+        if (remainingMs > 0) {
+            scheduleProximityExpiry(remainingMs)
+        } else {
+            setStylusInProximity(false)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -47,8 +66,7 @@ class MainActivity : FlutterActivity() {
             MotionEvent.ACTION_HOVER_ENTER,
             MotionEvent.ACTION_HOVER_MOVE,
             -> if (event.isStylusEvent()) {
-                stylusDeviceId = event.deviceId
-                setStylusInProximity(true)
+                renewStylusProximity(event)
             }
 
             MotionEvent.ACTION_HOVER_EXIT -> if (
@@ -64,20 +82,44 @@ class MainActivity : FlutterActivity() {
         if (event.isStylusEvent()) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    stylusContactActive = true
+                    cancelProximityExpiry()
                     stylusDeviceId = event.deviceId
                     setStylusInProximity(true)
                 }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL,
-                -> setStylusInProximity(false)
+                -> {
+                    stylusContactActive = false
+                    setStylusInProximity(false)
+                }
             }
         }
         return super.dispatchTouchEvent(event)
     }
 
     override fun onPause() {
+        stylusContactActive = false
         setStylusInProximity(false)
         super.onPause()
+    }
+
+    private fun renewStylusProximity(event: MotionEvent) {
+        stylusDeviceId = event.deviceId
+        lastStylusHoverUptimeMs = SystemClock.uptimeMillis()
+        setStylusInProximity(true)
+        scheduleProximityExpiry(STYLUS_HOVER_LEASE_MS)
+    }
+
+    private fun scheduleProximityExpiry(delayMs: Long) {
+        if (proximityExpiryScheduled || stylusContactActive) return
+        proximityExpiryScheduled = true
+        proximityHandler.postDelayed(expireStylusProximity, delayMs)
+    }
+
+    private fun cancelProximityExpiry() {
+        proximityExpiryScheduled = false
+        proximityHandler.removeCallbacks(expireStylusProximity)
     }
 
     private fun MotionEvent.isStylusEvent(): Boolean {
@@ -93,9 +135,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun setStylusInProximity(value: Boolean) {
+        if (!value) {
+            cancelProximityExpiry()
+            stylusDeviceId = null
+        }
         if (stylusInProximity == value) return
         stylusInProximity = value
-        if (!value) stylusDeviceId = null
         stylusProximityChannel?.invokeMethod("stylusProximityChanged", value)
     }
 }

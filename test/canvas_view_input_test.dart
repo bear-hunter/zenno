@@ -374,7 +374,7 @@ void main() {
     expect(controller.viewport, isNot(ViewportState.initial));
   });
 
-  testWidgets('stylus entering proximity cancels an active finger gesture', (
+  testWidgets('stylus entering proximity rolls back an active finger gesture', (
     tester,
   ) async {
     final CanvasController controller = CanvasController();
@@ -387,7 +387,7 @@ void main() {
     await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
     await finger.moveBy(const Offset(40, 0));
     await tester.pump();
-    final ViewportState beforeStylus = controller.viewport;
+    expect(controller.viewport, isNot(ViewportState.initial));
 
     final TestGesture stylus = await tester.createGesture(
       kind: PointerDeviceKind.stylus,
@@ -400,8 +400,29 @@ void main() {
     await finger.up();
     await tester.pump();
 
-    expect(controller.viewport, beforeStylus);
+    expect(controller.viewport, ViewportState.initial);
     await stylus.removePointer();
+  });
+
+  testWidgets('a canceled finger pan restores its starting viewport', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    final TestGesture finger = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
+    await finger.moveBy(const Offset(80, 0));
+    await tester.pump();
+    expect(controller.viewport, isNot(ViewportState.initial));
+
+    await finger.cancel();
+    await tester.pump();
+
+    expect(controller.viewport, ViewportState.initial);
   });
 
   testWidgets(
