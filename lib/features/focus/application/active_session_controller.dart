@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
@@ -85,27 +85,33 @@ class ActiveSessionState {
 /// [ActiveSessionState] each second and lets a Pomodoro engine auto-advance
 /// work↔break. Because [TimerEngine] is wall-clock correct, a stalled or
 /// throttled ticker never corrupts elapsed time — the next emission is still
-/// accurate, which is also why no `AppLifecycleListener` reconciliation is
-/// needed here.
+/// accurate. The ticker is suspended while the app is backgrounded or the
+/// session is paused, then reconciled immediately when foreground work resumes.
 ///
 /// DB writes are deliberately sparse: the opening row at start, a tally write
 /// on each phase transition and on finish/abandon. The reactive
 /// `focusHistoryProvider` picks those up automatically.
 @Riverpod(keepAlive: true)
-class ActiveSessionController extends _$ActiveSessionController {
+class ActiveSessionController extends _$ActiveSessionController
+    with WidgetsBindingObserver {
   TimerEngine? _engine;
   Timer? _ticker;
   bool _starting = false;
   Future<void> _restoreFuture = Future<void>.value();
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
   int _secondsSinceRuntimePersist = 0;
 
   @override
   ActiveSessionState build() {
     final wakelockService = ref.read(focusWakelockServiceProvider);
+    _appLifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
     // The ticker holds a resource; tear it down if the provider is ever
     // disposed (it is keepAlive, so in practice only at app shutdown).
     ref.onDispose(() {
+      WidgetsBinding.instance.removeObserver(this);
       _stopTicker();
       unawaited(
         wakelockService.setEnabled(false).catchError((Object error) {
@@ -115,6 +121,26 @@ class ActiveSessionController extends _$ActiveSessionController {
     });
     _restoreFuture = Future<void>.microtask(_restoreAtStartup);
     return ActiveSessionState.restoring;
+  }
+
+  bool get _isForeground => _appLifecycleState == AppLifecycleState.resumed;
+
+  /// Exposes resource state only so lifecycle regressions can be tested.
+  @visibleForTesting
+  bool get debugTickerActive => _ticker?.isActive ?? false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final wasForeground = _isForeground;
+    _appLifecycleState = state;
+    if (wasForeground == _isForeground) return;
+
+    if (_isForeground) {
+      unawaited(_resumeForegroundResources());
+    } else {
+      _stopTicker();
+      unawaited(_suspendForegroundResources());
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -192,6 +218,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// Pauses the running timer.
   Future<void> pause() async {
     _engine?.pause();
+    _stopTicker();
     _emit();
     await _persistRuntime();
   }
@@ -200,6 +227,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   Future<void> resume() async {
     _engine?.resume();
     _emit();
+    _startTicker();
     await _persistRuntime();
   }
 
@@ -342,6 +370,7 @@ class ActiveSessionController extends _$ActiveSessionController {
   // ---------------------------------------------------------------------------
 
   void _startTicker() {
+    if (!_isForeground || _engine?.status != TimerStatus.running) return;
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
   }
@@ -356,7 +385,8 @@ class ActiveSessionController extends _$ActiveSessionController {
   /// new cycle tally on a transition.
   Future<void> _onTick() async {
     final engine = _engine;
-    if (engine == null) return;
+    if (!_isForeground || engine == null) return;
+    if (engine.status != TimerStatus.running) return;
     final advanced = engine.advanceIfPhaseComplete();
     _emit();
     _secondsSinceRuntimePersist += 1;
@@ -374,6 +404,26 @@ class ActiveSessionController extends _$ActiveSessionController {
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
+
+  Future<void> _suspendForegroundResources() async {
+    try {
+      await _persistRuntime();
+    } catch (error) {
+      debugPrint('Could not checkpoint focus runtime in background: $error');
+    }
+    await _disableWakelockBestEffort();
+  }
+
+  Future<void> _resumeForegroundResources() async {
+    await _onTick();
+    if (!_isForeground) return;
+    _startTicker();
+    try {
+      await _syncWakelockWithSettings();
+    } catch (error) {
+      debugPrint('Could not restore focus wakelock in foreground: $error');
+    }
+  }
 
   /// Pushes a fresh [ActiveSessionState] from the current engine snapshot.
   void _emit() {
@@ -475,8 +525,16 @@ class ActiveSessionController extends _$ActiveSessionController {
   }
 
   Future<void> _syncWakelockWithSettings() async {
+    if (!_isForeground || !state.hasSession || state.reviewPending) {
+      await _setWakelock(false);
+      return;
+    }
     final settings = await ref.read(settingsRepositoryProvider).readSettings();
-    await _setWakelock(settings.keepScreenOnInFocus);
+    await _setWakelock(
+      _isForeground && state.hasSession && !state.reviewPending
+          ? settings.keepScreenOnInFocus
+          : false,
+    );
   }
 
   Future<void> _setWakelock(bool enabled) {
