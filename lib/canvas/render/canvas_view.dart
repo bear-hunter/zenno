@@ -10,6 +10,7 @@ import 'package:zenno/canvas/input/pen_input_processor.dart';
 import 'package:zenno/canvas/input/pen_profile.dart';
 import 'package:zenno/canvas/input/pointer_classifier.dart';
 import 'package:zenno/canvas/input/stylus_button_mapping.dart';
+import 'package:zenno/canvas/input/stylus_proximity_service.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/canvas_overlay_painter.dart';
@@ -154,6 +155,8 @@ class _SelectionPointerSession {
 class _CanvasViewState extends State<CanvasView> {
   final ElementsTileCache _elementsTileCache = ElementsTileCache();
   final LiveStrokePathCache _liveStrokePathCache = LiveStrokePathCache();
+  final StylusProximityService _stylusProximity =
+      StylusProximityService.instance;
   late Listenable _renderListenable;
 
   /// All pointers currently down on (or hovering over) the surface.
@@ -233,6 +236,8 @@ class _CanvasViewState extends State<CanvasView> {
   void initState() {
     super.initState();
     _renderListenable = _buildRenderListenable();
+    _stylusProximity.addListener(_onNativeStylusProximityChanged);
+    if (_stylusProximity.isInProximity) _enterStylusProximity();
     _controller.setPenProfile(widget.penProfile, notify: false);
   }
 
@@ -255,6 +260,7 @@ class _CanvasViewState extends State<CanvasView> {
 
   @override
   void dispose() {
+    _stylusProximity.removeListener(_onNativeStylusProximityChanged);
     _longPressTimer?.cancel();
     _stylusLongPressTimer?.cancel();
     _stylusButtonHoldTimer?.cancel();
@@ -829,6 +835,10 @@ class _CanvasViewState extends State<CanvasView> {
       _maybeApplyTouchTapShortcut();
       _syncTouchGesture();
     }
+    if (pointer?.kind == CanvasInputKind.stylus &&
+        !_stylusProximity.isInProximity) {
+      _leaveStylusProximity();
+    }
   }
 
   void _scheduleLongPressLasso(int pointerId, Offset localPosition) {
@@ -1348,9 +1358,26 @@ class _CanvasViewState extends State<CanvasView> {
     _cancelActiveTouchesForStylus();
   }
 
+  void _onNativeStylusProximityChanged() {
+    if (_stylusProximity.isInProximity) {
+      _enterStylusProximity();
+    } else {
+      _leaveStylusProximity();
+    }
+  }
+
+  void _leaveStylusProximity() {
+    final hasActiveStylus = _pointers.values.any(
+      (pointer) => pointer.kind == CanvasInputKind.stylus,
+    );
+    if (hasActiveStylus) return;
+    _stylusInProximity = false;
+    _controller.setHoverPoint(null);
+  }
+
   void _onPointerExit(PointerExitEvent event) {
     if (classifyPointer(event) == CanvasInputKind.stylus) {
-      _stylusInProximity = false;
+      _leaveStylusProximity();
     }
     _controller.setHoverPoint(null);
   }

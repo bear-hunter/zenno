@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/input/stylus_button_mapping.dart';
+import 'package:zenno/canvas/input/stylus_proximity_service.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/canvas_view.dart';
@@ -373,6 +374,41 @@ void main() {
     expect(controller.viewport, beforeStylus);
     await stylus.removePointer();
   });
+
+  testWidgets(
+    'native stylus exit releases touch after proximity was detected',
+    (tester) async {
+      final service = StylusProximityService.instance;
+      service.debugSetInProximity(false);
+      addTearDown(() => service.debugSetInProximity(false));
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      await _pumpCanvas(tester, controller);
+
+      service.debugSetInProximity(true);
+      await tester.pump();
+      final TestGesture blockedTouch = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await blockedTouch.down(_canvasGlobal(tester, const Offset(180, 180)));
+      await blockedTouch.moveBy(const Offset(80, 0));
+      await blockedTouch.up();
+      await tester.pump();
+      expect(controller.viewport, ViewportState.initial);
+
+      service.debugSetInProximity(false);
+      await tester.pump();
+      final TestGesture finger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+      );
+      await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
+      await finger.moveBy(const Offset(80, 0));
+      await finger.up();
+      await tester.pump();
+
+      expect(controller.viewport, isNot(ViewportState.initial));
+    },
+  );
 
   testWidgets('link placement uses final tap position within tap slop', (
     tester,
