@@ -1,7 +1,10 @@
 package com.bearhunter.zenno
 
+import android.os.Bundle
+import android.view.InputDevice
 import android.view.MotionEvent
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -12,6 +15,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private var stylusInProximity = false
+    private var stylusDeviceId: Int? = null
     private var stylusProximityChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -30,23 +34,39 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        if (event.pointerCount > 0 && event.isStylusEvent()) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_HOVER_ENTER,
-                MotionEvent.ACTION_HOVER_MOVE,
-                -> setStylusInProximity(true)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        findViewById<FlutterView>(FLUTTER_VIEW_ID).setOnHoverListener { _, event ->
+            handleHoverEvent(event)
+            false
+        }
+    }
 
-                MotionEvent.ACTION_HOVER_EXIT -> setStylusInProximity(false)
+    private fun handleHoverEvent(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER,
+            MotionEvent.ACTION_HOVER_MOVE,
+            -> if (event.isStylusEvent()) {
+                stylusDeviceId = event.deviceId
+                setStylusInProximity(true)
+            }
+
+            MotionEvent.ACTION_HOVER_EXIT -> if (
+                stylusInProximity &&
+                (event.deviceId == stylusDeviceId || event.isStylusEvent())
+            ) {
+                setStylusInProximity(false)
             }
         }
-        return super.dispatchGenericMotionEvent(event)
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.pointerCount > 0 && event.isStylusEvent()) {
+        if (event.isStylusEvent()) {
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> setStylusInProximity(true)
+                MotionEvent.ACTION_DOWN -> {
+                    stylusDeviceId = event.deviceId
+                    setStylusInProximity(true)
+                }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL,
                 -> setStylusInProximity(false)
@@ -61,6 +81,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun MotionEvent.isStylusEvent(): Boolean {
+        if (isFromSource(InputDevice.SOURCE_STYLUS)) return true
+        if (pointerCount == 0) return false
         return when (getToolType(actionIndex.coerceIn(0, pointerCount - 1))) {
             MotionEvent.TOOL_TYPE_STYLUS,
             MotionEvent.TOOL_TYPE_ERASER,
@@ -73,6 +95,7 @@ class MainActivity : FlutterActivity() {
     private fun setStylusInProximity(value: Boolean) {
         if (stylusInProximity == value) return
         stylusInProximity = value
+        if (!value) stylusDeviceId = null
         stylusProximityChannel?.invokeMethod("stylusProximityChanged", value)
     }
 }

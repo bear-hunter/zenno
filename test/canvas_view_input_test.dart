@@ -405,7 +405,7 @@ void main() {
   });
 
   testWidgets(
-    'native stylus exit releases touch after proximity was detected',
+    'native stylus exit clears the tip circle and restores touch',
     (tester) async {
       final service = StylusProximityService.instance;
       service.debugSetInProximity(false);
@@ -415,7 +415,13 @@ void main() {
       await _pumpCanvas(tester, controller);
 
       service.debugSetInProximity(true);
+      final TestGesture stylus = await tester.createGesture(
+        kind: PointerDeviceKind.stylus,
+      );
+      await stylus.addPointer(location: const Offset(-20, -20));
+      await stylus.moveTo(_canvasGlobal(tester, const Offset(100, 100)));
       await tester.pump();
+      expect(controller.hoverPointWorld, isNotNull);
       final TestGesture blockedTouch = await tester.createGesture(
         kind: PointerDeviceKind.touch,
       );
@@ -427,6 +433,8 @@ void main() {
 
       service.debugSetInProximity(false);
       await tester.pump();
+      expect(controller.hoverPointWorld, isNull);
+      await stylus.removePointer();
       final TestGesture finger = await tester.createGesture(
         kind: PointerDeviceKind.touch,
       );
