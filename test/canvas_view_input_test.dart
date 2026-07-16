@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/input/stylus_button_mapping.dart';
-import 'package:zenno/canvas/input/stylus_proximity_service.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/canvas_view.dart';
@@ -233,7 +232,7 @@ void main() {
     expect(controller.elementCount, 0);
   });
 
-  testWidgets('touch begun during stylus use never resumes as a pan', (
+  testWidgets('touch pan is ignored while stylus drawing is active', (
     tester,
   ) async {
     final CanvasController controller = CanvasController();
@@ -256,217 +255,9 @@ void main() {
     expect(controller.viewport, ViewportState.initial);
     expect(controller.liveStroke?.points, hasLength(1));
 
-    await stylus.up();
-    await touch.moveBy(const Offset(80, 0));
-    await tester.pump();
-
-    expect(controller.viewport, ViewportState.initial);
     await touch.up();
-  });
-
-  testWidgets('finger can pan after a completed stylus stroke', (tester) async {
-    final service = StylusProximityService.instance;
-    service.debugSetInProximity(true);
-    addTearDown(() => service.debugSetInProximity(false));
-    final CanvasController controller = CanvasController();
-    addTearDown(controller.dispose);
-    await _pumpCanvas(tester, controller);
-
-    final TestGesture stylus = await tester.createGesture(
-      kind: PointerDeviceKind.stylus,
-    );
-    await stylus.down(_canvasGlobal(tester, const Offset(100, 100)));
-    await stylus.moveTo(_canvasGlobal(tester, const Offset(180, 100)));
     await stylus.up();
-    await tester.pump();
-
-    expect(controller.elementCount, 1);
-
-    final TestGesture finger = await tester.createGesture(
-      kind: PointerDeviceKind.touch,
-    );
-    await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
-    await finger.moveBy(const Offset(80, 0));
-    await finger.up();
-    await tester.pump();
-
-    expect(controller.viewport, isNot(ViewportState.initial));
   });
-
-  testWidgets('a broad finger contact pans when no stylus is nearby', (
-    tester,
-  ) async {
-    final CanvasController controller = CanvasController();
-    addTearDown(controller.dispose);
-    await _pumpCanvas(tester, controller);
-
-    const int pointer = 42;
-    final Offset start = _canvasGlobal(tester, const Offset(160, 160));
-    await tester.sendEventToBinding(
-      PointerDownEvent(
-        pointer: pointer,
-        kind: PointerDeviceKind.touch,
-        position: start,
-        size: 0.3,
-        radiusMajor: 52,
-        radiusMinor: 24,
-      ),
-    );
-    await tester.sendEventToBinding(
-      PointerMoveEvent(
-        pointer: pointer,
-        kind: PointerDeviceKind.touch,
-        position: start + const Offset(100, 0),
-        delta: const Offset(100, 0),
-        size: 0.3,
-        radiusMajor: 52,
-        radiusMinor: 24,
-      ),
-    );
-    await tester.pump();
-
-    expect(controller.viewport, isNot(ViewportState.initial));
-    await tester.sendEventToBinding(
-      PointerUpEvent(
-        pointer: pointer,
-        kind: PointerDeviceKind.touch,
-        position: start + const Offset(100, 0),
-      ),
-    );
-  });
-
-  testWidgets('stylus hover blocks touch until the stylus leaves proximity', (
-    tester,
-  ) async {
-    final CanvasController controller = CanvasController();
-    addTearDown(controller.dispose);
-    await _pumpCanvas(tester, controller);
-
-    final Offset stylusPosition = _canvasGlobal(tester, const Offset(100, 100));
-    final TestGesture stylus = await tester.createGesture(
-      kind: PointerDeviceKind.stylus,
-    );
-    await stylus.addPointer(location: const Offset(-20, -20));
-    await stylus.moveTo(stylusPosition);
-    await tester.pump();
-
-    final TestGesture blockedTouch = await tester.createGesture(
-      kind: PointerDeviceKind.touch,
-    );
-    await blockedTouch.down(_canvasGlobal(tester, const Offset(180, 180)));
-    await blockedTouch.moveBy(const Offset(80, 0));
-    await blockedTouch.up();
-    await tester.pump();
-
-    expect(controller.viewport, ViewportState.initial);
-
-    await stylus.removePointer();
-    await tester.pump();
-
-    final TestGesture finger = await tester.createGesture(
-      kind: PointerDeviceKind.touch,
-    );
-    await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
-    await finger.moveBy(const Offset(80, 0));
-    await finger.up();
-    await tester.pump();
-
-    expect(controller.viewport, isNot(ViewportState.initial));
-  });
-
-  testWidgets('stylus entering proximity rolls back an active finger gesture', (
-    tester,
-  ) async {
-    final CanvasController controller = CanvasController();
-    addTearDown(controller.dispose);
-    await _pumpCanvas(tester, controller);
-
-    final TestGesture finger = await tester.createGesture(
-      kind: PointerDeviceKind.touch,
-    );
-    await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
-    await finger.moveBy(const Offset(40, 0));
-    await tester.pump();
-    expect(controller.viewport, isNot(ViewportState.initial));
-
-    final TestGesture stylus = await tester.createGesture(
-      kind: PointerDeviceKind.stylus,
-    );
-    await stylus.addPointer(location: const Offset(-20, -20));
-    await stylus.moveTo(_canvasGlobal(tester, const Offset(100, 100)));
-    await tester.pump();
-
-    await finger.moveBy(const Offset(80, 0));
-    await finger.up();
-    await tester.pump();
-
-    expect(controller.viewport, ViewportState.initial);
-    await stylus.removePointer();
-  });
-
-  testWidgets('a canceled finger pan restores its starting viewport', (
-    tester,
-  ) async {
-    final CanvasController controller = CanvasController();
-    addTearDown(controller.dispose);
-    await _pumpCanvas(tester, controller);
-
-    final TestGesture finger = await tester.createGesture(
-      kind: PointerDeviceKind.touch,
-    );
-    await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
-    await finger.moveBy(const Offset(80, 0));
-    await tester.pump();
-    expect(controller.viewport, isNot(ViewportState.initial));
-
-    await finger.cancel();
-    await tester.pump();
-
-    expect(controller.viewport, ViewportState.initial);
-  });
-
-  testWidgets(
-    'native stylus exit clears the tip circle and restores touch',
-    (tester) async {
-      final service = StylusProximityService.instance;
-      service.debugSetInProximity(false);
-      addTearDown(() => service.debugSetInProximity(false));
-      final CanvasController controller = CanvasController();
-      addTearDown(controller.dispose);
-      await _pumpCanvas(tester, controller);
-
-      service.debugSetInProximity(true);
-      final TestGesture stylus = await tester.createGesture(
-        kind: PointerDeviceKind.stylus,
-      );
-      await stylus.addPointer(location: const Offset(-20, -20));
-      await stylus.moveTo(_canvasGlobal(tester, const Offset(100, 100)));
-      await tester.pump();
-      expect(controller.hoverPointWorld, isNotNull);
-      final TestGesture blockedTouch = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
-      await blockedTouch.down(_canvasGlobal(tester, const Offset(180, 180)));
-      await blockedTouch.moveBy(const Offset(80, 0));
-      await blockedTouch.up();
-      await tester.pump();
-      expect(controller.viewport, ViewportState.initial);
-
-      service.debugSetInProximity(false);
-      await tester.pump();
-      expect(controller.hoverPointWorld, isNull);
-      await stylus.removePointer();
-      final TestGesture finger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
-      await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
-      await finger.moveBy(const Offset(80, 0));
-      await finger.up();
-      await tester.pump();
-
-      expect(controller.viewport, isNot(ViewportState.initial));
-    },
-  );
 
   testWidgets('link placement uses final tap position within tap slop', (
     tester,
@@ -1746,7 +1537,6 @@ void main() {
     expect(cancelController.activeTool, CanvasTool.lasso);
     expect(cancelController.lassoPath, isNotNull);
     await cancelled.cancel();
-    await cancelled.removePointer();
     await tester.pump();
     expect(cancelController.activeTool, CanvasTool.pen);
     expect(cancelController.lassoPath, isNull);
@@ -1774,7 +1564,6 @@ void main() {
     expect(disposeController.activeTool, CanvasTool.pen);
     expect(disposeController.eraserPath, isNull);
     await disposed.cancel();
-    await disposed.removePointer();
 
     await _pumpCanvas(tester, touchController);
     final TestGesture touch = await tester.createGesture(

@@ -63,8 +63,8 @@ String _$focusClockHash() => r'71ce456fcded40f199fe3527b23d520df79b08c0';
 /// [ActiveSessionState] each second and lets a Pomodoro engine auto-advance
 /// work↔break. Because [TimerEngine] is wall-clock correct, a stalled or
 /// throttled ticker never corrupts elapsed time — the next emission is still
-/// accurate. The ticker is suspended while the app is backgrounded or the
-/// session is paused, then reconciled immediately when foreground work resumes.
+/// accurate, which is also why no `AppLifecycleListener` reconciliation is
+/// needed here.
 ///
 /// DB writes are deliberately sparse: the opening row at start, a tally write
 /// on each phase transition and on finish/abandon. The reactive
@@ -82,8 +82,8 @@ final activeSessionControllerProvider = ActiveSessionControllerProvider._();
 /// [ActiveSessionState] each second and lets a Pomodoro engine auto-advance
 /// work↔break. Because [TimerEngine] is wall-clock correct, a stalled or
 /// throttled ticker never corrupts elapsed time — the next emission is still
-/// accurate. The ticker is suspended while the app is backgrounded or the
-/// session is paused, then reconciled immediately when foreground work resumes.
+/// accurate, which is also why no `AppLifecycleListener` reconciliation is
+/// needed here.
 ///
 /// DB writes are deliberately sparse: the opening row at start, a tally write
 /// on each phase transition and on finish/abandon. The reactive
@@ -99,8 +99,8 @@ final class ActiveSessionControllerProvider
   /// [ActiveSessionState] each second and lets a Pomodoro engine auto-advance
   /// work↔break. Because [TimerEngine] is wall-clock correct, a stalled or
   /// throttled ticker never corrupts elapsed time — the next emission is still
-  /// accurate. The ticker is suspended while the app is backgrounded or the
-  /// session is paused, then reconciled immediately when foreground work resumes.
+  /// accurate, which is also why no `AppLifecycleListener` reconciliation is
+  /// needed here.
   ///
   /// DB writes are deliberately sparse: the opening row at start, a tally write
   /// on each phase transition and on finish/abandon. The reactive
@@ -133,7 +133,7 @@ final class ActiveSessionControllerProvider
 }
 
 String _$activeSessionControllerHash() =>
-    r'd0d960344e4b77801e69a372a65ad2cc898aeec1';
+    r'f249278f1909619e27d2604281f030bc24fc8ee7';
 
 /// Owns the [TimerEngine] for the one in-progress focus session and persists
 /// that session's lifecycle.
@@ -144,8 +144,8 @@ String _$activeSessionControllerHash() =>
 /// [ActiveSessionState] each second and lets a Pomodoro engine auto-advance
 /// work↔break. Because [TimerEngine] is wall-clock correct, a stalled or
 /// throttled ticker never corrupts elapsed time — the next emission is still
-/// accurate. The ticker is suspended while the app is backgrounded or the
-/// session is paused, then reconciled immediately when foreground work resumes.
+/// accurate, which is also why no `AppLifecycleListener` reconciliation is
+/// needed here.
 ///
 /// DB writes are deliberately sparse: the opening row at start, a tally write
 /// on each phase transition and on finish/abandon. The reactive

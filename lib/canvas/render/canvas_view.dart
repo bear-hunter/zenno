@@ -10,7 +10,6 @@ import 'package:zenno/canvas/input/pen_input_processor.dart';
 import 'package:zenno/canvas/input/pen_profile.dart';
 import 'package:zenno/canvas/input/pointer_classifier.dart';
 import 'package:zenno/canvas/input/stylus_button_mapping.dart';
-import 'package:zenno/canvas/input/stylus_proximity_service.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/canvas_overlay_painter.dart';
@@ -155,9 +154,6 @@ class _SelectionPointerSession {
 class _CanvasViewState extends State<CanvasView> {
   final ElementsTileCache _elementsTileCache = ElementsTileCache();
   final LiveStrokePathCache _liveStrokePathCache = LiveStrokePathCache();
-  final StylusProximityService _stylusProximity =
-      StylusProximityService.instance;
-  late Listenable _renderListenable;
 
   /// All pointers currently down on (or hovering over) the surface.
   final Map<int, _ActivePointer> _pointers = <int, _ActivePointer>{};
@@ -165,7 +161,6 @@ class _CanvasViewState extends State<CanvasView> {
   final Set<int> _movedTouchPointers = <int>{};
   int _touchShortcutPointerCount = 0;
   bool _touchShortcutDisqualified = false;
-  bool _stylusInProximity = false;
   Timer? _longPressTimer;
   Timer? _stylusLongPressTimer;
   Timer? _stylusButtonHoldTimer;
@@ -221,10 +216,6 @@ class _CanvasViewState extends State<CanvasView> {
   /// Viewport captured when a two-finger pinch began.
   ViewportState? _pinchStartViewport;
 
-  /// Viewport before the current finger gesture, restored if Android later
-  /// identifies that gesture as an accidental palm touch.
-  ViewportState? _touchGestureStartViewport;
-
   /// Gesture focal point captured when a two-finger pinch began.
   Offset? _pinchStartMidpoint;
 
@@ -239,23 +230,12 @@ class _CanvasViewState extends State<CanvasView> {
   @override
   void initState() {
     super.initState();
-    _renderListenable = _buildRenderListenable();
-    _stylusProximity.addListener(_onNativeStylusProximityChanged);
-    if (_stylusProximity.isInProximity) _enterStylusProximity();
     _controller.setPenProfile(widget.penProfile, notify: false);
   }
-
-  Listenable _buildRenderListenable() => Listenable.merge(<Listenable>[
-    _controller,
-    _controller.liveStrokeListenable,
-  ]);
 
   @override
   void didUpdateWidget(covariant CanvasView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      _renderListenable = _buildRenderListenable();
-    }
     if (oldWidget.penProfile != widget.penProfile) {
       _controller.setPenProfile(widget.penProfile, notify: false);
       _penInputProcessor = PenInputProcessor(widget.penProfile);
@@ -264,7 +244,6 @@ class _CanvasViewState extends State<CanvasView> {
 
   @override
   void dispose() {
-    _stylusProximity.removeListener(_onNativeStylusProximityChanged);
     _longPressTimer?.cancel();
     _stylusLongPressTimer?.cancel();
     _stylusButtonHoldTimer?.cancel();
@@ -316,15 +295,6 @@ class _CanvasViewState extends State<CanvasView> {
 
   void _onPointerDown(PointerDownEvent event) {
     final kind = classifyPointer(event);
-
-    if (kind == CanvasInputKind.touch && _stylusInProximity) {
-      return;
-    }
-    if (kind == CanvasInputKind.stylus) {
-      _stylusInProximity = true;
-      _cancelActiveTouchesForStylus();
-    }
-
     _pointers[event.pointer] = _ActivePointer(
       kind: kind,
       position: event.localPosition,
@@ -345,7 +315,6 @@ class _CanvasViewState extends State<CanvasView> {
         return;
       }
       if (_touchDownPositions.isEmpty) {
-        _touchGestureStartViewport = _controller.viewport;
         _touchShortcutPointerCount = 0;
         _touchShortcutDisqualified = false;
       }
@@ -535,10 +504,6 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerMove(PointerMoveEvent event) {
     final pointer = _pointers[event.pointer];
     if (pointer == null) {
-      return;
-    }
-    if (pointer.kind == CanvasInputKind.touch && _stylusInProximity) {
-      _endPointer(event.pointer, cancelled: true);
       return;
     }
     final Offset previous = pointer.position;
@@ -785,16 +750,6 @@ class _CanvasViewState extends State<CanvasView> {
     _endPointer(event.pointer, cancelled: true);
   }
 
-  void _cancelActiveTouchesForStylus() {
-    final List<int> touchPointers = <int>[
-      for (final entry in _pointers.entries)
-        if (entry.value.kind == CanvasInputKind.touch) entry.key,
-    ];
-    for (final pointerId in touchPointers) {
-      _endPointer(pointerId, cancelled: true);
-    }
-  }
-
   /// Tears down state for [pointerId] on pointer up or cancel.
   ///
   /// When [cancelled] the in-progress tool gesture is abandoned with no
@@ -825,10 +780,6 @@ class _CanvasViewState extends State<CanvasView> {
     if (pointer?.kind == CanvasInputKind.touch) {
       if (cancelled) {
         _touchShortcutDisqualified = true;
-        final startViewport = _touchGestureStartViewport;
-        if (startViewport != null) {
-          _controller.setViewport(startViewport);
-        }
       }
       if (pointerId == _longPressLassoPointerId) {
         _touchShortcutDisqualified = true;
@@ -843,12 +794,6 @@ class _CanvasViewState extends State<CanvasView> {
       _movedTouchPointers.remove(pointerId);
       _maybeApplyTouchTapShortcut();
       _syncTouchGesture();
-      if (_touchDownPositions.isEmpty) {
-        _touchGestureStartViewport = null;
-      }
-    }
-    if (pointer?.kind == CanvasInputKind.stylus) {
-      _leaveStylusProximity();
     }
   }
 
@@ -1350,47 +1295,8 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerHover(PointerHoverEvent event) {
     final kind = classifyPointer(event);
     if (kind == CanvasInputKind.stylus || kind == CanvasInputKind.mouse) {
-      if (kind == CanvasInputKind.stylus) {
-        _enterStylusProximity();
-      }
       _controller.setHoverPoint(_toWorld(event.localPosition));
     }
-  }
-
-  void _onPointerEnter(PointerEnterEvent event) {
-    if (classifyPointer(event) == CanvasInputKind.stylus) {
-      _enterStylusProximity();
-    }
-  }
-
-  void _enterStylusProximity() {
-    if (_stylusInProximity) return;
-    _stylusInProximity = true;
-    _cancelActiveTouchesForStylus();
-  }
-
-  void _onNativeStylusProximityChanged() {
-    if (_stylusProximity.isInProximity) {
-      _enterStylusProximity();
-    } else {
-      _leaveStylusProximity();
-    }
-  }
-
-  void _leaveStylusProximity() {
-    final hasActiveStylus = _pointers.values.any(
-      (pointer) => pointer.kind == CanvasInputKind.stylus,
-    );
-    if (hasActiveStylus) return;
-    _stylusInProximity = false;
-    _controller.setHoverPoint(null);
-  }
-
-  void _onPointerExit(PointerExitEvent event) {
-    if (classifyPointer(event) == CanvasInputKind.stylus) {
-      _leaveStylusProximity();
-    }
-    _controller.setHoverPoint(null);
   }
 
   void _onPointerSignal(PointerSignalEvent event) {
@@ -1563,10 +1469,9 @@ class _CanvasViewState extends State<CanvasView> {
           onPointerHover: _onPointerHover,
           onPointerSignal: _onPointerSignal,
           child: MouseRegion(
-            onEnter: _onPointerEnter,
-            onExit: _onPointerExit,
+            onExit: (_) => _controller.setHoverPoint(null),
             child: ListenableBuilder(
-              listenable: _renderListenable,
+              listenable: _controller,
               builder: (context, _) {
                 final ViewportState viewport = _controller.viewport;
                 final bool eraserActive =

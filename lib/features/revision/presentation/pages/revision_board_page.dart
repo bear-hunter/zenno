@@ -1,8 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:zenno/config/theme/app_spacing.dart';
-import 'package:zenno/core/util/foreground_minute_clock.dart';
 import 'package:zenno/core/widgets/aurora.dart';
 import 'package:zenno/features/revision/application/revision_providers.dart';
 import 'package:zenno/features/revision/presentation/widgets/revision_card_detail_sheet.dart';
@@ -60,25 +61,21 @@ class _BoardBody extends ConsumerStatefulWidget {
 
 class _BoardBodyState extends ConsumerState<_BoardBody> {
   late DateTime _now;
-  late final ForegroundMinuteClock _clock;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _clock = ForegroundMinuteClock()..addListener(_onMinuteChanged);
-    _now = _clock.now;
+    _now = DateTime.now();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
   }
 
   @override
   void dispose() {
-    _clock
-      ..removeListener(_onMinuteChanged)
-      ..dispose();
+    _timer?.cancel();
     super.dispose();
-  }
-
-  void _onMinuteChanged() {
-    if (mounted) setState(() => _now = _clock.now);
   }
 
   @override
