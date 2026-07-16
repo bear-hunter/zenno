@@ -264,6 +264,35 @@ void main() {
     await touch.up();
   });
 
+  testWidgets('finger can pan after a completed stylus stroke', (tester) async {
+    final service = StylusProximityService.instance;
+    service.debugSetInProximity(true);
+    addTearDown(() => service.debugSetInProximity(false));
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(100, 100)));
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(180, 100)));
+    await stylus.up();
+    await tester.pump();
+
+    expect(controller.elementCount, 1);
+
+    final TestGesture finger = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await finger.down(_canvasGlobal(tester, const Offset(180, 180)));
+    await finger.moveBy(const Offset(80, 0));
+    await finger.up();
+    await tester.pump();
+
+    expect(controller.viewport, isNot(ViewportState.initial));
+  });
+
   testWidgets('a broad finger contact pans when no stylus is nearby', (
     tester,
   ) async {

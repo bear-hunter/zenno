@@ -43,6 +43,18 @@ class MainActivity : FlutterActivity() {
         return super.dispatchGenericMotionEvent(event)
     }
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.pointerCount > 0 && event.isStylusEvent()) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> setStylusInProximity(true)
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> setStylusInProximity(false)
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun onPause() {
         setStylusInProximity(false)
         super.onPause()

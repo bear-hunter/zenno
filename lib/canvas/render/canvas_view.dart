@@ -835,8 +835,7 @@ class _CanvasViewState extends State<CanvasView> {
       _maybeApplyTouchTapShortcut();
       _syncTouchGesture();
     }
-    if (pointer?.kind == CanvasInputKind.stylus &&
-        !_stylusProximity.isInProximity) {
+    if (pointer?.kind == CanvasInputKind.stylus) {
       _leaveStylusProximity();
     }
   }
