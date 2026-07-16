@@ -161,6 +161,7 @@ class _CanvasViewState extends State<CanvasView> {
   final Set<int> _movedTouchPointers = <int>{};
   int _touchShortcutPointerCount = 0;
   bool _touchShortcutDisqualified = false;
+  bool _stylusInProximity = false;
   Timer? _longPressTimer;
   Timer? _stylusLongPressTimer;
   Timer? _stylusButtonHoldTimer;
@@ -295,6 +296,16 @@ class _CanvasViewState extends State<CanvasView> {
 
   void _onPointerDown(PointerDownEvent event) {
     final kind = classifyPointer(event);
+
+    if (kind == CanvasInputKind.touch &&
+        (_stylusInProximity || isLikelyPalmContact(event))) {
+      return;
+    }
+    if (kind == CanvasInputKind.stylus) {
+      _stylusInProximity = true;
+      _cancelActiveTouchesForStylus();
+    }
+
     _pointers[event.pointer] = _ActivePointer(
       kind: kind,
       position: event.localPosition,
@@ -504,6 +515,10 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerMove(PointerMoveEvent event) {
     final pointer = _pointers[event.pointer];
     if (pointer == null) {
+      return;
+    }
+    if (pointer.kind == CanvasInputKind.touch && isLikelyPalmContact(event)) {
+      _endPointer(event.pointer, cancelled: true);
       return;
     }
     final Offset previous = pointer.position;
@@ -748,6 +763,16 @@ class _CanvasViewState extends State<CanvasView> {
 
   void _onPointerCancel(PointerCancelEvent event) {
     _endPointer(event.pointer, cancelled: true);
+  }
+
+  void _cancelActiveTouchesForStylus() {
+    final List<int> touchPointers = <int>[
+      for (final entry in _pointers.entries)
+        if (entry.value.kind == CanvasInputKind.touch) entry.key,
+    ];
+    for (final pointerId in touchPointers) {
+      _endPointer(pointerId, cancelled: true);
+    }
   }
 
   /// Tears down state for [pointerId] on pointer up or cancel.
@@ -1295,8 +1320,18 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerHover(PointerHoverEvent event) {
     final kind = classifyPointer(event);
     if (kind == CanvasInputKind.stylus || kind == CanvasInputKind.mouse) {
+      if (kind == CanvasInputKind.stylus) {
+        _stylusInProximity = true;
+      }
       _controller.setHoverPoint(_toWorld(event.localPosition));
     }
+  }
+
+  void _onPointerExit(PointerExitEvent event) {
+    if (classifyPointer(event) == CanvasInputKind.stylus) {
+      _stylusInProximity = false;
+    }
+    _controller.setHoverPoint(null);
   }
 
   void _onPointerSignal(PointerSignalEvent event) {
@@ -1469,7 +1504,7 @@ class _CanvasViewState extends State<CanvasView> {
           onPointerHover: _onPointerHover,
           onPointerSignal: _onPointerSignal,
           child: MouseRegion(
-            onExit: (_) => _controller.setHoverPoint(null),
+            onExit: _onPointerExit,
             child: ListenableBuilder(
               listenable: _controller,
               builder: (context, _) {

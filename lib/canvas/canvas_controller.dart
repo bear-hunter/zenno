@@ -497,6 +497,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final Set<String> _selectedIds = <String>{};
   Set<String>? _selectedIdsView;
 
+  /// In-memory snapshot copied from the current lasso selection.
+  List<CanvasElement> _copiedSelection = const <CanvasElement>[];
+
   /// Selection present at replace-lasso start, restored if it is cancelled.
   Set<String>? _selectionBeforeReplaceLasso;
 
@@ -556,6 +559,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Whether at least one element is currently selected.
   bool get hasSelection => _selectedIds.isNotEmpty;
+
+  /// Whether the lasso clipboard contains content that can be pasted.
+  bool get canPasteSelection => _copiedSelection.isNotEmpty && canCreateContent;
 
   /// Live world-space offset of an in-progress selection drag, or [Offset.zero]
   /// when the selection is not being dragged.
@@ -2978,6 +2984,87 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_clearSelectedIds()) {
       notifyListeners();
     }
+  }
+
+  /// Copies the current editable selection into the canvas-local clipboard.
+  void copySelection() {
+    final List<CanvasElement> selected = selectedElements;
+    if (selected.isEmpty) {
+      return;
+    }
+    _copiedSelection = List<CanvasElement>.unmodifiable(selected);
+    notifyListeners();
+  }
+
+  /// Pastes the copied group and transfers the selection to the new elements.
+  ///
+  /// The duplicate is offset by 24 screen pixels so it is visibly distinct
+  /// from the source. All elements are added as one undoable command.
+  void pasteSelection() {
+    if (!canPasteSelection) {
+      return;
+    }
+    final String? fallbackLayerId = _editableActiveLayerId();
+    if (fallbackLayerId == null) {
+      return;
+    }
+    final Offset offset = Offset(24 / viewport.scale, 24 / viewport.scale);
+    final List<CanvasElement> pasted = <CanvasElement>[
+      for (final CanvasElement element in _copiedSelection)
+        _copyElementForPaste(element, offset, fallbackLayerId),
+    ];
+    _runCommand(
+      ReplaceElementsCommand(removed: const <CanvasElement>[], added: pasted),
+    );
+    setSelection(pasted.map((CanvasElement element) => element.id));
+  }
+
+  CanvasElement _copyElementForPaste(
+    CanvasElement element,
+    Offset offset,
+    String fallbackLayerId,
+  ) {
+    final String id = newId();
+    final String layerId = switch (element.layerId) {
+      final String source when _layerById(source)?.isEditable ?? false =>
+        source,
+      _ => fallbackLayerId,
+    };
+    final int zIndex = _nextZIndex++;
+    final CanvasElement copy = switch (element) {
+      InkElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        layerId: layerId,
+        stroke: element.stroke.copyWith(id: id),
+      ),
+      ImageElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        layerId: layerId,
+      ),
+      PdfElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        layerId: layerId,
+      ),
+      LinkElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        layerId: layerId,
+      ),
+      TextElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        layerId: layerId,
+      ),
+      ShapeElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        layerId: layerId,
+      ),
+    };
+    return copy.translated(offset);
   }
 
   /// Returns whether the [world] point lands on a currently selected element.

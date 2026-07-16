@@ -232,7 +232,7 @@ void main() {
     expect(controller.elementCount, 0);
   });
 
-  testWidgets('touch pan is ignored while stylus drawing is active', (
+  testWidgets('touch begun during stylus use never resumes as a pan', (
     tester,
   ) async {
     final CanvasController controller = CanvasController();
@@ -255,8 +255,52 @@ void main() {
     expect(controller.viewport, ViewportState.initial);
     expect(controller.liveStroke?.points, hasLength(1));
 
-    await touch.up();
     await stylus.up();
+    await touch.moveBy(const Offset(80, 0));
+    await tester.pump();
+
+    expect(controller.viewport, ViewportState.initial);
+    await touch.up();
+  });
+
+  testWidgets('broad palm contact does not pan the viewport', (tester) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    const int pointer = 42;
+    final Offset start = _canvasGlobal(tester, const Offset(160, 160));
+    await tester.sendEventToBinding(
+      PointerDownEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.touch,
+        position: start,
+        size: 0.3,
+        radiusMajor: 52,
+        radiusMinor: 24,
+      ),
+    );
+    await tester.sendEventToBinding(
+      PointerMoveEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.touch,
+        position: start + const Offset(100, 0),
+        delta: const Offset(100, 0),
+        size: 0.3,
+        radiusMajor: 52,
+        radiusMinor: 24,
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.viewport, ViewportState.initial);
+    await tester.sendEventToBinding(
+      PointerUpEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.touch,
+        position: start + const Offset(100, 0),
+      ),
+    );
   });
 
   testWidgets('link placement uses final tap position within tap slop', (

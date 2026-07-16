@@ -1005,6 +1005,73 @@ void main() {
       expect(controller.elementCount, 1);
     });
 
+    test('paste duplicates the copied group and selects only the copies', () {
+      final CanvasController controller = CanvasController()
+        ..addElementToStore(inkElement('ink', zIndex: 0))
+        ..addElementToStore(
+          const TextElement(
+            id: 'text',
+            zIndex: 1,
+            worldBounds: Rect.fromLTWH(40, 20, 80, 40),
+            text: 'Copied note',
+            color: 0xFFFFFFFF,
+            fontSize: 18,
+          ),
+        )
+        ..setSelection(<String>{'ink', 'text'});
+      addTearDown(controller.dispose);
+
+      controller
+        ..copySelection()
+        ..pasteSelection();
+
+      expect(controller.elementCount, 4);
+      expect(controller.selectedIds, hasLength(2));
+      expect(controller.selectedIds, isNot(contains('ink')));
+      expect(controller.selectedIds, isNot(contains('text')));
+      final List<CanvasElement> pasted = controller.selectedElements;
+      expect(
+        pasted.map((CanvasElement element) => element.worldBounds.topLeft),
+        containsAll(<Offset>[const Offset(22, 22), const Offset(64, 44)]),
+      );
+      final InkElement pastedInk = pasted.whereType<InkElement>().single;
+      expect(pastedInk.stroke.id, pastedInk.id);
+      expect(pasted.whereType<TextElement>().single.text, 'Copied note');
+
+      controller.undo();
+      expect(controller.elementCount, 2);
+      expect(
+        controller.elements.map((CanvasElement element) => element.id),
+        <String>['ink', 'text'],
+      );
+    });
+
+    test(
+      'a pasted group is immediately draggable without moving its source',
+      () {
+        final CanvasController controller = CanvasController()
+          ..addElementToStore(inkElement('source', zIndex: 0))
+          ..setSelection(<String>{'source'})
+          ..copySelection()
+          ..pasteSelection();
+        addTearDown(controller.dispose);
+        final String pastedId = controller.selectedIds.single;
+
+        controller
+          ..beginSelectionDrag()
+          ..updateSelectionDrag(const Offset(50, 0))
+          ..endSelectionDrag();
+
+        final Map<String, CanvasElement> byId = <String, CanvasElement>{
+          for (final CanvasElement element in controller.elements)
+            element.id: element,
+        };
+        expect(byId['source']!.worldBounds.topLeft, const Offset(-2, -2));
+        expect(byId[pastedId]!.worldBounds.topLeft, const Offset(72, 22));
+        expect(controller.selectedIds, <String>{pastedId});
+      },
+    );
+
     test('dragging a selection moves it and survives undo/redo', () {
       final CanvasController controller = CanvasController()
         ..setTool(CanvasTool.lasso);

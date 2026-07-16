@@ -570,8 +570,9 @@ class _CanvasToolbarContent extends StatelessWidget {
                               centerKey: CanvasToolbar.wheelCenterKey,
                               onDragUpdate: moveToolCluster,
                               onDragEnd: onToolWheelDragEnd,
-                              onCenterTap:
-                                  _effectiveWheelPage == _WheelPage.tools
+                              onCenterTap: controller.hasSelection
+                                  ? onCenterTap
+                                  : _effectiveWheelPage == _WheelPage.tools
                                   ? controller.activeToolWheelPreset.kind.isInk
                                         ? () => _showActiveColorPicker(context)
                                         : () => _showToolSettings(context)
@@ -1066,6 +1067,16 @@ class _CanvasToolbarContent extends StatelessWidget {
         onTap: controller.deleteSelection,
       ),
       _WheelAction(
+        icon: Icons.copy_outlined,
+        label: 'Copy selection',
+        onTap: controller.copySelection,
+      ),
+      _WheelAction(
+        icon: Icons.content_paste_outlined,
+        label: 'Paste selection',
+        onTap: controller.canPasteSelection ? controller.pasteSelection : null,
+      ),
+      _WheelAction(
         icon: Icons.add_circle_outline,
         label: 'Add to selection once',
         selected: controller.selectionMode == SelectionMode.add,
@@ -1336,6 +1347,18 @@ class _CanvasToolbarContent extends StatelessWidget {
           label: 'Delete selection',
           destructive: true,
           onTap: controller.hasSelection ? controller.deleteSelection : null,
+        ),
+        _WheelAction(
+          icon: Icons.copy_outlined,
+          label: 'Copy selection',
+          onTap: controller.hasSelection ? controller.copySelection : null,
+        ),
+        _WheelAction(
+          icon: Icons.content_paste_outlined,
+          label: 'Paste selection',
+          onTap: controller.canPasteSelection
+              ? controller.pasteSelection
+              : null,
         ),
       ],
       CanvasTool.shape => <_WheelAction>[
@@ -1609,6 +1632,13 @@ class _CanvasToolbarContent extends StatelessWidget {
           Icons.remove_circle_outline,
           'Remove from selection once',
         ),
+        _HudButton(
+          icon: Icons.content_paste_outlined,
+          tooltip: 'Paste selection',
+          onPressed: controller.canPasteSelection
+              ? controller.pasteSelection
+              : null,
+        ),
       ],
       CanvasTool.shape => <Widget>[
         const _ContextLabel(icon: Icons.category_outlined, label: 'Shape'),
@@ -1695,6 +1725,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.center_focus_strong,
         tooltip: 'Frame selection',
         onPressed: controller.fitSelection,
+      ),
+      _HudButton(
+        icon: Icons.copy_outlined,
+        tooltip: 'Copy selection',
+        onPressed: controller.copySelection,
+      ),
+      _HudButton(
+        icon: Icons.content_paste_outlined,
+        tooltip: 'Paste selection',
+        onPressed: controller.canPasteSelection
+            ? controller.pasteSelection
+            : null,
       ),
       _nudgeMenu(),
       _HudButton(

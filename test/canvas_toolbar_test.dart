@@ -905,6 +905,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Done selecting'), findsOneWidget);
+    await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
+    await tester.pump();
+    expect(find.byTooltip('Copy selection'), findsOneWidget);
+    expect(find.byTooltip('Paste selection'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Copy selection'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Paste selection'));
+    await tester.pump();
+
+    expect(controller.elementCount, 2);
+    expect(controller.selectedIds, hasLength(1));
+    expect(controller.selectedIds.single, isNot('note'));
   });
 
   testWidgets('selection modes remain available from the Select favorite', (
