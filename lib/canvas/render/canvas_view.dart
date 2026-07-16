@@ -221,6 +221,10 @@ class _CanvasViewState extends State<CanvasView> {
   /// Viewport captured when a two-finger pinch began.
   ViewportState? _pinchStartViewport;
 
+  /// Viewport before the current finger gesture, restored if Android later
+  /// identifies that gesture as an accidental palm touch.
+  ViewportState? _touchGestureStartViewport;
+
   /// Gesture focal point captured when a two-finger pinch began.
   Offset? _pinchStartMidpoint;
 
@@ -341,6 +345,7 @@ class _CanvasViewState extends State<CanvasView> {
         return;
       }
       if (_touchDownPositions.isEmpty) {
+        _touchGestureStartViewport = _controller.viewport;
         _touchShortcutPointerCount = 0;
         _touchShortcutDisqualified = false;
       }
@@ -820,6 +825,10 @@ class _CanvasViewState extends State<CanvasView> {
     if (pointer?.kind == CanvasInputKind.touch) {
       if (cancelled) {
         _touchShortcutDisqualified = true;
+        final startViewport = _touchGestureStartViewport;
+        if (startViewport != null) {
+          _controller.setViewport(startViewport);
+        }
       }
       if (pointerId == _longPressLassoPointerId) {
         _touchShortcutDisqualified = true;
@@ -834,6 +843,9 @@ class _CanvasViewState extends State<CanvasView> {
       _movedTouchPointers.remove(pointerId);
       _maybeApplyTouchTapShortcut();
       _syncTouchGesture();
+      if (_touchDownPositions.isEmpty) {
+        _touchGestureStartViewport = null;
+      }
     }
     if (pointer?.kind == CanvasInputKind.stylus) {
       _leaveStylusProximity();
