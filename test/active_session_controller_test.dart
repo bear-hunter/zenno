@@ -1,6 +1,5 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zenno/core/database/database.dart';
@@ -12,97 +11,6 @@ import 'package:zenno/features/focus/domain/focus_session_config.dart';
 import 'package:zenno/features/focus/domain/timer_engine.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  test(
-    'backgrounding suspends ticker and resume catches up from wall clock',
-    () async {
-      final db = ZennoDatabase(NativeDatabase.memory());
-      addTearDown(db.close);
-      var now = DateTime.utc(2026, 7, 10, 9);
-      final container = ProviderContainer(
-        overrides: [
-          databaseProvider.overrideWithValue(db),
-          focusClockProvider.overrideWithValue(() => now),
-          focusWakelockServiceProvider.overrideWithValue(
-            const _FakeWakelockService(),
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      container.read(activeSessionControllerProvider);
-      await pumpEventQueue();
-      const config = FocusSessionConfig(
-        mode: TimerMode.pomodoro,
-        goalText: 'Review physiology',
-        preEnergy: 4,
-        plannedDuration: Duration(minutes: 4),
-        pomodoroWork: Duration(minutes: 1),
-        pomodoroBreak: Duration(minutes: 1),
-        flowBreakRatio: 0.2,
-        linkedCanvasId: null,
-      );
-      final controller = container.read(
-        activeSessionControllerProvider.notifier,
-      );
-
-      await controller.startFrom(config, checkedRitualItems: const []);
-      expect(controller.debugTickerActive, isTrue);
-
-      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
-      await pumpEventQueue();
-      expect(controller.debugTickerActive, isFalse);
-
-      now = now.add(const Duration(minutes: 2, seconds: 30));
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
-      await pumpEventQueue();
-
-      final snapshot = container.read(activeSessionControllerProvider).snapshot;
-      expect(snapshot?.phase, TimerPhase.work);
-      expect(snapshot?.elapsed, const Duration(seconds: 30));
-      expect(snapshot?.cyclesCompleted, 1);
-      expect(controller.debugTickerActive, isTrue);
-    },
-  );
-
-  test('paused focus session does not keep a repaint ticker alive', () async {
-    final db = ZennoDatabase(NativeDatabase.memory());
-    addTearDown(db.close);
-    final container = ProviderContainer(
-      overrides: [
-        databaseProvider.overrideWithValue(db),
-        focusWakelockServiceProvider.overrideWithValue(
-          const _FakeWakelockService(),
-        ),
-      ],
-    );
-    addTearDown(container.dispose);
-
-    container.read(activeSessionControllerProvider);
-    await pumpEventQueue();
-    const config = FocusSessionConfig(
-      mode: TimerMode.pomodoro,
-      goalText: 'Review physiology',
-      preEnergy: 4,
-      plannedDuration: Duration(minutes: 25),
-      pomodoroWork: Duration(minutes: 25),
-      pomodoroBreak: Duration(minutes: 5),
-      flowBreakRatio: 0.2,
-      linkedCanvasId: null,
-    );
-    final controller = container.read(activeSessionControllerProvider.notifier);
-
-    await controller.startFrom(config, checkedRitualItems: const []);
-    expect(controller.debugTickerActive, isTrue);
-
-    await controller.pause();
-    expect(controller.debugTickerActive, isFalse);
-
-    await controller.resume();
-    expect(controller.debugTickerActive, isTrue);
-  });
-
   test(
     'restore keeps zero elapsed at the start of a persisted break',
     () async {

@@ -159,9 +159,8 @@ class _RasterJob {
 /// visible viewport. The controller implements [ElementStore] — the surface
 /// commands mutate — which keeps z-ordering and the index inside one place.
 ///
-/// Structural mutations notify the controller. High-frequency live-stroke
-/// samples use [liveStrokeListenable] so the render layer can update without
-/// rebuilding unrelated canvas chrome at drawing frame rate.
+/// Every mutating method ends with [notifyListeners] so widgets rebuilt via a
+/// [ListenableBuilder] stay in sync.
 ///
 /// ## Persistence
 ///
@@ -280,7 +279,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   int _viewportRevision = 0;
   int _liveStrokeRevision = 0;
   bool _liveStrokeNotifyScheduled = false;
-  final ChangeNotifier _liveStrokeNotifier = ChangeNotifier();
 
   /// Applied commands available to be reversed by [undo], oldest at the front.
   final List<CanvasCommand> _undoStack = <CanvasCommand>[];
@@ -308,9 +306,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   int get viewportRevision => _viewportRevision;
 
   int get liveStrokeRevision => _liveStrokeRevision;
-
-  /// Repaint signal dedicated to samples appended to the in-progress stroke.
-  Listenable get liveStrokeListenable => _liveStrokeNotifier;
 
   /// The spatial index over the committed elements, for viewport culling.
   ///
@@ -502,9 +497,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final Set<String> _selectedIds = <String>{};
   Set<String>? _selectedIdsView;
 
-  /// In-memory snapshot copied from the current lasso selection.
-  List<CanvasElement> _copiedSelection = const <CanvasElement>[];
-
   /// Selection present at replace-lasso start, restored if it is cancelled.
   Set<String>? _selectionBeforeReplaceLasso;
 
@@ -564,9 +556,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Whether at least one element is currently selected.
   bool get hasSelection => _selectedIds.isNotEmpty;
-
-  /// Whether the lasso clipboard contains content that can be pasted.
-  bool get canPasteSelection => _copiedSelection.isNotEmpty && canCreateContent;
 
   /// Live world-space offset of an in-progress selection drag, or [Offset.zero]
   /// when the selection is not being dragged.
@@ -738,13 +727,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       SchedulerBinding.instance.scheduleFrameCallback((_) {
         _liveStrokeNotifyScheduled = false;
         if (!_disposed) {
-          _liveStrokeNotifier.notifyListeners();
+          notifyListeners();
         }
       });
       SchedulerBinding.instance.ensureVisualUpdate();
     } on Object {
       _liveStrokeNotifyScheduled = false;
-      _liveStrokeNotifier.notifyListeners();
+      notifyListeners();
     }
   }
 
@@ -2991,87 +2980,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
   }
 
-  /// Copies the current editable selection into the canvas-local clipboard.
-  void copySelection() {
-    final List<CanvasElement> selected = selectedElements;
-    if (selected.isEmpty) {
-      return;
-    }
-    _copiedSelection = List<CanvasElement>.unmodifiable(selected);
-    notifyListeners();
-  }
-
-  /// Pastes the copied group and transfers the selection to the new elements.
-  ///
-  /// The duplicate is offset by 24 screen pixels so it is visibly distinct
-  /// from the source. All elements are added as one undoable command.
-  void pasteSelection() {
-    if (!canPasteSelection) {
-      return;
-    }
-    final String? fallbackLayerId = _editableActiveLayerId();
-    if (fallbackLayerId == null) {
-      return;
-    }
-    final Offset offset = Offset(24 / viewport.scale, 24 / viewport.scale);
-    final List<CanvasElement> pasted = <CanvasElement>[
-      for (final CanvasElement element in _copiedSelection)
-        _copyElementForPaste(element, offset, fallbackLayerId),
-    ];
-    _runCommand(
-      ReplaceElementsCommand(removed: const <CanvasElement>[], added: pasted),
-    );
-    setSelection(pasted.map((CanvasElement element) => element.id));
-  }
-
-  CanvasElement _copyElementForPaste(
-    CanvasElement element,
-    Offset offset,
-    String fallbackLayerId,
-  ) {
-    final String id = newId();
-    final String layerId = switch (element.layerId) {
-      final String source when _layerById(source)?.isEditable ?? false =>
-        source,
-      _ => fallbackLayerId,
-    };
-    final int zIndex = _nextZIndex++;
-    final CanvasElement copy = switch (element) {
-      InkElement() => element.copyWith(
-        id: id,
-        zIndex: zIndex,
-        layerId: layerId,
-        stroke: element.stroke.copyWith(id: id),
-      ),
-      ImageElement() => element.copyWith(
-        id: id,
-        zIndex: zIndex,
-        layerId: layerId,
-      ),
-      PdfElement() => element.copyWith(
-        id: id,
-        zIndex: zIndex,
-        layerId: layerId,
-      ),
-      LinkElement() => element.copyWith(
-        id: id,
-        zIndex: zIndex,
-        layerId: layerId,
-      ),
-      TextElement() => element.copyWith(
-        id: id,
-        zIndex: zIndex,
-        layerId: layerId,
-      ),
-      ShapeElement() => element.copyWith(
-        id: id,
-        zIndex: zIndex,
-        layerId: layerId,
-      ),
-    };
-    return copy.translated(offset);
-  }
-
   /// Returns whether the [world] point lands on a currently selected element.
   ///
   /// The visible selection bounding box is draggable, including empty space
@@ -4642,7 +4550,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _viewportSaveTimer?.cancel();
     _viewportSaveTimer = null;
     _disposeAllRasters();
-    _liveStrokeNotifier.dispose();
     // Fire-and-forget: closing pooled PDFium handles need not block teardown.
     unawaited(_pdfRasterService.dispose());
     super.dispose();

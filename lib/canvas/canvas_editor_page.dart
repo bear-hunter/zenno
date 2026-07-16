@@ -562,14 +562,6 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
                           control: true,
                           shift: true,
                         ): _controller.redo,
-                        const SingleActivator(
-                          LogicalKeyboardKey.keyC,
-                          control: true,
-                        ): _controller.copySelection,
-                        const SingleActivator(
-                          LogicalKeyboardKey.keyV,
-                          control: true,
-                        ): _controller.pasteSelection,
                         const SingleActivator(LogicalKeyboardKey.delete):
                             _controller.deleteSelection,
                         const SingleActivator(LogicalKeyboardKey.escape):
