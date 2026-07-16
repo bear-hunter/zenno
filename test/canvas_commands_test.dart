@@ -400,26 +400,32 @@ void main() {
       expect(newPainter.shouldRepaint(oldPainter), isTrue);
     });
 
-    testWidgets('appendToStroke coalesces listener notifications per frame', (
+    testWidgets('appendToStroke only notifies the live layer once per frame', (
       tester,
     ) async {
       final CanvasController controller = CanvasController();
       addTearDown(controller.dispose);
-      var notifications = 0;
+      var controllerNotifications = 0;
+      var liveLayerNotifications = 0;
       controller.addListener(() {
-        notifications += 1;
+        controllerNotifications += 1;
+      });
+      controller.liveStrokeListenable.addListener(() {
+        liveLayerNotifications += 1;
       });
 
       controller.beginStroke(const Offset(0, 0), 0.5);
       controller.appendToStroke(const Offset(10, 0), 0.5);
       controller.appendToStroke(const Offset(20, 0), 0.5);
 
-      expect(notifications, 1);
+      expect(controllerNotifications, 1);
+      expect(liveLayerNotifications, 0);
       expect(controller.liveStroke?.points, hasLength(3));
 
       await tester.pump();
 
-      expect(notifications, 2);
+      expect(controllerNotifications, 1);
+      expect(liveLayerNotifications, 1);
     });
   });
 

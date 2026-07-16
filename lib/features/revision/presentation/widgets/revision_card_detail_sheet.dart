@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/board_tables.dart';
+import 'package:zenno/core/util/foreground_minute_clock.dart';
 import 'package:zenno/core/util/relative_time.dart';
 import 'package:zenno/features/revision/application/revision_providers.dart';
 import 'package:zenno/features/revision/data/revision_repository.dart';
@@ -48,7 +47,7 @@ class _RevisionCardDetailSheetState
   late String _persistedTitle;
   late String _persistedSubtitle;
   late DateTime _now;
-  Timer? _timer;
+  late final ForegroundMinuteClock _clock;
 
   /// Locally-tracked flag so the picker updates instantly; the write is sent
   /// in the background and the stream eventually confirms it.
@@ -82,20 +81,24 @@ class _RevisionCardDetailSheetState
     _titleController = TextEditingController(text: _persistedTitle);
     _subtitleController = TextEditingController(text: _persistedSubtitle);
     _flag = _extra.flag;
-    _now = DateTime.now();
+    _clock = ForegroundMinuteClock()..addListener(_onMinuteChanged);
+    _now = _clock.now;
     _titleController.addListener(_onTextChanged);
     _subtitleController.addListener(_onTextChanged);
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _clock
+      ..removeListener(_onMinuteChanged)
+      ..dispose();
     _titleController.dispose();
     _subtitleController.dispose();
     super.dispose();
+  }
+
+  void _onMinuteChanged() {
+    if (mounted) setState(() => _now = _clock.now);
   }
 
   void _onTextChanged() {

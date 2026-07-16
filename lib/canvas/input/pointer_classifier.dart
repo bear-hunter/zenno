@@ -1,8 +1,6 @@
 import 'package:flutter/gestures.dart';
 
 const int _stylusButtonMask = kPrimaryStylusButton | kSecondaryStylusButton;
-const double _palmSizeThreshold = 0.25;
-const double _palmMajorAxisThreshold = 40;
 
 /// The canvas-relevant category of a raw pointer.
 ///
@@ -46,17 +44,6 @@ CanvasInputKind classifyPointer(PointerEvent event) {
     case PointerDeviceKind.unknown:
       return CanvasInputKind.unknown;
   }
-}
-
-/// Whether Android's contact geometry strongly suggests a palm rather than a
-/// fingertip.
-///
-/// Some devices only populate [PointerEvent.size], while others provide the
-/// contact ellipse. Zero values mean the hardware did not report that metric.
-bool isLikelyPalmContact(PointerEvent event) {
-  return event.kind == PointerDeviceKind.touch &&
-      (event.size >= _palmSizeThreshold ||
-          event.radiusMajor >= _palmMajorAxisThreshold);
 }
 
 /// Returns this [event]'s pressure normalised to the range `0..1`.

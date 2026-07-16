@@ -154,6 +154,7 @@ class _SelectionPointerSession {
 class _CanvasViewState extends State<CanvasView> {
   final ElementsTileCache _elementsTileCache = ElementsTileCache();
   final LiveStrokePathCache _liveStrokePathCache = LiveStrokePathCache();
+  late Listenable _renderListenable;
 
   /// All pointers currently down on (or hovering over) the surface.
   final Map<int, _ActivePointer> _pointers = <int, _ActivePointer>{};
@@ -231,12 +232,21 @@ class _CanvasViewState extends State<CanvasView> {
   @override
   void initState() {
     super.initState();
+    _renderListenable = _buildRenderListenable();
     _controller.setPenProfile(widget.penProfile, notify: false);
   }
+
+  Listenable _buildRenderListenable() => Listenable.merge(<Listenable>[
+    _controller,
+    _controller.liveStrokeListenable,
+  ]);
 
   @override
   void didUpdateWidget(covariant CanvasView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _renderListenable = _buildRenderListenable();
+    }
     if (oldWidget.penProfile != widget.penProfile) {
       _controller.setPenProfile(widget.penProfile, notify: false);
       _penInputProcessor = PenInputProcessor(widget.penProfile);
@@ -297,8 +307,7 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerDown(PointerDownEvent event) {
     final kind = classifyPointer(event);
 
-    if (kind == CanvasInputKind.touch &&
-        (_stylusInProximity || isLikelyPalmContact(event))) {
+    if (kind == CanvasInputKind.touch && _stylusInProximity) {
       return;
     }
     if (kind == CanvasInputKind.stylus) {
@@ -517,7 +526,7 @@ class _CanvasViewState extends State<CanvasView> {
     if (pointer == null) {
       return;
     }
-    if (pointer.kind == CanvasInputKind.touch && isLikelyPalmContact(event)) {
+    if (pointer.kind == CanvasInputKind.touch && _stylusInProximity) {
       _endPointer(event.pointer, cancelled: true);
       return;
     }
@@ -1321,10 +1330,22 @@ class _CanvasViewState extends State<CanvasView> {
     final kind = classifyPointer(event);
     if (kind == CanvasInputKind.stylus || kind == CanvasInputKind.mouse) {
       if (kind == CanvasInputKind.stylus) {
-        _stylusInProximity = true;
+        _enterStylusProximity();
       }
       _controller.setHoverPoint(_toWorld(event.localPosition));
     }
+  }
+
+  void _onPointerEnter(PointerEnterEvent event) {
+    if (classifyPointer(event) == CanvasInputKind.stylus) {
+      _enterStylusProximity();
+    }
+  }
+
+  void _enterStylusProximity() {
+    if (_stylusInProximity) return;
+    _stylusInProximity = true;
+    _cancelActiveTouchesForStylus();
   }
 
   void _onPointerExit(PointerExitEvent event) {
@@ -1504,9 +1525,10 @@ class _CanvasViewState extends State<CanvasView> {
           onPointerHover: _onPointerHover,
           onPointerSignal: _onPointerSignal,
           child: MouseRegion(
+            onEnter: _onPointerEnter,
             onExit: _onPointerExit,
             child: ListenableBuilder(
-              listenable: _controller,
+              listenable: _renderListenable,
               builder: (context, _) {
                 final ViewportState viewport = _controller.viewport;
                 final bool eraserActive =

@@ -159,8 +159,9 @@ class _RasterJob {
 /// visible viewport. The controller implements [ElementStore] — the surface
 /// commands mutate — which keeps z-ordering and the index inside one place.
 ///
-/// Every mutating method ends with [notifyListeners] so widgets rebuilt via a
-/// [ListenableBuilder] stay in sync.
+/// Structural mutations notify the controller. High-frequency live-stroke
+/// samples use [liveStrokeListenable] so the render layer can update without
+/// rebuilding unrelated canvas chrome at drawing frame rate.
 ///
 /// ## Persistence
 ///
@@ -279,6 +280,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   int _viewportRevision = 0;
   int _liveStrokeRevision = 0;
   bool _liveStrokeNotifyScheduled = false;
+  final ChangeNotifier _liveStrokeNotifier = ChangeNotifier();
 
   /// Applied commands available to be reversed by [undo], oldest at the front.
   final List<CanvasCommand> _undoStack = <CanvasCommand>[];
@@ -306,6 +308,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   int get viewportRevision => _viewportRevision;
 
   int get liveStrokeRevision => _liveStrokeRevision;
+
+  /// Repaint signal dedicated to samples appended to the in-progress stroke.
+  Listenable get liveStrokeListenable => _liveStrokeNotifier;
 
   /// The spatial index over the committed elements, for viewport culling.
   ///
@@ -733,13 +738,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       SchedulerBinding.instance.scheduleFrameCallback((_) {
         _liveStrokeNotifyScheduled = false;
         if (!_disposed) {
-          notifyListeners();
+          _liveStrokeNotifier.notifyListeners();
         }
       });
       SchedulerBinding.instance.ensureVisualUpdate();
     } on Object {
       _liveStrokeNotifyScheduled = false;
-      notifyListeners();
+      _liveStrokeNotifier.notifyListeners();
     }
   }
 
@@ -4637,6 +4642,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _viewportSaveTimer?.cancel();
     _viewportSaveTimer = null;
     _disposeAllRasters();
+    _liveStrokeNotifier.dispose();
     // Fire-and-forget: closing pooled PDFium handles need not block teardown.
     unawaited(_pdfRasterService.dispose());
     super.dispose();
