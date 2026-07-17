@@ -80,11 +80,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   };
 
   /// Creates a canvas and opens it in the full-bleed editor.
-  Future<void> _createCanvas(BuildContext context, WidgetRef ref) async {
+  Future<void> _createCanvas(BuildContext context, {String? folderId}) async {
     if (_creating) return;
     setState(() => _creating = true);
     try {
-      final id = await ref.read(libraryRepositoryProvider).createCanvas();
+      final id = await ref
+          .read(libraryRepositoryProvider)
+          .createCanvas(folderId: folderId);
       if (context.mounted) {
         await openCanvasEditor(context, id);
       }
@@ -254,7 +256,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 'Pick up a canvas where your thinking left off, or start a new one.',
             actions: [
               FilledButton.icon(
-                onPressed: _creating ? null : () => _createCanvas(context, ref),
+                onPressed: _creating ? null : () => _createCanvas(context),
                 icon: _creating
                     ? const SizedBox.square(
                         dimension: 18,
@@ -294,6 +296,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         collapsedFolderIds: _collapsedFolderIds,
         onToggleFolder: _toggleFolder,
         onMoveCanvas: _moveCanvasToFolder,
+        onCreateCanvas: (folderId) =>
+            _createCanvas(context, folderId: folderId),
         onRenameFolder: (folder) => _renameFolder(context, folder),
         onDeleteFolder: (folder) => _deleteFolder(context, folder),
       );
@@ -524,6 +528,7 @@ class _LibraryFoldersView extends StatelessWidget {
     required this.collapsedFolderIds,
     required this.onToggleFolder,
     required this.onMoveCanvas,
+    required this.onCreateCanvas,
     required this.onRenameFolder,
     required this.onDeleteFolder,
   });
@@ -534,6 +539,7 @@ class _LibraryFoldersView extends StatelessWidget {
   final Set<String?> collapsedFolderIds;
   final ValueChanged<String?> onToggleFolder;
   final Future<void> Function(Canvase canvas, String? folderId) onMoveCanvas;
+  final ValueChanged<String> onCreateCanvas;
   final ValueChanged<CanvasFolder> onRenameFolder;
   final ValueChanged<CanvasFolder> onDeleteFolder;
 
@@ -573,6 +579,7 @@ class _LibraryFoldersView extends StatelessWidget {
             isExpanded: isFiltering || !collapsedFolderIds.contains(folder.id),
             onToggle: isFiltering ? null : () => onToggleFolder(folder.id),
             onCanvasDropped: (canvas) => onMoveCanvas(canvas, folder.id),
+            onCreateCanvas: () => onCreateCanvas(folder.id),
             onRename: () => onRenameFolder(folder),
             onDelete: () => onDeleteFolder(folder),
           ),
@@ -609,6 +616,7 @@ class _FolderHeader extends StatelessWidget {
     required this.isExpanded,
     required this.onToggle,
     required this.onCanvasDropped,
+    this.onCreateCanvas,
     this.onRename,
     this.onDelete,
   });
@@ -619,6 +627,7 @@ class _FolderHeader extends StatelessWidget {
   final bool isExpanded;
   final VoidCallback? onToggle;
   final Future<void> Function(Canvase canvas) onCanvasDropped;
+  final VoidCallback? onCreateCanvas;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -694,11 +703,15 @@ class _FolderHeader extends StatelessWidget {
                 Expanded(
                   child: Divider(color: theme.colorScheme.outlineVariant),
                 ),
-                if (onRename != null || onDelete != null)
+                if (onCreateCanvas != null ||
+                    onRename != null ||
+                    onDelete != null)
                   PopupMenuButton<_FolderAction>(
                     tooltip: 'Folder options',
                     onSelected: (action) {
                       switch (action) {
+                        case _FolderAction.createCanvas:
+                          onCreateCanvas?.call();
                         case _FolderAction.rename:
                           onRename?.call();
                         case _FolderAction.delete:
@@ -706,6 +719,14 @@ class _FolderHeader extends StatelessWidget {
                       }
                     },
                     itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _FolderAction.createCanvas,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.add),
+                          title: Text('Create canvas'),
+                        ),
+                      ),
                       PopupMenuItem(
                         value: _FolderAction.rename,
                         child: ListTile(
@@ -733,7 +754,7 @@ class _FolderHeader extends StatelessWidget {
   }
 }
 
-enum _FolderAction { rename, delete }
+enum _FolderAction { createCanvas, rename, delete }
 
 class _CanvasGrid extends StatelessWidget {
   const _CanvasGrid({
