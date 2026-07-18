@@ -25,6 +25,7 @@ class CanvasOverlayPainter extends CustomPainter {
     this.eraserRadius = 0,
     this.lassoPath,
     this.selectionBounds,
+    this.hasClipboardContent = false,
   });
 
   /// The camera through which world points are projected to screen.
@@ -61,6 +62,9 @@ class CanvasOverlayPainter extends CustomPainter {
   /// Drawn as a rounded outline with corner ticks so a committed selection is
   /// visible (and obviously draggable) after the lasso closes.
   final Rect? selectionBounds;
+
+  /// Whether the selection-overlay Paste action is currently available.
+  final bool hasClipboardContent;
 
   /// Accent colour for selection and lasso chrome (gold, matching the theme).
   static const Color _accent = Color(0xFFE8B84B);
@@ -216,7 +220,7 @@ class CanvasOverlayPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = _accent.withValues(alpha: 0.85);
     canvas.drawLine(
-      screenRect.topCenter,
+      geometry.connectorStart,
       geometry.rotationCenter,
       connectorPaint,
     );
@@ -241,31 +245,21 @@ class CanvasOverlayPainter extends CustomPainter {
         );
     }
 
-    _paintRotationHandle(
+    _paintRotationHandle(canvas, geometry.rotationCenter);
+    _paintDoneHandle(canvas, geometry.doneCenter);
+    _paintCopyHandle(canvas, geometry.copyCenter);
+    _paintPasteHandle(
       canvas,
-      geometry.rotationCenter,
-      handleFill,
-      handleBorder,
+      geometry.pasteCenter,
+      enabled: hasClipboardContent,
     );
-    _paintDoneHandle(canvas, geometry.doneCenter, handleFill, handleBorder);
+    _paintDeleteHandle(canvas, geometry.deleteCenter);
   }
 
-  void _paintRotationHandle(
-    Canvas canvas,
-    Offset center,
-    Paint fill,
-    Paint border,
-  ) {
-    const double radius = SelectionOverlayGeometry.actionVisualRadius;
-    canvas
-      ..drawCircle(center, radius, fill)
-      ..drawCircle(center, radius, border);
+  void _paintRotationHandle(Canvas canvas, Offset center) {
+    _paintActionBase(canvas, center);
     final Rect arcRect = Rect.fromCircle(center: center, radius: 5.5);
-    final Paint glyph = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..color = _accent;
+    final Paint glyph = _actionGlyph(strokeWidth: 1.8);
     canvas.drawArc(arcRect, -math.pi * 0.15, math.pi * 1.45, false, glyph);
     final Offset arrow = center + const Offset(5.4, -2.2);
     canvas
@@ -273,21 +267,9 @@ class CanvasOverlayPainter extends CustomPainter {
       ..drawLine(arrow, arrow + const Offset(-0.5, 3.1), glyph);
   }
 
-  void _paintDoneHandle(
-    Canvas canvas,
-    Offset center,
-    Paint fill,
-    Paint border,
-  ) {
-    const double radius = SelectionOverlayGeometry.actionVisualRadius;
-    canvas
-      ..drawCircle(center, radius, fill)
-      ..drawCircle(center, radius, border);
-    final Paint glyph = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..color = _accent;
+  void _paintDoneHandle(Canvas canvas, Offset center) {
+    _paintActionBase(canvas, center);
+    final Paint glyph = _actionGlyph(strokeWidth: 2);
     const double extent = 3.5;
     canvas
       ..drawLine(
@@ -302,6 +284,112 @@ class CanvasOverlayPainter extends CustomPainter {
       );
   }
 
+  void _paintCopyHandle(Canvas canvas, Offset center) {
+    _paintActionBase(canvas, center);
+    final Paint glyph = _actionGlyph(strokeWidth: 1.5);
+    canvas
+      ..drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: center - const Offset(2, 2),
+            width: 7,
+            height: 9,
+          ),
+          const Radius.circular(1),
+        ),
+        glyph,
+      )
+      ..drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: center + const Offset(2, 2),
+            width: 7,
+            height: 9,
+          ),
+          const Radius.circular(1),
+        ),
+        glyph,
+      );
+  }
+
+  void _paintPasteHandle(
+    Canvas canvas,
+    Offset center, {
+    required bool enabled,
+  }) {
+    _paintActionBase(canvas, center, enabled: enabled);
+    final Paint glyph = _actionGlyph(strokeWidth: 1.5, enabled: enabled);
+    canvas
+      ..drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: center + const Offset(0, 1),
+            width: 9,
+            height: 11,
+          ),
+          const Radius.circular(1.5),
+        ),
+        glyph,
+      )
+      ..drawLine(
+        center - const Offset(2.5, 4.5),
+        center + const Offset(2.5, -4.5),
+        glyph,
+      );
+  }
+
+  void _paintDeleteHandle(Canvas canvas, Offset center) {
+    _paintActionBase(canvas, center);
+    final Paint glyph = _actionGlyph(strokeWidth: 1.5);
+    canvas
+      ..drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: center + const Offset(0, 1.5),
+            width: 7,
+            height: 8,
+          ),
+          const Radius.circular(1),
+        ),
+        glyph,
+      )
+      ..drawLine(
+        center - const Offset(5, 3.5),
+        center + const Offset(5, -3.5),
+        glyph,
+      )
+      ..drawLine(
+        center - const Offset(2, 5.5),
+        center + const Offset(2, -5.5),
+        glyph,
+      );
+  }
+
+  void _paintActionBase(Canvas canvas, Offset center, {bool enabled = true}) {
+    final Color color = enabled ? _accent : _accent.withValues(alpha: 0.35);
+    canvas
+      ..drawCircle(
+        center,
+        SelectionOverlayGeometry.actionVisualRadius,
+        Paint()..color = const Color(0xFF181820),
+      )
+      ..drawCircle(
+        center,
+        SelectionOverlayGeometry.actionVisualRadius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = color,
+      );
+  }
+
+  Paint _actionGlyph({double strokeWidth = 2, bool enabled = true}) => Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = strokeWidth
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round
+    ..color = enabled ? _accent : _accent.withValues(alpha: 0.35);
+
   @override
   bool shouldRepaint(CanvasOverlayPainter oldDelegate) =>
       oldDelegate.viewport != viewport ||
@@ -311,5 +399,6 @@ class CanvasOverlayPainter extends CustomPainter {
       !identical(oldDelegate.eraserPath, eraserPath) ||
       oldDelegate.eraserRadius != eraserRadius ||
       !identical(oldDelegate.lassoPath, lassoPath) ||
-      oldDelegate.selectionBounds != selectionBounds;
+      oldDelegate.selectionBounds != selectionBounds ||
+      oldDelegate.hasClipboardContent != hasClipboardContent;
 }

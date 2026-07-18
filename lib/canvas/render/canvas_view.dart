@@ -590,7 +590,15 @@ class _CanvasViewState extends State<CanvasView> {
       case SelectionOverlayTarget.rotation:
         _updateSinglePointerRotation(session, event.localPosition);
       case SelectionOverlayTarget.done:
-        // Done is deliberately tap-only; dragging away leaves the selection.
+      case SelectionOverlayTarget.copy:
+      case SelectionOverlayTarget.paste:
+      case SelectionOverlayTarget.delete:
+        if (_controller.selectionMode != SelectionMode.replace) {
+          _resumeSelectionLasso(session, event.localPosition);
+          return;
+        }
+        // Selection actions are tap-only in replace mode; dragging away keeps
+        // the selection unchanged.
         break;
       case SelectionOverlayTarget.outside:
         _resumeBackgroundToolFromSelection(session, event);
@@ -692,6 +700,16 @@ class _CanvasViewState extends State<CanvasView> {
       event: event,
     );
     _routeToolMove(event, session.downLocal);
+  }
+
+  void _resumeSelectionLasso(
+    _SelectionPointerSession session,
+    Offset currentLocal,
+  ) {
+    _selectionPointerSession = null;
+    _controller.beginLasso(_toWorld(session.downLocal));
+    _controller.appendLasso(_toWorld(currentLocal));
+    _toolGesture = _ToolGesture.lasso;
   }
 
   /// Routes a move of the active tool pointer to the controller per
@@ -1121,6 +1139,18 @@ class _CanvasViewState extends State<CanvasView> {
         if (!cancelled && !_toolPointerMoved) {
           _controller.clearSelection();
         }
+      case SelectionOverlayTarget.copy:
+        if (!cancelled && !_toolPointerMoved) {
+          _controller.copySelection();
+        }
+      case SelectionOverlayTarget.paste:
+        if (!cancelled && !_toolPointerMoved) {
+          _controller.pasteSelection();
+        }
+      case SelectionOverlayTarget.delete:
+        if (!cancelled && !_toolPointerMoved) {
+          _controller.deleteSelection();
+        }
       case SelectionOverlayTarget.outside:
         if (!cancelled) {
           if (_controller.activeTool == CanvasTool.lasso) {
@@ -1548,6 +1578,8 @@ class _CanvasViewState extends State<CanvasView> {
                               eraserRadius: _controller.eraserRadius,
                               lassoPath: _controller.lassoPath,
                               selectionBounds: _controller.selectionBounds,
+                              hasClipboardContent:
+                                  _controller.hasClipboardContent,
                             ),
                           ),
                         ),

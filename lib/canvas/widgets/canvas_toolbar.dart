@@ -480,11 +480,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                 ),
               );
 
-              final double titleLeft = onBack == null
-                  ? 8
-                  : controller.hasSelection
-                  ? 192
-                  : 60;
+              final double titleLeft = onBack == null ? 8 : 60;
               final double titleRight = actionRight;
               return Stack(
                 clipBehavior: Clip.none,
@@ -493,48 +489,19 @@ class _CanvasToolbarContent extends StatelessWidget {
                     Positioned(
                       top: 8,
                       left: 8,
-                      child: controller.hasSelection
-                          ? _FloatingSurface(
-                              key: topNavigationDockKey,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  _HudButton(
-                                    key: CanvasToolbar.minimalBackKey,
-                                    icon: Icons.close,
-                                    tooltip: 'Done selecting',
-                                    onPressed: onBack,
-                                  ),
-                                  _HudButton(
-                                    icon: Icons.content_copy,
-                                    tooltip: 'Copy selection',
-                                    onPressed: controller.copySelection,
-                                  ),
-                                  _HudButton(
-                                    icon: Icons.content_paste,
-                                    tooltip: 'Paste selection',
-                                    onPressed: controller.hasClipboardContent
-                                        ? controller.pasteSelection
-                                        : null,
-                                  ),
-                                  _HudButton(
-                                    icon: Icons.delete_outline,
-                                    tooltip: 'Delete selection',
-                                    destructive: true,
-                                    onPressed: controller.deleteSelection,
-                                  ),
-                                ],
-                              ),
-                            )
-                          : _FloatingSurface.circular(
-                              key: topNavigationDockKey,
-                              child: _HudButton(
-                                key: CanvasToolbar.minimalBackKey,
-                                icon: Icons.arrow_back,
-                                tooltip: 'Back',
-                                onPressed: onBack,
-                              ),
-                            ),
+                      child: _FloatingSurface.circular(
+                        key: topNavigationDockKey,
+                        child: _HudButton(
+                          key: CanvasToolbar.minimalBackKey,
+                          icon: controller.hasSelection
+                              ? Icons.close
+                              : Icons.arrow_back,
+                          tooltip: controller.hasSelection
+                              ? 'Done selecting'
+                              : 'Back',
+                          onPressed: onBack,
+                        ),
+                      ),
                     ),
                   if (titleRight + titleLeft < constraints.maxWidth - 24)
                     Positioned(
@@ -3268,7 +3235,7 @@ class _PaletteDock extends StatelessWidget {
 }
 
 class _FloatingSurface extends StatelessWidget {
-  const _FloatingSurface({required this.child, super.key}) : circular = false;
+  const _FloatingSurface({required this.child}) : circular = false;
 
   const _FloatingSurface.circular({required this.child, super.key})
     : circular = true;
