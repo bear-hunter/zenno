@@ -483,7 +483,7 @@ class _CanvasToolbarContent extends StatelessWidget {
               final double titleLeft = onBack == null
                   ? 8
                   : controller.hasSelection
-                  ? 148
+                  ? 192
                   : 60;
               final double titleRight = actionRight;
               return Stack(
@@ -516,6 +516,12 @@ class _CanvasToolbarContent extends StatelessWidget {
                                     onPressed: controller.hasClipboardContent
                                         ? controller.pasteSelection
                                         : null,
+                                  ),
+                                  _HudButton(
+                                    icon: Icons.delete_outline,
+                                    tooltip: 'Delete selection',
+                                    destructive: true,
+                                    onPressed: controller.deleteSelection,
                                   ),
                                 ],
                               ),
