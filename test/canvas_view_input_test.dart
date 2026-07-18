@@ -692,6 +692,35 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
+  testWidgets('selection overlay copies, pastes, and deletes content', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController()
+      ..setTool(CanvasTool.pen)
+      ..addElementToStore(
+        _textNote('note', const Rect.fromLTWH(100, 120, 80, 40)),
+      )
+      ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    SelectionOverlayGeometry geometry = _selectionGeometry(tester, controller);
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.paste));
+    expect(controller.elementCount, 1);
+
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.copy));
+    expect(controller.hasClipboardContent, isTrue);
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.paste));
+    expect(controller.elementCount, 2);
+    expect(controller.selectedIds, isNot(contains('note')));
+
+    geometry = _selectionGeometry(tester, controller);
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.delete));
+    expect(controller.elementCount, 1);
+    expect(controller.elements.single.id, 'note');
+    expect(controller.hasSelection, isFalse);
+  });
+
   testWidgets('outside Pen tap clears without a dot and drag resumes drawing', (
     tester,
   ) async {

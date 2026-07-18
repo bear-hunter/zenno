@@ -907,7 +907,7 @@ void main() {
     expect(find.byTooltip('Done selecting'), findsOneWidget);
   });
 
-  testWidgets('selection surface exposes all lasso actions', (tester) async {
+  testWidgets('selection keeps the top navigation compact', (tester) async {
     final controller = CanvasController()
       ..addElementToStore(
         const TextElement(
@@ -923,24 +923,10 @@ void main() {
     addTearDown(controller.dispose);
     await _pumpToolbar(tester, controller);
 
-    expect(find.byTooltip('Copy selection'), findsOneWidget);
-    expect(find.byTooltip('Paste selection'), findsOneWidget);
-    expect(find.byTooltip('Delete selection'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Copy selection'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('Paste selection'));
-    await tester.pump();
-
-    expect(controller.elementCount, 2);
-    expect(controller.selectedIds, hasLength(1));
-    expect(controller.selectedIds, isNot(contains('note')));
-
-    await tester.tap(find.byTooltip('Delete selection'));
-    await tester.pump();
-
-    expect(controller.elementCount, 1);
-    expect(controller.hasSelection, isFalse);
+    expect(find.byTooltip('Done selecting'), findsOneWidget);
+    expect(find.byTooltip('Copy selection'), findsNothing);
+    expect(find.byTooltip('Paste selection'), findsNothing);
+    expect(find.byTooltip('Delete selection'), findsNothing);
   });
 
   testWidgets('selection modes remain available from the Select favorite', (
