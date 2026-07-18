@@ -907,6 +907,37 @@ void main() {
     expect(find.byTooltip('Done selecting'), findsOneWidget);
   });
 
+  testWidgets('selection surface copies and pastes selected content', (
+    tester,
+  ) async {
+    final controller = CanvasController()
+      ..addElementToStore(
+        const TextElement(
+          id: 'note',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
+          text: 'Select',
+          color: 0xFFFFFFFF,
+          fontSize: 18,
+        ),
+      )
+      ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    expect(find.byTooltip('Copy selection'), findsOneWidget);
+    expect(find.byTooltip('Paste selection'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Copy selection'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Paste selection'));
+    await tester.pump();
+
+    expect(controller.elementCount, 2);
+    expect(controller.selectedIds, hasLength(1));
+    expect(controller.selectedIds, isNot(contains('note')));
+  });
+
   testWidgets('selection modes remain available from the Select favorite', (
     tester,
   ) async {

@@ -480,7 +480,11 @@ class _CanvasToolbarContent extends StatelessWidget {
                 ),
               );
 
-              final double titleLeft = onBack == null ? 8 : 60;
+              final double titleLeft = onBack == null
+                  ? 8
+                  : controller.hasSelection
+                  ? 148
+                  : 60;
               final double titleRight = actionRight;
               return Stack(
                 clipBehavior: Clip.none,
@@ -489,19 +493,42 @@ class _CanvasToolbarContent extends StatelessWidget {
                     Positioned(
                       top: 8,
                       left: 8,
-                      child: _FloatingSurface.circular(
-                        key: topNavigationDockKey,
-                        child: _HudButton(
-                          key: CanvasToolbar.minimalBackKey,
-                          icon: controller.hasSelection
-                              ? Icons.close
-                              : Icons.arrow_back,
-                          tooltip: controller.hasSelection
-                              ? 'Done selecting'
-                              : 'Back',
-                          onPressed: onBack,
-                        ),
-                      ),
+                      child: controller.hasSelection
+                          ? _FloatingSurface(
+                              key: topNavigationDockKey,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  _HudButton(
+                                    key: CanvasToolbar.minimalBackKey,
+                                    icon: Icons.close,
+                                    tooltip: 'Done selecting',
+                                    onPressed: onBack,
+                                  ),
+                                  _HudButton(
+                                    icon: Icons.content_copy,
+                                    tooltip: 'Copy selection',
+                                    onPressed: controller.copySelection,
+                                  ),
+                                  _HudButton(
+                                    icon: Icons.content_paste,
+                                    tooltip: 'Paste selection',
+                                    onPressed: controller.hasClipboardContent
+                                        ? controller.pasteSelection
+                                        : null,
+                                  ),
+                                ],
+                              ),
+                            )
+                          : _FloatingSurface.circular(
+                              key: topNavigationDockKey,
+                              child: _HudButton(
+                                key: CanvasToolbar.minimalBackKey,
+                                icon: Icons.arrow_back,
+                                tooltip: 'Back',
+                                onPressed: onBack,
+                              ),
+                            ),
                     ),
                   if (titleRight + titleLeft < constraints.maxWidth - 24)
                     Positioned(
@@ -1058,6 +1085,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.check,
         label: 'Done selecting',
         onTap: controller.clearSelection,
+      ),
+      _WheelAction(
+        icon: Icons.content_copy,
+        label: 'Copy selection',
+        onTap: controller.copySelection,
+      ),
+      _WheelAction(
+        icon: Icons.content_paste,
+        label: 'Paste selection',
+        onTap: controller.hasClipboardContent
+            ? controller.pasteSelection
+            : null,
       ),
       _WheelAction(
         icon: Icons.delete_outline,
@@ -1716,6 +1755,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.zoom_out_map,
         tooltip: 'Scale selection up',
         onPressed: () => controller.scaleSelection(1.1, 1.1),
+      ),
+      _HudButton(
+        icon: Icons.content_copy,
+        tooltip: 'Copy selection',
+        onPressed: controller.copySelection,
+      ),
+      _HudButton(
+        icon: Icons.content_paste,
+        tooltip: 'Paste selection',
+        onPressed: controller.hasClipboardContent
+            ? controller.pasteSelection
+            : null,
       ),
       _HudButton(
         icon: Icons.close,
@@ -3211,7 +3262,7 @@ class _PaletteDock extends StatelessWidget {
 }
 
 class _FloatingSurface extends StatelessWidget {
-  const _FloatingSurface({required this.child}) : circular = false;
+  const _FloatingSurface({required this.child, super.key}) : circular = false;
 
   const _FloatingSurface.circular({required this.child, super.key})
     : circular = true;
