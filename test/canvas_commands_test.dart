@@ -1005,6 +1005,39 @@ void main() {
       expect(controller.elementCount, 1);
     });
 
+    test('copy and paste duplicates the selection as one undoable group', () {
+      final controller = CanvasController()
+        ..addElementToStore(
+          const TextElement(
+            id: 'note',
+            zIndex: 0,
+            worldBounds: Rect.fromLTWH(10, 20, 80, 40),
+            text: 'Copy me',
+            color: 0xFFFFFFFF,
+            fontSize: 18,
+          ),
+        )
+        ..setSelection(<String>{'note'});
+
+      controller.copySelection();
+      expect(controller.hasClipboardContent, isTrue);
+
+      controller.pasteSelection();
+
+      expect(controller.elementCount, 2);
+      expect(controller.selectedIds, hasLength(1));
+      expect(controller.selectedIds, isNot(contains('note')));
+      final TextElement pasted =
+          controller.selectedElements.single as TextElement;
+      expect(pasted.text, 'Copy me');
+      expect(pasted.placementBounds, const Rect.fromLTWH(34, 44, 80, 40));
+
+      controller.undo();
+      expect(controller.elements.map((element) => element.id), <String>[
+        'note',
+      ]);
+    });
+
     test('dragging a selection moves it and survives undo/redo', () {
       final CanvasController controller = CanvasController()
         ..setTool(CanvasTool.lasso);
