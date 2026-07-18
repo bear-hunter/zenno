@@ -907,9 +907,7 @@ void main() {
     expect(find.byTooltip('Done selecting'), findsOneWidget);
   });
 
-  testWidgets('selection surface copies and pastes selected content', (
-    tester,
-  ) async {
+  testWidgets('selection surface exposes all lasso actions', (tester) async {
     final controller = CanvasController()
       ..addElementToStore(
         const TextElement(
@@ -927,6 +925,7 @@ void main() {
 
     expect(find.byTooltip('Copy selection'), findsOneWidget);
     expect(find.byTooltip('Paste selection'), findsOneWidget);
+    expect(find.byTooltip('Delete selection'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Copy selection'));
     await tester.pump();
@@ -936,6 +935,12 @@ void main() {
     expect(controller.elementCount, 2);
     expect(controller.selectedIds, hasLength(1));
     expect(controller.selectedIds, isNot(contains('note')));
+
+    await tester.tap(find.byTooltip('Delete selection'));
+    await tester.pump();
+
+    expect(controller.elementCount, 1);
+    expect(controller.hasSelection, isFalse);
   });
 
   testWidgets('selection modes remain available from the Select favorite', (
