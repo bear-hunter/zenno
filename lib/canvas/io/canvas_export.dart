@@ -218,6 +218,10 @@ abstract final class CanvasExportService {
           Offset.zero & outputSize,
           Paint()..color = Color(controller.paperStyle.backgroundColor),
         );
+        PaperTexturePainter(
+          viewport: exportViewport,
+          style: controller.paperStyle,
+        ).paint(canvas, outputSize);
       }
       if (options.includeGrid) {
         GridPainter(

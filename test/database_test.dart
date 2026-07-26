@@ -522,8 +522,72 @@ void main() {
     schema.close();
   });
 
-  for (var version = 1; version < 12; version++) {
-    test('v$version migrates to the exact v12 schema', () async {
+  test('v12 migrates to v13 with the default tool-wheel position', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(12);
+    schema.rawDatabase.execute('''
+      INSERT INTO app_settings (id, db_schema_seeded)
+      VALUES ('singleton', 1)
+      ''');
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    final settings = await migrated.select(migrated.appSettings).getSingle();
+    final columns = await migrated
+        .customSelect('PRAGMA table_info(app_settings)')
+        .get();
+    final columnNames = columns.map((row) => row.read<String>('name'));
+
+    expect(columnNames, contains('tool_wheel_position_json'));
+    expect(settings.toolWheelPositionJson, '{}');
+
+    await migrated.close();
+    schema.close();
+  });
+
+  test('v13 migrates to v14 with a clean paper texture', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(13);
+    schema.rawDatabase.execute(
+      '''
+        INSERT INTO canvases (id, title, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        ''',
+      [
+        'canvas-v13',
+        'Paper texture migration',
+        DateTime.utc(2026, 7, 15).toIso8601String(),
+        DateTime.utc(2026, 7, 15).toIso8601String(),
+      ],
+    );
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    final canvas = await migrated.select(migrated.canvases).getSingle();
+    final columns = await migrated
+        .customSelect('PRAGMA table_info(canvases)')
+        .get();
+    final columnNames = columns.map((row) => row.read<String>('name'));
+
+    expect(
+      columnNames,
+      containsAll(['paper_texture', 'paper_texture_opacity']),
+    );
+    expect(canvas.paperTexture, PaperTexture.clean);
+    expect(canvas.paperTextureOpacity, 0.06);
+
+    await migrated.close();
+    schema.close();
+  });
+
+  for (var version = 1; version < 14; version++) {
+    test('v$version migrates to the exact v14 schema', () async {
       driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       addTearDown(() {
         driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
@@ -534,7 +598,7 @@ void main() {
 
       await verifier.migrateAndValidate(
         migrated,
-        12,
+        14,
         options: const ValidationOptions(validateDropped: true),
       );
 

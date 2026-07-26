@@ -497,6 +497,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final Set<String> _selectedIds = <String>{};
   Set<String>? _selectedIdsView;
 
+  /// In-memory snapshots copied from the current selection.
+  List<CanvasElement> _clipboardElements = const <CanvasElement>[];
+  int _clipboardPasteCount = 0;
+
   /// Selection present at replace-lasso start, restored if it is cancelled.
   Set<String>? _selectionBeforeReplaceLasso;
 
@@ -556,6 +560,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Whether at least one element is currently selected.
   bool get hasSelection => _selectedIds.isNotEmpty;
+
+  /// Whether copied canvas content is ready to paste.
+  bool get hasClipboardContent => _clipboardElements.isNotEmpty;
 
   /// Live world-space offset of an in-progress selection drag, or [Offset.zero]
   /// when the selection is not being dragged.
@@ -1435,6 +1442,35 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _markViewportChanged();
     _scheduleViewportSave();
     notifyListeners();
+  }
+
+  /// Snaps a nearly-upright viewport to the nearest quarter turn.
+  ///
+  /// This removes tiny accidental twists from pinch-to-zoom while preserving
+  /// deliberate canvas rotations. The visible center stays anchored so the
+  /// correction does not shift the user's work under their hand.
+  void snapRotationToCardinalIfClose() {
+    const double quarterTurn = math.pi / 2;
+    const double threshold = math.pi / 60; // 3 degrees.
+    final double target =
+        (viewport.rotation / quarterTurn).roundToDouble() * quarterTurn;
+    final double delta = _normalizeRadians(target - viewport.rotation);
+    if (delta == 0 || delta.abs() > threshold) {
+      return;
+    }
+    final Offset focus = _viewportSize.isEmpty
+        ? Offset.zero
+        : Offset(_viewportSize.width / 2, _viewportSize.height / 2);
+    final ViewportState snapped = CanvasTransform.interactiveUpdate(
+      start: viewport,
+      anchorScreenAtStart: focus,
+      currentFocusScreen: focus,
+      scaleFactor: 1,
+      rotationDelta: delta,
+    );
+    setViewport(
+      snapped.copyWith(rotation: _normalizeRadians(snapped.rotation)),
+    );
   }
 
   /// Toggles whether pinch gestures may rotate the viewport.
@@ -2949,6 +2985,66 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_clearSelectedIds()) {
       notifyListeners();
     }
+  }
+
+  /// Copies the current selection into the canvas-local clipboard.
+  void copySelection() {
+    final List<CanvasElement> selected = selectedElements;
+    if (selected.isEmpty) {
+      return;
+    }
+    _clipboardElements = List<CanvasElement>.unmodifiable(selected);
+    _clipboardPasteCount = 0;
+    notifyListeners();
+  }
+
+  /// Pastes copied content as one undoable, newly selected group.
+  void pasteSelection() {
+    if (_clipboardElements.isEmpty) {
+      return;
+    }
+    _clipboardPasteCount += 1;
+    final Offset offset = Offset(
+      24 * _clipboardPasteCount / viewport.scale,
+      24 * _clipboardPasteCount / viewport.scale,
+    );
+    final List<CanvasElement> pasted = <CanvasElement>[
+      for (var index = 0; index < _clipboardElements.length; index++)
+        _copyElementForPaste(
+          _clipboardElements[index],
+          zIndex: _nextZIndex + index,
+          offset: offset,
+        ),
+    ];
+    _runCommand(
+      ReplaceElementsCommand(removed: const <CanvasElement>[], added: pasted),
+    );
+    _selectedIds
+      ..clear()
+      ..addAll(pasted.map((CanvasElement element) => element.id));
+    _markSelectionChanged();
+    notifyListeners();
+  }
+
+  CanvasElement _copyElementForPaste(
+    CanvasElement element, {
+    required int zIndex,
+    required Offset offset,
+  }) {
+    final String id = newId();
+    final CanvasElement copy = switch (element) {
+      InkElement() => element.copyWith(
+        id: id,
+        zIndex: zIndex,
+        stroke: element.stroke.copyWith(id: id),
+      ),
+      ImageElement() => element.copyWith(id: id, zIndex: zIndex),
+      PdfElement() => element.copyWith(id: id, zIndex: zIndex),
+      LinkElement() => element.copyWith(id: id, zIndex: zIndex),
+      TextElement() => element.copyWith(id: id, zIndex: zIndex),
+      ShapeElement() => element.copyWith(id: id, zIndex: zIndex),
+    };
+    return copy.translated(offset);
   }
 
   /// Returns whether the [world] point lands on a currently selected element.

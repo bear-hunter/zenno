@@ -10,8 +10,12 @@ import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/canvas_layer.dart';
 import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
+import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/render/grid_painter.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
+
+const double _toolWheelScale = 1.2;
 
 IconData _toolWheelSlotIcon(ToolWheelSlotKind kind) => switch (kind) {
   ToolWheelSlotKind.pen => Icons.brush_outlined,
@@ -52,6 +56,14 @@ String _toolWheelCenterLabel(ToolWheelSlotKind kind) => switch (kind) {
   _ => _toolWheelSlotLabel(kind),
 };
 
+String _zoomPercentageLabel(double scale) {
+  final double percent = scale * 100;
+  if (percent >= 10) return '${percent.round()}%';
+  if (percent >= 1) return '${percent.toStringAsFixed(1)}%';
+  if (percent >= 0.01) return '${percent.toStringAsFixed(2)}%';
+  return '<0.01%';
+}
+
 /// Responsive, content-first chrome for the infinite canvas editor.
 class CanvasToolbar extends StatefulWidget {
   /// Creates controls bound to [controller].
@@ -62,6 +74,8 @@ class CanvasToolbar extends StatefulWidget {
     this.trailingMenu,
     this.palette = _defaultSwatches,
     this.onPaletteChanged,
+    this.toolWheelPosition,
+    this.onToolWheelPositionChanged,
     this.controlsLockedOpen = false,
     super.key,
   });
@@ -80,6 +94,12 @@ class CanvasToolbar extends StatefulWidget {
   final List<int> palette;
   final ValueChanged<List<int>>? onPaletteChanged;
 
+  /// Normalized position of the movable wheel cluster within the safe area.
+  final Offset? toolWheelPosition;
+
+  /// Persists a normalized wheel position after a drag finishes.
+  final FutureOr<void> Function(Offset)? onToolWheelPositionChanged;
+
   /// Retained for compatibility with page-owned title editing state.
   final bool controlsLockedOpen;
 
@@ -93,6 +113,8 @@ class CanvasToolbar extends StatefulWidget {
       'canvas-paper-background-preset';
   static const String paperGridPresetButtonKeyPrefix =
       'canvas-paper-grid-preset';
+  static const String paperMoodButtonKeyPrefix = 'canvas-paper-mood';
+  static const String paperTextureButtonKeyPrefix = 'canvas-paper-texture';
   static const Key importImageKey = ValueKey<String>('canvas-import-image');
   static const Key importPdfKey = ValueKey<String>('canvas-import-pdf');
   static const Key paperSettingsPanelKey = ValueKey<String>(
@@ -116,6 +138,14 @@ class CanvasToolbar extends StatefulWidget {
     'canvas-minimal-tool-menu',
   );
   static const Key wheelCenterKey = ValueKey<String>('canvas-wheel-center');
+  static const Key toolClusterKey = ValueKey<String>('canvas-tool-cluster');
+  static const Key zoomPercentageKey = ValueKey<String>(
+    'canvas-zoom-percentage',
+  );
+  static const Key resetOrientationKey = ValueKey<String>(
+    'canvas-reset-orientation',
+  );
+  static const Key rotationLockKey = ValueKey<String>('canvas-rotation-lock');
   static const Key paletteDockKey = ValueKey<String>('canvas-palette-dock');
   static const Key minimalSaveErrorKey = ValueKey<String>(
     'canvas-minimal-save-error',
@@ -149,6 +179,7 @@ class CanvasToolbar extends StatefulWidget {
 /// wheel without persisting transient UI state into canvas data.
 class CanvasToolbarState extends State<CanvasToolbar> {
   _WheelPage _wheelPage = _WheelPage.tools;
+  Offset? _localToolWheelPosition;
 
   /// Reveals the contextual side of the persistent wheel.
   ///
@@ -178,6 +209,46 @@ class CanvasToolbarState extends State<CanvasToolbar> {
     });
   }
 
+  void _handleToolWheelDragUpdate(
+    Offset normalizedDelta,
+    Offset defaultPosition,
+  ) {
+    final current =
+        _localToolWheelPosition ?? widget.toolWheelPosition ?? defaultPosition;
+    setState(() {
+      _localToolWheelPosition = Offset(
+        (current.dx + normalizedDelta.dx).clamp(0.0, 1.0).toDouble(),
+        (current.dy + normalizedDelta.dy).clamp(0.0, 1.0).toDouble(),
+      );
+    });
+  }
+
+  void _persistToolWheelPosition() {
+    final position = _localToolWheelPosition;
+    final persist = widget.onToolWheelPositionChanged;
+    if (position == null || persist == null) return;
+    unawaited(_saveToolWheelPosition(persist, position));
+  }
+
+  Future<void> _saveToolWheelPosition(
+    FutureOr<void> Function(Offset) persist,
+    Offset position,
+  ) async {
+    try {
+      await persist(position);
+    } catch (error) {
+      debugPrint('Save tool-wheel position failed: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not save wheel position. Move it again to retry.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return _CanvasToolbarContent(
@@ -187,6 +258,9 @@ class CanvasToolbarState extends State<CanvasToolbar> {
       trailingMenu: widget.trailingMenu,
       palette: widget.palette,
       onPaletteChanged: widget.onPaletteChanged,
+      toolWheelPosition: _localToolWheelPosition ?? widget.toolWheelPosition,
+      onToolWheelDragUpdate: _handleToolWheelDragUpdate,
+      onToolWheelDragEnd: _persistToolWheelPosition,
       wheelPage: _wheelPage,
       onWheelPageChanged: (page) => setState(() => _wheelPage = page),
       onCenterTap: _handleCenterTap,
@@ -202,6 +276,9 @@ class _CanvasToolbarContent extends StatelessWidget {
     required this.trailingMenu,
     required this.palette,
     required this.onPaletteChanged,
+    required this.toolWheelPosition,
+    required this.onToolWheelDragUpdate,
+    required this.onToolWheelDragEnd,
     required this.wheelPage,
     required this.onWheelPageChanged,
     required this.onCenterTap,
@@ -213,6 +290,10 @@ class _CanvasToolbarContent extends StatelessWidget {
   final Widget? trailingMenu;
   final List<int> palette;
   final ValueChanged<List<int>>? onPaletteChanged;
+  final Offset? toolWheelPosition;
+  final void Function(Offset normalizedDelta, Offset defaultPosition)
+  onToolWheelDragUpdate;
+  final VoidCallback onToolWheelDragEnd;
   final _WheelPage wheelPage;
   final ValueChanged<_WheelPage> onWheelPageChanged;
   final VoidCallback onCenterTap;
@@ -234,7 +315,13 @@ class _CanvasToolbarContent extends StatelessWidget {
   static const List<int> _defaultSwatches = CanvasToolbar._defaultSwatches;
   static const double _rotationStep = 0.2617993877991494; // 15 degrees.
   static const List<double> _widths = <double>[1, 2, 4, 8, 12, 20];
+  static const double _wheelLeft = 8;
   static const double _wheelTop = 60;
+  static const double _clusterMargin = 8;
+  static const double _paletteGap = 8;
+  static const double _paletteHeight = 32;
+  static const double _sideButtonGap = 4;
+  static const double _sideButtonWidth = 34;
 
   @override
   Widget build(BuildContext context) {
@@ -244,24 +331,94 @@ class _CanvasToolbarContent extends StatelessWidget {
         return SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final double wheelSize = constraints.maxWidth >= 720 ? 176 : 156;
-              final List<_WheelAction> wheelActions = _wheelActions(context);
-              final double paletteWidth = math.min(
-                wheelSize,
-                math.max(0, constraints.maxWidth - 16),
+              final double preferredWheelSize = constraints.maxWidth >= 720
+                  ? 176 * _toolWheelScale
+                  : 156 * _toolWheelScale;
+              final double availableWheelWidth =
+                  constraints.maxWidth -
+                  (_clusterMargin * 2) -
+                  _sideButtonGap -
+                  _sideButtonWidth;
+              final double availableWheelHeight =
+                  constraints.maxHeight -
+                  (_clusterMargin * 2) -
+                  _paletteGap -
+                  _paletteHeight;
+              final double wheelSize = math.min(
+                preferredWheelSize,
+                math.max(
+                  120,
+                  math.min(availableWheelWidth, availableWheelHeight),
+                ),
               );
+              final List<_WheelAction> wheelActions = _wheelActions(context);
+              final double clusterWidth =
+                  wheelSize + _sideButtonGap + _sideButtonWidth;
+              final double clusterHeight =
+                  wheelSize + _paletteGap + _paletteHeight;
+              final double maxLeft = math.max(
+                _clusterMargin,
+                constraints.maxWidth - clusterWidth - _clusterMargin,
+              );
+              final double availableMaxTop =
+                  constraints.maxHeight - clusterHeight - _clusterMargin;
+              final double minTop = availableMaxTop >= _wheelTop
+                  ? _wheelTop
+                  : _clusterMargin;
+              final double maxTop = math.max(minTop, availableMaxTop);
+              final double defaultLeft = _wheelLeft
+                  .clamp(_clusterMargin, maxLeft)
+                  .toDouble();
+              final double defaultTop = _wheelTop
+                  .clamp(minTop, maxTop)
+                  .toDouble();
+              final double horizontalRange = maxLeft - _clusterMargin;
+              final double verticalRange = maxTop - minTop;
+              final Offset defaultPosition = Offset(
+                horizontalRange == 0
+                    ? 0
+                    : (defaultLeft - _clusterMargin) / horizontalRange,
+                verticalRange == 0 ? 0 : (defaultTop - minTop) / verticalRange,
+              );
+              final Offset normalizedPosition = toolWheelPosition == null
+                  ? defaultPosition
+                  : Offset(
+                      toolWheelPosition!.dx.clamp(0.0, 1.0).toDouble(),
+                      toolWheelPosition!.dy.clamp(0.0, 1.0).toDouble(),
+                    );
+              final Offset clusterOrigin = Offset(
+                _clusterMargin + normalizedPosition.dx * horizontalRange,
+                minTop + normalizedPosition.dy * verticalRange,
+              );
+
+              void moveToolCluster(Offset pixelDelta) {
+                onToolWheelDragUpdate(
+                  Offset(
+                    horizontalRange == 0 ? 0 : pixelDelta.dx / horizontalRange,
+                    verticalRange == 0 ? 0 : pixelDelta.dy / verticalRange,
+                  ),
+                  defaultPosition,
+                );
+              }
+
               double actionRight = 8;
               final List<Widget> cornerActions = <Widget>[];
 
-              void addCornerAction(Widget child) {
+              void addCornerAction(
+                Widget child, {
+                double width = 44,
+                bool circular = true,
+              }) {
                 cornerActions.add(
                   Positioned(
                     top: 8,
                     right: actionRight,
-                    child: _FloatingSurface.circular(child: child),
+                    child: circular
+                        ? _FloatingSurface.circular(child: child)
+                        : _FloatingSurface(child: child),
                   ),
                 );
-                actionRight += 48;
+                actionRight += width + 4;
               }
 
               if (trailingMenu != null) {
@@ -272,6 +429,56 @@ class _CanvasToolbarContent extends StatelessWidget {
               if (controller.hasUnsavedWrites) {
                 addCornerAction(_saveWarningButton(context));
               }
+              addCornerAction(
+                Tooltip(
+                  message: 'Reset zoom to 100%',
+                  child: SizedBox(
+                    width: 64,
+                    height: 44,
+                    child: TextButton(
+                      key: CanvasToolbar.zoomPercentageKey,
+                      onPressed: controller.zoomTo100,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadii.sm),
+                        ),
+                      ),
+                      child: Text(
+                        _zoomPercentageLabel(controller.viewport.scale),
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ),
+                width: 64,
+                circular: false,
+              );
+              addCornerAction(
+                _HudButton(
+                  key: CanvasToolbar.resetOrientationKey,
+                  icon: Icons.screen_rotation_alt_outlined,
+                  tooltip: 'Reset to default orientation',
+                  onPressed: controller.resetRotation,
+                ),
+              );
+              addCornerAction(
+                _HudButton(
+                  key: CanvasToolbar.rotationLockKey,
+                  icon: controller.rotationLocked
+                      ? Icons.lock_outline
+                      : Icons.lock_open_outlined,
+                  tooltip: controller.rotationLocked
+                      ? 'Unlock rotation'
+                      : 'Lock rotation',
+                  selected: controller.rotationLocked,
+                  onPressed: controller.toggleRotationLock,
+                ),
+              );
 
               final double titleLeft = onBack == null ? 8 : 60;
               final double titleRight = actionRight;
@@ -329,81 +536,114 @@ class _CanvasToolbarContent extends StatelessWidget {
                     ),
                   ...cornerActions,
                   Positioned(
-                    key: compactDrawingPadKey,
-                    top: _wheelTop,
-                    left: 8,
-                    width: wheelSize,
-                    height: wheelSize,
-                    child: _RadialWheel(
-                      key: CanvasToolbar.minimalToolMenuKey,
-                      actions: wheelActions,
-                      properties: _wheelPropertyActions(context),
-                      activeColor: Color(controller.penColor),
-                      centerIcon: _wheelCenterIcon,
-                      centerLabel: _wheelCenterLabel,
-                      centerTooltip: _wheelCenterTooltip,
-                      centerKey: CanvasToolbar.wheelCenterKey,
-                      onCenterTap: _effectiveWheelPage == _WheelPage.tools
-                          ? controller.activeToolWheelPreset.kind.isInk
-                                ? () => _showActiveColorPicker(context)
-                                : () => _showToolSettings(context)
-                          : onCenterTap,
-                      onCenterLongPress:
-                          _effectiveWheelPage == _WheelPage.tools &&
-                              controller.activeToolWheelPreset.kind.isInk &&
-                              onPaletteChanged != null
-                          ? () => _showPaletteEditor(
-                              context,
-                              palette.isEmpty ? _defaultSwatches : palette,
-                            )
-                          : _effectiveWheelPage == _WheelPage.context ||
-                                _effectiveWheelPage == _WheelPage.selection
-                          ? () => _showToolSettings(context)
-                          : null,
-                    ),
-                  ),
-                  if (_effectiveWheelPage == _WheelPage.tools)
-                    Positioned(
-                      top: _wheelTop + 22,
-                      left: 8 + wheelSize + 4,
-                      child: Column(
-                        children: <Widget>[
-                          _WheelSideButton(
-                            icon: Icons.undo,
-                            tooltip: 'Undo',
-                            onPressed: controller.canUndo
-                                ? controller.undo
-                                : null,
+                    key: CanvasToolbar.toolClusterKey,
+                    left: clusterOrigin.dx,
+                    top: clusterOrigin.dy,
+                    width: clusterWidth,
+                    height: clusterHeight,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: <Widget>[
+                        Positioned(
+                          key: compactDrawingPadKey,
+                          left: 0,
+                          top: 0,
+                          width: wheelSize,
+                          height: wheelSize,
+                          child: Semantics(
+                            container: true,
+                            label: 'Tool wheel',
+                            hint: 'Drag the outer ring to move it',
+                            child: _RadialWheel(
+                              key: CanvasToolbar.minimalToolMenuKey,
+                              actions: wheelActions,
+                              properties: _wheelPropertyActions(context),
+                              activeColor:
+                                  _effectiveWheelPage == _WheelPage.tools
+                                  ? Color(controller.penColor)
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer,
+                              centerIcon: _wheelCenterIcon,
+                              centerLabel: _wheelCenterLabel,
+                              centerTooltip: _wheelCenterTooltip,
+                              centerKey: CanvasToolbar.wheelCenterKey,
+                              onDragUpdate: moveToolCluster,
+                              onDragEnd: onToolWheelDragEnd,
+                              onCenterTap:
+                                  _effectiveWheelPage == _WheelPage.tools
+                                  ? controller.activeToolWheelPreset.kind.isInk
+                                        ? () => _showActiveColorPicker(context)
+                                        : () => _showToolSettings(context)
+                                  : onCenterTap,
+                              onCenterLongPress:
+                                  _effectiveWheelPage == _WheelPage.tools &&
+                                      controller
+                                          .activeToolWheelPreset
+                                          .kind
+                                          .isInk &&
+                                      onPaletteChanged != null
+                                  ? () => _showPaletteEditor(
+                                      context,
+                                      palette.isEmpty
+                                          ? _defaultSwatches
+                                          : palette,
+                                    )
+                                  : _effectiveWheelPage == _WheelPage.context ||
+                                        _effectiveWheelPage ==
+                                            _WheelPage.selection
+                                  ? () => _showToolSettings(context)
+                                  : null,
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          _WheelSideButton(
-                            icon: Icons.redo,
-                            tooltip: 'Redo',
-                            onPressed: controller.canRedo
-                                ? controller.redo
-                                : null,
+                        ),
+                        if (_effectiveWheelPage == _WheelPage.tools)
+                          Positioned(
+                            top: 22,
+                            left: wheelSize + _sideButtonGap,
+                            child: Column(
+                              children: <Widget>[
+                                _WheelSideButton(
+                                  icon: Icons.undo,
+                                  tooltip: 'Undo',
+                                  onPressed: controller.canUndo
+                                      ? controller.undo
+                                      : null,
+                                ),
+                                const SizedBox(height: 6),
+                                _WheelSideButton(
+                                  icon: Icons.redo,
+                                  tooltip: 'Redo',
+                                  onPressed: controller.canRedo
+                                      ? controller.redo
+                                      : null,
+                                ),
+                                const SizedBox(height: 6),
+                                _WheelSideButton(
+                                  key: canvasSettingsDockKey,
+                                  icon: Icons.more_horiz,
+                                  tooltip: 'Canvas actions',
+                                  onPressed: () =>
+                                      onWheelPageChanged(_WheelPage.more),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          _WheelSideButton(
-                            key: canvasSettingsDockKey,
-                            icon: Icons.more_horiz,
-                            tooltip: 'Canvas actions',
-                            onPressed: () =>
-                                onWheelPageChanged(_WheelPage.more),
+                        Positioned(
+                          key: CanvasToolbar.paletteDockKey,
+                          top: wheelSize + _paletteGap,
+                          left: 0,
+                          width: wheelSize,
+                          height: _paletteHeight,
+                          child: _PaletteDock(
+                            colors: palette.isEmpty
+                                ? _defaultSwatches
+                                : palette,
+                            selectedColor: controller.penColor,
+                            onSelect: controller.setPenRgbColor,
                           ),
-                        ],
-                      ),
-                    ),
-                  Positioned(
-                    key: CanvasToolbar.paletteDockKey,
-                    top: _wheelTop + wheelSize - 4,
-                    left: 8,
-                    width: paletteWidth,
-                    height: 32,
-                    child: _PaletteDock(
-                      colors: palette.isEmpty ? _defaultSwatches : palette,
-                      selectedColor: controller.penColor,
-                      onSelect: controller.setPenRgbColor,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -507,8 +747,6 @@ class _CanvasToolbarContent extends StatelessWidget {
         }
       case _MoreAction.gestureGuide:
         _showGestureGuide(context);
-      case _MoreAction.clear:
-        unawaited(_confirmClear(context));
     }
   }
 
@@ -572,32 +810,6 @@ class _CanvasToolbarContent extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmClear(BuildContext context) async {
-    final bool confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Clear canvas?'),
-            content: const Text(
-              'Remove everything from this canvas? You can undo this while '
-              'the canvas remains open.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Clear'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (confirmed) controller.clear();
-  }
-
   void _showAndroidOnly(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$feature is available in the Android app.')),
@@ -628,10 +840,10 @@ class _CanvasToolbarContent extends StatelessWidget {
     ),
     _WheelPage.context ||
     _WheelPage.selection ||
-    _WheelPage.more => Icons.apps_rounded,
+    _WheelPage.more => Icons.arrow_back_rounded,
     _WheelPage.insert ||
     _WheelPage.appearance ||
-    _WheelPage.view => Icons.more_horiz,
+    _WheelPage.view => Icons.arrow_back_rounded,
   };
 
   String get _wheelCenterLabel => switch (_effectiveWheelPage) {
@@ -848,6 +1060,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         onTap: controller.clearSelection,
       ),
       _WheelAction(
+        icon: Icons.content_copy,
+        label: 'Copy selection',
+        onTap: controller.copySelection,
+      ),
+      _WheelAction(
+        icon: Icons.content_paste,
+        label: 'Paste selection',
+        onTap: controller.hasClipboardContent
+            ? controller.pasteSelection
+            : null,
+      ),
+      _WheelAction(
         icon: Icons.delete_outline,
         label: 'Delete selection',
         destructive: true,
@@ -918,6 +1142,11 @@ class _CanvasToolbarContent extends StatelessWidget {
         onTap: () => _runMoreAction(context, _MoreAction.export),
       ),
       _WheelAction(
+        icon: Icons.wallpaper_outlined,
+        label: 'Paper',
+        onTap: () => _runMoreAction(context, _MoreAction.paper),
+      ),
+      _WheelAction(
         icon: Icons.palette_outlined,
         label: 'Appearance',
         onTap: () => onWheelPageChanged(_WheelPage.appearance),
@@ -926,14 +1155,6 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.tune,
         label: 'View and gestures',
         onTap: () => onWheelPageChanged(_WheelPage.view),
-      ),
-      _WheelAction(
-        icon: Icons.delete_sweep_outlined,
-        label: 'Clear canvas',
-        destructive: true,
-        onTap: controller.elements.isEmpty
-            ? null
-            : () => _runMoreAction(context, _MoreAction.clear),
       ),
     ];
   }
@@ -1509,6 +1730,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         onPressed: () => controller.scaleSelection(1.1, 1.1),
       ),
       _HudButton(
+        icon: Icons.content_copy,
+        tooltip: 'Copy selection',
+        onPressed: controller.copySelection,
+      ),
+      _HudButton(
+        icon: Icons.content_paste,
+        tooltip: 'Paste selection',
+        onPressed: controller.hasClipboardContent
+            ? controller.pasteSelection
+            : null,
+      ),
+      _HudButton(
         icon: Icons.close,
         tooltip: 'Clear selection',
         onPressed: controller.clearSelection,
@@ -1845,7 +2078,6 @@ enum _MoreAction {
   resetView,
   palette,
   gestureGuide,
-  clear,
 }
 
 enum _QuickMenuAction { contextSettings }
@@ -1866,7 +2098,7 @@ Future<void> showCanvasQuickToolMenuAt({
   if (overlay == null || !overlay.hasSize) {
     return;
   }
-  const double wheelSize = 176;
+  const double wheelSize = 176 * _toolWheelScale;
   final Object? action = await showGeneralDialog<Object>(
     context: context,
     barrierDismissible: true,
@@ -2469,6 +2701,8 @@ class _RadialWheel extends StatelessWidget {
     required this.centerLabel,
     required this.centerTooltip,
     required this.onCenterTap,
+    this.onDragUpdate,
+    this.onDragEnd,
     this.centerKey,
     this.onCenterLongPress,
     super.key,
@@ -2482,6 +2716,8 @@ class _RadialWheel extends StatelessWidget {
   final String centerTooltip;
   final VoidCallback onCenterTap;
   final VoidCallback? onCenterLongPress;
+  final ValueChanged<Offset>? onDragUpdate;
+  final VoidCallback? onDragEnd;
   final Key? centerKey;
 
   @override
@@ -2502,6 +2738,8 @@ class _RadialWheel extends StatelessWidget {
         final double gap = math.min(0.045, sweep * 0.12);
         final double firstStart = -math.pi / 2 - sweep / 2;
         final double iconRadius = (outerRadius + innerRadius) / 2;
+        const double actionExtent = 40;
+        final double actionLabelSize = size >= 150 ? 7 : 6.2;
         final Color centerForeground = activeColor.computeLuminance() > 0.42
             ? Colors.black
             : Colors.white;
@@ -2538,6 +2776,12 @@ class _RadialWheel extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: actions[index].onTap,
                         onLongPress: actions[index].onLongPress,
+                        onPanUpdate: onDragUpdate == null
+                            ? null
+                            : (details) => onDragUpdate!(details.delta),
+                        onPanEnd: onDragEnd == null
+                            ? null
+                            : (_) => onDragEnd!(),
                       ),
                     ),
                   ),
@@ -2551,9 +2795,9 @@ class _RadialWheel extends StatelessWidget {
                   top:
                       center.dy +
                       math.sin(-math.pi / 2 + index * sweep) * iconRadius -
-                      20,
-                  width: 40,
-                  height: 40,
+                      actionExtent / 2,
+                  width: actionExtent,
+                  height: actionExtent,
                   child: Tooltip(
                     message: actions[index].label,
                     child: Semantics(
@@ -2567,18 +2811,18 @@ class _RadialWheel extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         onTap: actions[index].onTap,
                         onLongPress: actions[index].onLongPress,
+                        onPanUpdate: onDragUpdate == null
+                            ? null
+                            : (details) => onDragUpdate!(details.delta),
+                        onPanEnd: onDragEnd == null
+                            ? null
+                            : (_) => onDragEnd!(),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
                             Icon(
                               actions[index].icon,
-                              size: actions[index].valueLabel == null
-                                  ? size >= 170
-                                        ? 21
-                                        : 19
-                                  : size >= 170
-                                  ? 18
-                                  : 16,
+                              size: size >= 170 ? 18 : 16,
                               color: actions[index].destructive
                                   ? Theme.of(context).colorScheme.error
                                   : actions[index].onTap == null
@@ -2593,12 +2837,43 @@ class _RadialWheel extends StatelessWidget {
                                                 context,
                                               ).colorScheme.onSurfaceVariant),
                             ),
+                            const SizedBox(height: 1),
+                            Flexible(
+                              child: Text(
+                                actions[index].label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      fontSize: actionLabelSize,
+                                      height: 0.95,
+                                      fontWeight: actions[index].selected
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: actions[index].destructive
+                                          ? Theme.of(context).colorScheme.error
+                                          : actions[index].onTap == null
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.3)
+                                          : actions[index].selected
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onPrimaryContainer
+                                          : Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
                             if (actions[index].valueLabel case final label?)
                               Text(
                                 label,
                                 style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(
-                                      fontSize: 7.5,
+                                      fontSize: actionLabelSize,
                                       height: 1,
                                       fontWeight: FontWeight.w700,
                                       color: Theme.of(
@@ -2778,8 +3053,10 @@ class _RadialWheelPainter extends CustomPainter {
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.8
-          ..color = colors.outlineVariant.withValues(alpha: 0.72),
+          ..strokeWidth = action.selected ? 1.8 : 0.8
+          ..color = action.selected
+              ? colors.primary
+              : colors.outlineVariant.withValues(alpha: 0.72),
       );
     }
   }
@@ -3975,6 +4252,18 @@ class _PresetSwatchButton extends StatelessWidget {
   }
 }
 
+class _PaperMood {
+  const _PaperMood({
+    required this.name,
+    required this.description,
+    required this.style,
+  });
+
+  final String name;
+  final String description;
+  final CanvasPaperStyle style;
+}
+
 class _PaperDialog extends StatefulWidget {
   const _PaperDialog({required this.initial});
 
@@ -3986,6 +4275,80 @@ class _PaperDialog extends StatefulWidget {
 
 class _PaperDialogState extends State<_PaperDialog> {
   late CanvasPaperStyle _style = widget.initial;
+
+  static const List<_PaperMood> _moods = <_PaperMood>[
+    _PaperMood(
+      name: 'Midnight',
+      description: 'Quiet graph',
+      style: CanvasPaperStyle(),
+    ),
+    _PaperMood(
+      name: 'Warm notes',
+      description: 'Soft ruled paper',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.lined,
+        backgroundColor: 0xFFF7F1DE,
+        gridColor: 0xFF6B7280,
+        gridSpacing: 36,
+        gridOpacity: 0.24,
+        texture: PaperTexture.fibers,
+        textureOpacity: 0.08,
+      ),
+    ),
+    _PaperMood(
+      name: 'Blueprint',
+      description: 'Technical grid',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.grid,
+        backgroundColor: 0xFF0B3A5B,
+        gridColor: 0xFF8EC5FF,
+        gridSpacing: 40,
+        gridOpacity: 0.24,
+        graphMajorInterval: 5,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.05,
+      ),
+    ),
+    _PaperMood(
+      name: 'Dot journal',
+      description: 'Bright and open',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.dotted,
+        backgroundColor: 0xFFFFFFFF,
+        gridColor: 0xFF111820,
+        gridSpacing: 36,
+        gridOpacity: 0.34,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.035,
+      ),
+    ),
+    _PaperMood(
+      name: 'Forest',
+      description: 'Isometric sketch',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.isometric,
+        backgroundColor: 0xFF10322B,
+        gridColor: 0xFF91C7B1,
+        gridSpacing: 48,
+        gridOpacity: 0.18,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.05,
+      ),
+    ),
+    _PaperMood(
+      name: 'Charcoal',
+      description: 'Dim triangular grid',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.triangle,
+        backgroundColor: 0xFF101016,
+        gridColor: 0xFFB7CFE3,
+        gridSpacing: 56,
+        gridOpacity: 0.16,
+        texture: PaperTexture.crosshatch,
+        textureOpacity: 0.045,
+      ),
+    ),
+  ];
 
   static const List<int> _backgroundPresets = <int>[
     0xFF172331,
@@ -4075,6 +4438,32 @@ class _PaperDialogState extends State<_PaperDialog> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                _PaperPreview(style: _style, height: 96),
+                const SizedBox(height: 14),
+                Text('Quick papers', style: labelStyle),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 118,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _moods.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final _PaperMood mood = _moods[index];
+                      return _PaperMoodCard(
+                        key: ValueKey<String>(
+                          '${CanvasToolbar.paperMoodButtonKeyPrefix}-$index',
+                        ),
+                        mood: mood,
+                        selected: _style == mood.style,
+                        onTap: () => setState(() => _style = mood.style),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text('Structure', style: labelStyle),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -4124,6 +4513,57 @@ class _PaperDialogState extends State<_PaperDialog> {
                   ],
                 ),
                 const SizedBox(height: 14),
+                Text('Texture', style: labelStyle),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _PaperTextureButton(
+                      texture: PaperTexture.clean,
+                      icon: Icons.texture_outlined,
+                      label: 'Clean',
+                      selected: _style.texture == PaperTexture.clean,
+                      onTap: () => _setTexture(PaperTexture.clean),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.grain,
+                      icon: Icons.grain,
+                      label: 'Grain',
+                      selected: _style.texture == PaperTexture.grain,
+                      onTap: () => _setTexture(PaperTexture.grain),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.fibers,
+                      icon: Icons.horizontal_rule,
+                      label: 'Fibers',
+                      selected: _style.texture == PaperTexture.fibers,
+                      onTap: () => _setTexture(PaperTexture.fibers),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.crosshatch,
+                      icon: Icons.grid_3x3,
+                      label: 'Hatch',
+                      selected: _style.texture == PaperTexture.crosshatch,
+                      onTap: () => _setTexture(PaperTexture.crosshatch),
+                    ),
+                  ],
+                ),
+                if (_style.texture != PaperTexture.clean) ...[
+                  const SizedBox(height: 8),
+                  _ExportSlider(
+                    label: 'Texture strength',
+                    value: _style.textureOpacity.clamp(0.01, 0.2),
+                    min: 0.01,
+                    max: 0.2,
+                    divisions: 19,
+                    valueLabel: '${(_style.textureOpacity * 100).round()}%',
+                    onChanged: (value) => setState(
+                      () => _style = _style.copyWith(textureOpacity: value),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
                 _PaperPresetSection(
                   title: 'Background',
                   value: Color(_style.backgroundColor),
@@ -4138,7 +4578,7 @@ class _PaperDialogState extends State<_PaperDialog> {
                 ),
                 const SizedBox(height: 12),
                 _PaperPresetSection(
-                  title: 'Graph',
+                  title: 'Guides',
                   value: Color(_style.gridColor),
                   presets: _gridPresets,
                   keyPrefix: CanvasToolbar.paperGridPresetButtonKeyPrefix,
@@ -4148,7 +4588,7 @@ class _PaperDialogState extends State<_PaperDialog> {
                   onCustom: _pickGrid,
                 ),
                 const SizedBox(height: 14),
-                Text('Graph options', style: labelStyle),
+                Text('Guide options', style: labelStyle),
                 const SizedBox(height: 8),
                 _ExportSlider(
                   label: 'Spacing',
@@ -4209,6 +4649,170 @@ class _PaperDialogState extends State<_PaperDialog> {
 
   void _setKind(BackgroundKind kind) {
     setState(() => _style = _style.copyWith(kind: kind));
+  }
+
+  void _setTexture(PaperTexture texture) {
+    setState(() => _style = _style.copyWith(texture: texture));
+  }
+}
+
+class _PaperPreview extends StatelessWidget {
+  const _PaperPreview({required this.style, required this.height});
+
+  final CanvasPaperStyle style;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Color(style.backgroundColor),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: PaperTexturePainter(
+              viewport: ViewportState.initial,
+              style: style,
+            ),
+          ),
+          CustomPaint(
+            painter: GridPainter(viewport: ViewportState.initial, style: style),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaperMoodCard extends StatelessWidget {
+  const _PaperMoodCard({
+    required this.mood,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final _PaperMood mood;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 146,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: selected
+              ? colors.primary.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? colors.primary : colors.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PaperPreview(style: mood.style, height: 62),
+            const SizedBox(height: 5),
+            Text(
+              mood.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              mood.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaperTextureButton extends StatelessWidget {
+  const _PaperTextureButton({
+    required this.texture,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final PaperTexture texture;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final Color foreground = selected
+        ? colors.primary
+        : colors.onSurfaceVariant;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        key: ValueKey<String>(
+          '${CanvasToolbar.paperTextureButtonKeyPrefix}-$texture',
+        ),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 92,
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.primary.withValues(alpha: 0.16)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected
+                  ? colors.primary.withValues(alpha: 0.58)
+                  : colors.outlineVariant,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: foreground),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

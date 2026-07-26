@@ -12,6 +12,8 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/core/database/database.dart'
     hide CanvasElement, CanvasLayer;
+import 'package:zenno/core/database/tables/canvas_tables.dart'
+    show BackgroundKind, PaperTexture;
 
 const double _pointTolerance = 1e-6;
 
@@ -52,6 +54,22 @@ void main() {
 
       expect(await repo.canvasExists(deleted), isFalse);
       expect(controller.isLoaded, isFalse);
+    });
+  });
+
+  group('paper style', () {
+    test('texture and intensity persist per canvas', () async {
+      const style = CanvasPaperStyle(
+        kind: BackgroundKind.lined,
+        backgroundColor: 0xFFF7F1DE,
+        gridColor: 0xFF6B7280,
+        texture: PaperTexture.fibers,
+        textureOpacity: 0.11,
+      );
+
+      await repo.savePaperStyle(canvasId, style);
+
+      expect(await repo.loadPaperStyle(canvasId), style);
     });
   });
 

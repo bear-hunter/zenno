@@ -627,6 +627,8 @@ class CanvasRepository {
           gridSpacing: Value(paperStyle.gridSpacing),
           gridOpacity: Value(paperStyle.gridOpacity),
           graphMajorInterval: Value(paperStyle.graphMajorInterval),
+          paperTexture: Value(paperStyle.texture),
+          paperTextureOpacity: Value(paperStyle.textureOpacity),
           activePenColor: Value(toolSettings.penColor),
           activePenWidth: Value(toolSettings.penWidth),
           activePenWidthMode: Value(
@@ -862,6 +864,8 @@ class CanvasRepository {
       gridSpacing: row.gridSpacing,
       gridOpacity: row.gridOpacity,
       graphMajorInterval: row.graphMajorInterval,
+      texture: row.paperTexture,
+      textureOpacity: row.paperTextureOpacity,
     );
   }
 
@@ -876,6 +880,8 @@ class CanvasRepository {
         gridSpacing: Value(style.gridSpacing),
         gridOpacity: Value(style.gridOpacity),
         graphMajorInterval: Value(style.graphMajorInterval),
+        paperTexture: Value(style.texture),
+        paperTextureOpacity: Value(style.textureOpacity),
         updatedAt: Value(DateTime.now()),
       ),
     );

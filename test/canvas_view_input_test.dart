@@ -389,6 +389,67 @@ void main() {
     await first.up();
   });
 
+  testWidgets('small accidental pinch rotation snaps back to upright', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    await tester.pump();
+
+    final TestGesture first = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    final TestGesture second = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    const double angle = 2 * math.pi / 180;
+
+    await first.down(const Offset(100, 100));
+    await second.down(const Offset(200, 100));
+    await tester.pump();
+    await second.moveTo(
+      Offset(100 + math.cos(angle) * 100, 100 + math.sin(angle) * 100),
+    );
+    await tester.pump();
+
+    expect(controller.viewport.rotation, closeTo(angle, 0.001));
+
+    await second.up();
+    await tester.pump();
+
+    expect(controller.viewport.rotation, 0);
+    await first.up();
+  });
+
+  testWidgets('intentional pinch rotation remains unchanged', (tester) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    await tester.pump();
+
+    final TestGesture first = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    final TestGesture second = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    const double angle = 8 * math.pi / 180;
+
+    await first.down(const Offset(100, 100));
+    await second.down(const Offset(200, 100));
+    await tester.pump();
+    await second.moveTo(
+      Offset(100 + math.cos(angle) * 100, 100 + math.sin(angle) * 100),
+    );
+    await tester.pump();
+    await second.up();
+    await tester.pump();
+
+    expect(controller.viewport.rotation, closeTo(angle, 0.001));
+    await first.up();
+  });
+
   testWidgets('finger drag on selected content moves it directly', (
     tester,
   ) async {
@@ -629,6 +690,35 @@ void main() {
     expect(controller.elements.single.id, 'note');
     expect(controller.activeTool, CanvasTool.pen);
     expect(controller.canUndo, isFalse);
+  });
+
+  testWidgets('selection overlay copies, pastes, and deletes content', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController()
+      ..setTool(CanvasTool.pen)
+      ..addElementToStore(
+        _textNote('note', const Rect.fromLTWH(100, 120, 80, 40)),
+      )
+      ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    SelectionOverlayGeometry geometry = _selectionGeometry(tester, controller);
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.paste));
+    expect(controller.elementCount, 1);
+
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.copy));
+    expect(controller.hasClipboardContent, isTrue);
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.paste));
+    expect(controller.elementCount, 2);
+    expect(controller.selectedIds, isNot(contains('note')));
+
+    geometry = _selectionGeometry(tester, controller);
+    await _tapStylus(tester, geometry.centerFor(SelectionOverlayTarget.delete));
+    expect(controller.elementCount, 1);
+    expect(controller.elements.single.id, 'note');
+    expect(controller.hasSelection, isFalse);
   });
 
   testWidgets('outside Pen tap clears without a dot and drag resumes drawing', (

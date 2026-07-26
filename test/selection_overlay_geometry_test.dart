@@ -7,7 +7,7 @@ import 'package:zenno/canvas/render/selection_overlay_geometry.dart';
 
 void main() {
   test(
-    'compact edge layout keeps Done and rotation independently hittable',
+    'compact edge layout keeps every selection action independently hittable',
     () {
       final SelectionOverlayGeometry geometry =
           SelectionOverlayGeometry.fromWorldBounds(
@@ -16,18 +16,16 @@ void main() {
             canvasSize: const Size(320, 600),
           );
 
-      expect(
-        (geometry.doneCenter - geometry.rotationCenter).distance,
-        greaterThanOrEqualTo(SelectionOverlayGeometry.handleHitSize),
-      );
-      expect(
-        geometry.hitTest(geometry.doneCenter),
-        SelectionOverlayTarget.done,
-      );
-      expect(
-        geometry.hitTest(geometry.rotationCenter),
+      final List<SelectionOverlayTarget> actions = <SelectionOverlayTarget>[
         SelectionOverlayTarget.rotation,
-      );
+        SelectionOverlayTarget.done,
+        SelectionOverlayTarget.copy,
+        SelectionOverlayTarget.paste,
+        SelectionOverlayTarget.delete,
+      ];
+      for (final SelectionOverlayTarget action in actions) {
+        expect(geometry.hitTest(geometry.centerFor(action)), action);
+      }
     },
   );
 
@@ -41,5 +39,8 @@ void main() {
 
     expect(geometry.rotationCenter.dx, greaterThan(320));
     expect(geometry.doneCenter.dx, greaterThan(320));
+    expect(geometry.copyCenter.dx, greaterThan(320));
+    expect(geometry.pasteCenter.dx, greaterThan(320));
+    expect(geometry.deleteCenter.dx, greaterThan(320));
   });
 }

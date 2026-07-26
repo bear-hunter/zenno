@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
 
@@ -16,6 +17,8 @@ Future<void> _pumpToolbar(
   WidgetTester tester,
   CanvasController controller, {
   ValueChanged<List<int>>? onPaletteChanged,
+  Offset? toolWheelPosition,
+  FutureOr<void> Function(Offset)? onToolWheelPositionChanged,
   Widget? title,
   List<int> palette = const <int>[],
   bool includeCanvas = false,
@@ -33,6 +36,8 @@ Future<void> _pumpToolbar(
             title: title,
             palette: palette,
             onPaletteChanged: onPaletteChanged,
+            toolWheelPosition: toolWheelPosition,
+            onToolWheelPositionChanged: onToolWheelPositionChanged,
           ),
         ),
       ],
@@ -51,6 +56,23 @@ Finder _presetButton(int index) => find.byKey(
 Finder _swatch(int index) => find.byKey(
   ValueKey<String>('${CanvasToolbar.swatchButtonKeyPrefix}-$index'),
 );
+
+String _expectedWheelLabel(ToolWheelSlotKind kind) => switch (kind) {
+  ToolWheelSlotKind.pen => 'Pen',
+  ToolWheelSlotKind.pencil => 'Pencil',
+  ToolWheelSlotKind.highlighter => 'Highlighter',
+  ToolWheelSlotKind.marker => 'Marker',
+  ToolWheelSlotKind.airbrush => 'Airbrush',
+  ToolWheelSlotKind.fill => 'Freeform fill',
+  ToolWheelSlotKind.eraser => 'Eraser',
+  ToolWheelSlotKind.lasso => 'Select',
+  _ => throw StateError('Unexpected default tool-wheel kind: $kind'),
+};
+
+void _expectOffsetsClose(Offset actual, Offset expected, {double epsilon = 1}) {
+  expect(actual.dx, closeTo(expected.dx, epsilon));
+  expect(actual.dy, closeTo(expected.dy, epsilon));
+}
 
 Future<void> _openMore(WidgetTester tester) async {
   await tester.tap(find.byKey(CanvasToolbar.canvasSettingsDockKey));
@@ -96,6 +118,17 @@ void main() {
     expect(_swatch(5), findsOneWidget);
   });
 
+  testWidgets('tablet tool wheel is twenty percent larger', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    final Size wheelSize = tester.getSize(
+      find.byKey(CanvasToolbar.compactDrawingPadKey),
+    );
+    expect(wheelSize, const Size.square(211.2));
+  });
+
   testWidgets('eight wheel sectors are stable remembered favorites', (
     tester,
   ) async {
@@ -115,6 +148,13 @@ void main() {
     ];
     for (var index = 0; index < kinds.length; index++) {
       expect(_presetButton(index), findsOneWidget);
+      expect(
+        find.descendant(
+          of: _presetButton(index),
+          matching: find.text(_expectedWheelLabel(kinds[index])),
+        ),
+        findsOneWidget,
+      );
       expect(controller.toolWheelPresets[index].kind, kinds[index]);
     }
     expect(find.byKey(CanvasToolbar.canvasSettingsDockKey), findsOneWidget);
@@ -311,15 +351,324 @@ void main() {
     expect(wheel.right, lessThanOrEqualTo(312));
     expect(wheel.bottom, lessThanOrEqualTo(580));
 
-    Rect palette = tester.getRect(_swatch(0));
-    for (var index = 1; index < 6; index++) {
-      palette = palette.expandToInclude(tester.getRect(_swatch(index)));
-    }
+    final Rect palette = tester.getRect(
+      find.byKey(CanvasToolbar.paletteDockKey),
+    );
     expect(palette.left, greaterThanOrEqualTo(12));
     expect(palette.right, lessThanOrEqualTo(312));
     expect(palette.bottom, lessThanOrEqualTo(580));
-    expect((palette.top - wheel.bottom).abs(), lessThanOrEqualTo(8));
+    expect(wheel.overlaps(palette), isFalse);
+    expect(palette.top - wheel.bottom, greaterThanOrEqualTo(8));
     expect(find.byKey(CanvasToolbar.minimalBackKey), findsOneWidget);
+  });
+
+  testWidgets('zoom percentage stays visible and resets the view to 100%', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    controller.setViewport(controller.viewport.copyWith(scale: 1.75));
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    const zoomKey = ValueKey<String>('canvas-zoom-percentage');
+    expect(find.byKey(zoomKey), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(zoomKey), matching: find.text('175%')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(zoomKey));
+    await tester.pump();
+
+    expect(controller.viewport.scale, 1);
+    expect(
+      find.descendant(of: find.byKey(zoomKey), matching: find.text('100%')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('orientation reset and rotation lock stay visible', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    controller.setViewport(
+      controller.viewport.copyWith(scale: 1.75, rotation: math.pi / 4),
+    );
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    expect(find.byKey(CanvasToolbar.resetOrientationKey), findsOneWidget);
+    expect(find.byKey(CanvasToolbar.rotationLockKey), findsOneWidget);
+
+    await tester.tap(find.byKey(CanvasToolbar.resetOrientationKey));
+    await tester.pump();
+    expect(controller.viewport.rotation, 0);
+    expect(controller.viewport.scale, 1.75);
+
+    await tester.tap(find.byKey(CanvasToolbar.rotationLockKey));
+    await tester.pump();
+    expect(controller.rotationLocked, isTrue);
+    expect(find.byTooltip('Unlock rotation'), findsOneWidget);
+  });
+
+  testWidgets(
+    'outer favorite drag moves and persists the complete wheel cluster',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+      final reportedPositions = <Offset>[];
+      const mediaQuery = MediaQueryData(
+        size: Size(1280, 800),
+        padding: EdgeInsets.fromLTRB(24, 20, 16, 12),
+      );
+      await _pumpToolbar(
+        tester,
+        controller,
+        mediaQuery: mediaQuery,
+        onToolWheelPositionChanged: reportedPositions.add,
+      );
+
+      final Finder clusterFinder = find.byKey(CanvasToolbar.toolClusterKey);
+      final Finder wheelFinder = find.byKey(CanvasToolbar.compactDrawingPadKey);
+      final Finder sideControlsFinder = find.byKey(
+        CanvasToolbar.canvasSettingsDockKey,
+      );
+      final Finder paletteFinder = find.byKey(CanvasToolbar.paletteDockKey);
+      final Rect clusterBefore = tester.getRect(clusterFinder);
+      final Rect wheelBefore = tester.getRect(wheelFinder);
+      final Rect sideControlsBefore = tester.getRect(sideControlsFinder);
+      final Rect paletteBefore = tester.getRect(paletteFinder);
+
+      final TestGesture drag = await tester.startGesture(
+        tester.getCenter(_presetButton(1)),
+      );
+      // Cross the pan slop first, then verify the accepted gesture translates
+      // the cluster. Flutter does not guarantee that the slop-crossing delta
+      // itself is delivered to onPanUpdate.
+      await drag.moveBy(const Offset(20, 20));
+      await tester.pump();
+      await drag.moveBy(const Offset(200, 120));
+      await tester.pump();
+      expect(reportedPositions, isEmpty);
+      await drag.up();
+      await tester.pump();
+
+      final Rect clusterAfter = tester.getRect(clusterFinder);
+      final Offset translation = clusterAfter.topLeft - clusterBefore.topLeft;
+      expect(translation.dx, greaterThan(150));
+      expect(translation.dy, greaterThan(80));
+      _expectOffsetsClose(
+        tester.getRect(wheelFinder).topLeft - wheelBefore.topLeft,
+        translation,
+      );
+      _expectOffsetsClose(
+        tester.getRect(sideControlsFinder).topLeft - sideControlsBefore.topLeft,
+        translation,
+      );
+      _expectOffsetsClose(
+        tester.getRect(paletteFinder).topLeft - paletteBefore.topLeft,
+        translation,
+      );
+      expect(controller.activeToolWheelIndex, 0);
+      expect(find.text('Replace favorite 2'), findsNothing);
+      expect(reportedPositions, hasLength(1));
+      expect(reportedPositions.single.dx, inInclusiveRange(0, 1));
+      expect(reportedPositions.single.dy, inInclusiveRange(0, 1));
+
+      final Offset persistedPosition = reportedPositions.single;
+      reportedPositions.clear();
+      await _pumpToolbar(
+        tester,
+        controller,
+        mediaQuery: mediaQuery,
+        toolWheelPosition: persistedPosition,
+        onToolWheelPositionChanged: reportedPositions.add,
+      );
+      final Rect restoredCluster = tester.getRect(clusterFinder);
+      _expectOffsetsClose(restoredCluster.topLeft, clusterAfter.topLeft);
+      expect(reportedPositions, isEmpty);
+
+      await tester.tap(_presetButton(1));
+      await tester.pump();
+      expect(controller.activeToolWheelIndex, 1);
+      expect(find.text('Replace favorite 2'), findsNothing);
+
+      await tester.longPress(_presetButton(1));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace favorite 2'), findsOneWidget);
+      expect(reportedPositions, isEmpty);
+    },
+  );
+
+  testWidgets('wheel cluster fits a short split-screen viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(
+      tester,
+      controller,
+      mediaQuery: const MediaQueryData(size: Size(320, 200)),
+    );
+
+    final Rect cluster = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    expect(cluster.left, greaterThanOrEqualTo(0));
+    expect(cluster.top, greaterThanOrEqualTo(0));
+    expect(cluster.right, lessThanOrEqualTo(320));
+    expect(cluster.bottom, lessThanOrEqualTo(200));
+  });
+
+  testWidgets('canceled wheel drag persists the visible position', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    final reportedPositions = <Offset>[];
+    await _pumpToolbar(
+      tester,
+      controller,
+      onToolWheelPositionChanged: reportedPositions.add,
+    );
+
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(_presetButton(1)),
+    );
+    await drag.moveBy(const Offset(20, 20));
+    await tester.pump();
+    await drag.moveBy(const Offset(100, 80));
+    await tester.pump();
+    await drag.cancel();
+    await tester.pump();
+
+    expect(reportedPositions, hasLength(1));
+  });
+
+  testWidgets('wheel position save failure is visible', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(
+      tester,
+      controller,
+      onToolWheelPositionChanged: (position) async {
+        throw StateError('Write unavailable');
+      },
+    );
+
+    final TestGesture drag = await tester.startGesture(
+      tester.getCenter(_presetButton(1)),
+    );
+    await drag.moveBy(const Offset(20, 20));
+    await tester.pump();
+    await drag.moveBy(const Offset(100, 80));
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Could not save wheel position. Move it again to retry.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('huge wheel drags clamp the cluster inside safe insets', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    const padding = EdgeInsets.fromLTRB(12, 24, 8, 20);
+    await _pumpToolbar(
+      tester,
+      controller,
+      mediaQuery: const MediaQueryData(size: Size(320, 600), padding: padding),
+      toolWheelPosition: const Offset(0.5, 0.5),
+    );
+
+    void expectClusterInsideSafeArea() {
+      final Rect cluster = tester.getRect(
+        find.byKey(CanvasToolbar.toolClusterKey),
+      );
+      expect(cluster.left, greaterThanOrEqualTo(padding.left));
+      expect(cluster.top, greaterThanOrEqualTo(padding.top));
+      expect(cluster.right, lessThanOrEqualTo(320 - padding.right));
+      expect(cluster.bottom, lessThanOrEqualTo(600 - padding.bottom));
+    }
+
+    final Rect clusterBefore = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    final TestGesture dragToTopLeft = await tester.startGesture(
+      tester.getCenter(_presetButton(2)),
+    );
+    await dragToTopLeft.moveBy(const Offset(-20, -20));
+    await tester.pump();
+    await dragToTopLeft.moveBy(const Offset(-1980, -1980));
+    await dragToTopLeft.up();
+    await tester.pump();
+    expectClusterInsideSafeArea();
+    final Rect topLeftCluster = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    expect(topLeftCluster.top, lessThan(clusterBefore.top));
+    final Rect backButton = tester.getRect(
+      find.byKey(CanvasToolbar.minimalBackKey),
+    );
+    expect(topLeftCluster.top, greaterThanOrEqualTo(backButton.bottom + 8));
+
+    final TestGesture dragToBottomRight = await tester.startGesture(
+      tester.getCenter(_presetButton(2)),
+    );
+    await dragToBottomRight.moveBy(const Offset(20, 20));
+    await tester.pump();
+    await dragToBottomRight.moveBy(const Offset(1980, 1980));
+    await dragToBottomRight.up();
+    await tester.pump();
+    expectClusterInsideSafeArea();
+    final Rect bottomRightCluster = tester.getRect(
+      find.byKey(CanvasToolbar.toolClusterKey),
+    );
+    expect(bottomRightCluster.left, greaterThan(topLeftCluster.left));
+    expect(bottomRightCluster.top, greaterThan(topLeftCluster.top));
+    expect(controller.activeToolWheelIndex, 0);
+    expect(find.text('Replace favorite 3'), findsNothing);
+  });
+
+  testWidgets('property drag changes its value without moving the cluster', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    final reportedPositions = <Offset>[];
+    await _pumpToolbar(
+      tester,
+      controller,
+      onToolWheelPositionChanged: reportedPositions.add,
+    );
+    final Finder clusterFinder = find.byKey(CanvasToolbar.toolClusterKey);
+    final Rect clusterBefore = tester.getRect(clusterFinder);
+
+    await tester.drag(find.byTooltip('Size: 4 pt'), const Offset(48, 0));
+    await tester.pump();
+
+    expect(controller.penWidth, greaterThan(4));
+    _expectOffsetsClose(
+      tester.getRect(clusterFinder).topLeft,
+      clusterBefore.topLeft,
+      epsilon: 0.1,
+    );
+    expect(reportedPositions, isEmpty);
   });
 
   testWidgets('save failures remain actionable beside wheel and palette', (
@@ -359,7 +708,7 @@ void main() {
     expect(find.byTooltip('Export'), findsOneWidget);
     expect(find.byTooltip('Appearance'), findsOneWidget);
     expect(find.byTooltip('View and gestures'), findsOneWidget);
-    expect(find.byTooltip('Clear canvas'), findsOneWidget);
+    expect(find.byTooltip('Clear canvas'), findsNothing);
     expect(find.byTooltip('Show drawing tools'), findsOneWidget);
     expect(_swatch(0), findsOneWidget);
 
@@ -367,7 +716,13 @@ void main() {
     await tester.pump();
     expect(find.byTooltip('Back to more actions'), findsOneWidget);
     expect(find.byTooltip('Enable snap to grid'), findsOneWidget);
-    expect(find.byTooltip('Lock rotation'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(CanvasToolbar.compactDrawingPadKey),
+        matching: find.byTooltip('Lock rotation'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Reset view'), findsOneWidget);
     expect(_swatch(0), findsOneWidget);
 
@@ -394,7 +749,10 @@ void main() {
     await tester.pump();
     expect(controller.snapToGridEnabled, isTrue);
 
-    final Finder rotation = find.byTooltip('Lock rotation');
+    final Finder rotation = find.descendant(
+      of: find.byKey(CanvasToolbar.compactDrawingPadKey),
+      matching: find.byTooltip('Lock rotation'),
+    );
     await tester.tap(rotation);
     await tester.pump();
     expect(controller.rotationLocked, isTrue);
@@ -442,8 +800,6 @@ void main() {
     await _pumpToolbar(tester, controller);
 
     await _openMore(tester);
-    await tester.tap(find.byTooltip('Appearance'));
-    await tester.pump();
     final Finder paper = find.byTooltip('Paper');
     await tester.tap(paper);
     await tester.pumpAndSettle();
@@ -452,27 +808,34 @@ void main() {
       tester.getRect(find.byKey(CanvasToolbar.paperSettingsPanelKey)).left,
       closeTo(18, 0.1),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperKindButtonKeyPrefix}-BackgroundKind.lined',
-        ),
+    final Finder lined = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperKindButtonKeyPrefix}-BackgroundKind.lined',
       ),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperBackgroundPresetButtonKeyPrefix}-5',
-        ),
+    await tester.ensureVisible(lined);
+    await tester.tap(lined);
+    final Finder background = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperBackgroundPresetButtonKeyPrefix}-5',
       ),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperGridPresetButtonKeyPrefix}-1',
-        ),
+    await tester.ensureVisible(background);
+    await tester.tap(background);
+    final Finder grid = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperGridPresetButtonKeyPrefix}-1',
       ),
     );
+    await tester.ensureVisible(grid);
+    await tester.tap(grid);
+    final Finder texture = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperTextureButtonKeyPrefix}-PaperTexture.crosshatch',
+      ),
+    );
+    await tester.ensureVisible(texture);
+    await tester.tap(texture);
     await tester.pump();
     final Finder save = find.widgetWithText(FilledButton, 'Save');
     await tester.ensureVisible(save);
@@ -483,6 +846,34 @@ void main() {
     expect(controller.paperStyle.kind, BackgroundKind.lined);
     expect(controller.paperStyle.backgroundColor, 0xFFF7F1DE);
     expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
+    expect(controller.paperStyle.texture, PaperTexture.crosshatch);
+  });
+
+  testWidgets('quick paper moods apply a complete canvas look', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    await _openMore(tester);
+    await tester.tap(find.byTooltip('Paper'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('${CanvasToolbar.paperMoodButtonKeyPrefix}-2'),
+      ),
+    );
+    await tester.pump();
+    final Finder save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pump();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(controller.paperStyle.kind, BackgroundKind.grid);
+    expect(controller.paperStyle.backgroundColor, 0xFF0B3A5B);
+    expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
+    expect(controller.paperStyle.texture, PaperTexture.grain);
+    expect(controller.paperStyle.textureOpacity, 0.05);
   });
 
   testWidgets('selection does not replace the eight favorite slots', (
@@ -514,6 +905,28 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Done selecting'), findsOneWidget);
+  });
+
+  testWidgets('selection keeps the top navigation compact', (tester) async {
+    final controller = CanvasController()
+      ..addElementToStore(
+        const TextElement(
+          id: 'note',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
+          text: 'Select',
+          color: 0xFFFFFFFF,
+          fontSize: 18,
+        ),
+      )
+      ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    expect(find.byTooltip('Done selecting'), findsOneWidget);
+    expect(find.byTooltip('Copy selection'), findsNothing);
+    expect(find.byTooltip('Paste selection'), findsNothing);
+    expect(find.byTooltip('Delete selection'), findsNothing);
   });
 
   testWidgets('selection modes remain available from the Select favorite', (
@@ -573,9 +986,9 @@ void main() {
     await tester.longPress(_presetButton(1));
     await tester.pumpAndSettle();
     expect(find.text('Replace favorite 2'), findsOneWidget);
-    expect(find.text('Freeform fill'), findsOneWidget);
-    expect(find.text('Marker'), findsOneWidget);
-    expect(find.text('Airbrush'), findsOneWidget);
+    expect(find.text('Freeform fill'), findsNWidgets(2));
+    expect(find.text('Marker'), findsNWidgets(2));
+    expect(find.text('Airbrush'), findsNWidgets(2));
     await tester.tap(find.text('Pen').last);
     await tester.pumpAndSettle();
 
@@ -613,7 +1026,7 @@ void main() {
     expect(find.byTooltip('Back to more actions'), findsNothing);
   });
 
-  testWidgets('clear canvas remains confirmed through More', (tester) async {
+  testWidgets('More never exposes a clear-canvas action', (tester) async {
     final controller = CanvasController()
       ..addElementToStore(
         const TextElement(
@@ -629,15 +1042,9 @@ void main() {
     await _pumpToolbar(tester, controller);
 
     await _openMore(tester);
-    final Finder clear = find.byTooltip('Clear canvas');
-    await tester.tap(clear);
-    await tester.pumpAndSettle();
-    expect(find.text('Clear canvas?'), findsOneWidget);
+    expect(find.byTooltip('Clear canvas'), findsNothing);
+    expect(find.text('Clear canvas?'), findsNothing);
     expect(controller.elements, hasLength(1));
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Clear'));
-    await tester.pumpAndSettle();
-    expect(controller.elements, isEmpty);
   });
 }
 
