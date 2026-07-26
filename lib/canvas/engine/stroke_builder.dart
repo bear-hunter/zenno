@@ -203,8 +203,22 @@ StrokePoint _interpolateStrokePoint(
   StrokePoint p3,
   double t,
 ) {
-  final double x = _catmullRom(p0.x, p1.x, p2.x, p3.x, t);
-  final double y = _catmullRom(p0.y, p1.y, p2.y, p3.y, t);
+  // Catmull-Rom may overshoot at direction changes, so keep each inserted
+  // centerline point inside the segment actually reported by the pen.
+  final double x = _catmullRom(
+    p0.x,
+    p1.x,
+    p2.x,
+    p3.x,
+    t,
+  ).clamp(math.min(p1.x, p2.x), math.max(p1.x, p2.x));
+  final double y = _catmullRom(
+    p0.y,
+    p1.y,
+    p2.y,
+    p3.y,
+    t,
+  ).clamp(math.min(p1.y, p2.y), math.max(p1.y, p2.y));
   return StrokePoint(
     x,
     y,
