@@ -19,7 +19,7 @@ class StylusButtonMapping {
   const StylusButtonMapping({
     this.hold = StylusButtonAction.temporaryEraser,
     this.tap = StylusButtonAction.togglePreviousTool,
-    this.drag = StylusButtonAction.temporaryEraser,
+    this.drag = StylusButtonAction.arrow,
     this.penLongPress = StylusButtonAction.temporaryLasso,
   });
 
@@ -48,10 +48,7 @@ class StylusButtonMapping {
             decoded['tap'],
             StylusButtonAction.togglePreviousTool,
           ),
-          drag: _actionFromName(
-            decoded['drag'],
-            StylusButtonAction.temporaryEraser,
-          ),
+          drag: _actionFromName(decoded['drag'], StylusButtonAction.arrow),
           penLongPress: _actionFromName(
             decoded['penLongPress'],
             StylusButtonAction.temporaryLasso,
