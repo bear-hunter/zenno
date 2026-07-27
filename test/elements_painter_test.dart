@@ -38,9 +38,17 @@ void _paint({
 }) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
+  final Map<String, CanvasElement> elementsById = <String, CanvasElement>{
+    for (final CanvasElement element in elements) element.id: element,
+  };
   ElementsPainter(
     elements: elements,
     spatialIndex: _index(elements),
+    allElementsById: elementsById,
+    paintOrderById: <String, int>{
+      for (var index = 0; index < elements.length; index += 1)
+        elements[index].id: index,
+    },
     viewport: viewport,
     tileCache: cache,
   ).paint(canvas, const Size(256, 256));

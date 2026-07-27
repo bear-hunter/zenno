@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' as ui;
 
+import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +11,9 @@ import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/canvas/render/elements_painter.dart';
+import 'package:zenno/core/database/database.dart' hide CanvasElement;
 
 import 'canvas_performance_fixtures.dart';
 
@@ -56,15 +59,35 @@ void main() {
         final List<CanvasElement> elements =
             CanvasPerformanceFixtures.inkGrid();
         final SpatialIndex index = _buildIndex(elements);
+        final Rect visibleWorldRect = CanvasPerformanceFixtures.viewportRect(
+          left: -1,
+          top: -1,
+          width: 52,
+          height: 39.5,
+        );
+        final Set<String> visibleIds = index.query(visibleWorldRect).toSet();
+        final List<CanvasElement> visibleElements = elements
+            .where((CanvasElement element) => visibleIds.contains(element.id))
+            .toList(growable: false);
+        final Map<String, CanvasElement> elementsById = <String, CanvasElement>{
+          for (final CanvasElement element in elements) element.id: element,
+        };
+        final Map<String, int> paintOrderById = <String, int>{
+          for (var index = 0; index < elements.length; index += 1)
+            elements[index].id: index,
+        };
         final List<int> samples = <int>[];
+        final List<int> fallbackSamples = <int>[];
 
-        for (var iteration = 0; iteration < 7; iteration += 1) {
+        void paintPreculled() {
           final ui.PictureRecorder recorder = ui.PictureRecorder();
           final Canvas canvas = Canvas(recorder);
           final Stopwatch stopwatch = Stopwatch()..start();
           ElementsPainter(
-            elements: elements,
+            elements: visibleElements,
             spatialIndex: index,
+            allElementsById: elementsById,
+            paintOrderById: paintOrderById,
             viewport: const ViewportState(scale: 16),
           ).paint(canvas, const Size(800, 600));
           stopwatch.stop();
@@ -72,14 +95,44 @@ void main() {
           recorder.endRecording().dispose();
         }
 
+        void paintFallback() {
+          final ui.PictureRecorder fallbackRecorder = ui.PictureRecorder();
+          final Canvas fallbackCanvas = Canvas(fallbackRecorder);
+          final Stopwatch fallbackStopwatch = Stopwatch()..start();
+          ElementsPainter(
+            elements: elements,
+            spatialIndex: index,
+            viewport: const ViewportState(scale: 16),
+          ).paint(fallbackCanvas, const Size(800, 600));
+          fallbackStopwatch.stop();
+          fallbackSamples.add(fallbackStopwatch.elapsedMicroseconds);
+          fallbackRecorder.endRecording().dispose();
+        }
+
+        for (var iteration = 0; iteration < 10; iteration += 1) {
+          if (iteration.isEven) {
+            paintPreculled();
+            paintFallback();
+          } else {
+            paintFallback();
+            paintPreculled();
+          }
+        }
+
         _recordSample(
           scenario: 'canvas-paint-10000-sparse',
           valuesMicros: samples,
           facts: <String, Object>{
             'totalElements': elements.length,
-            'visibleSpatialHits': index
-                .query(CanvasPerformanceFixtures.viewportRect())
-                .length,
+            'visibleSpatialHits': visibleElements.length,
+          },
+        );
+        _recordSample(
+          scenario: 'canvas-paint-10000-full-scan-fallback',
+          valuesMicros: fallbackSamples,
+          facts: <String, Object>{
+            'totalElements': elements.length,
+            'visibleSpatialHits': visibleElements.length,
           },
         );
       });
@@ -103,6 +156,33 @@ void main() {
           valuesMicros: <int>[stopwatch.elapsedMicroseconds],
           facts: <String, Object>{'totalElements': elements.length},
         );
+      });
+
+      test('records persisted hydration for 10,000 elements', () async {
+        final ZennoDatabase database = ZennoDatabase(NativeDatabase.memory());
+        final CanvasRepository repository = CanvasRepository(database);
+        const String canvasId = 'performance-hydration';
+        await repository.ensureCanvasExists(canvasId);
+        final List<CanvasElement> elements =
+            CanvasPerformanceFixtures.inkGrid();
+        await repository.upsertElements(canvasId, elements);
+        final CanvasController controller = CanvasController(
+          repository: repository,
+          canvasId: canvasId,
+        );
+
+        final Stopwatch stopwatch = Stopwatch()..start();
+        await controller.load();
+        stopwatch.stop();
+
+        expect(controller.elements, hasLength(elements.length));
+        _recordSample(
+          scenario: 'canvas-hydration-10000',
+          valuesMicros: <int>[stopwatch.elapsedMicroseconds],
+          facts: <String, Object>{'totalElements': elements.length},
+        );
+        controller.dispose();
+        await database.close();
       });
 
       test('records long live-stroke outline construction', () {

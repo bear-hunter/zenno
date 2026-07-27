@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -305,8 +306,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// (back to front). Mutated only via [addElementToStore] /
   /// [removeElementFromStore], which keep [_spatialIndex] in sync.
   final List<CanvasElement> _elements = <CanvasElement>[];
+  final Map<String, CanvasElement> _elementsById = <String, CanvasElement>{};
+  final Map<String, int> _paintOrderById = <String, int>{};
   List<CanvasElement>? _elementsView;
   List<CanvasElement>? _visibleElementsView;
+  List<CanvasElement>? _viewportElementsView;
+  Map<String, CanvasElement>? _elementsByIdView;
+  Map<String, int>? _paintOrderView;
 
   /// Viewport-culling index over [_elements], keyed by element id.
   final SpatialIndex _spatialIndex = SpatialIndex();
@@ -340,6 +346,21 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// unmodifiable view.
   List<CanvasElement> get elements =>
       _elementsView ??= List<CanvasElement>.unmodifiable(_elements);
+
+  /// Constant-time element lookup used by the committed-layer tile cache.
+  Map<String, CanvasElement> get elementsById => _elementsByIdView ??=
+      UnmodifiableMapView<String, CanvasElement>(_elementsById);
+
+  /// Stable paint-order lookup used to sort only spatial-query hits.
+  Map<String, int> get paintOrderById =>
+      _paintOrderView ??= UnmodifiableMapView<String, int>(_paintOrderById);
+
+  void _rebuildPaintOrder() {
+    _paintOrderById.clear();
+    for (var index = 0; index < _elements.length; index += 1) {
+      _paintOrderById[_elements[index].id] = index;
+    }
+  }
 
   int get elementsRevision => _elementsRevision;
 
@@ -376,6 +397,31 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           for (final CanvasElement element in _elements)
             if (_isElementVisible(element)) element,
         ]);
+  }
+
+  /// Layer-visible elements intersecting the viewport, in paint order.
+  List<CanvasElement> get viewportElements {
+    final List<CanvasElement>? cached = _viewportElementsView;
+    if (cached != null) {
+      return cached;
+    }
+    final List<CanvasElement> visible = <CanvasElement>[
+      for (final String id in _spatialIndex.query(_visibleWorldRect))
+        if (_elementsById[id] case final CanvasElement element)
+          if (_isElementVisible(element)) element,
+    ];
+    if (_selectionDragDelta != null || _selectionTransformOriginals != null) {
+      for (final String id in _selectedIds) {
+        final CanvasElement? element = _elementsById[id];
+        if (element != null &&
+            _isElementVisible(element) &&
+            !visible.contains(element)) {
+          visible.add(element);
+        }
+      }
+    }
+    visible.sort(_compareElements);
+    return _viewportElementsView = List<CanvasElement>.unmodifiable(visible);
   }
 
   /// The stroke currently being drawn, or `null` when nothing is in progress.
@@ -724,19 +770,23 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _elementsRevision += 1;
     _elementsView = null;
     _visibleElementsView = null;
+    _viewportElementsView = null;
   }
 
   void _markSelectionChanged() {
     _selectionRevision += 1;
     _selectedIdsView = null;
+    _viewportElementsView = null;
   }
 
   void _markSelectionPreviewChanged() {
     _selectionPreviewRevision += 1;
+    _viewportElementsView = null;
   }
 
   void _markViewportChanged() {
     _viewportRevision += 1;
+    _viewportElementsView = null;
   }
 
   void _notifyEditorState() {
@@ -771,6 +821,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   void _notifySelection() {
+    _viewportElementsView = null;
     _selectionSignal.emit();
     _overlaySignal.emit();
     _toolStateSignal.emit();
@@ -917,10 +968,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void addElementToStore(CanvasElement element) {
     final CanvasElement stored = _normalizeElementLayer(element);
     // Idempotent: a command replay must not duplicate an element.
-    for (final CanvasElement existing in _elements) {
-      if (existing.id == stored.id) {
-        return;
-      }
+    if (_elementsById.containsKey(stored.id)) {
+      return;
     }
     // Insert keeping the list sorted ascending by zIndex.
     var insertAt = _elements.length;
@@ -931,6 +980,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       }
     }
     _elements.insert(insertAt, stored);
+    _elementsById[stored.id] = stored;
+    _rebuildPaintOrder();
     _spatialIndex.insert(stored.id, stored.worldBounds);
     final ui.Image? raster = _elementRaster(stored);
     if (raster != null) {
@@ -950,11 +1001,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   @override
   void removeElementFromStore(String id) {
-    final int index = _elements.indexWhere((CanvasElement e) => e.id == id);
-    if (index < 0) {
+    final int? index = paintOrderById[id];
+    if (index == null) {
       return;
     }
     final CanvasElement removed = _elements.removeAt(index);
+    _elementsById.remove(id);
+    _rebuildPaintOrder();
     _disposeElementRaster(removed);
     _spatialIndex.remove(id);
     _markElementsChanged();
@@ -974,6 +1027,46 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   // ---------------------------------------------------------------------------
   // Persistence
   // ---------------------------------------------------------------------------
+
+  void _replaceElementsForHydration(List<CanvasElement> loaded) {
+    for (final CanvasElement element in _elements) {
+      _disposeElementRaster(element);
+    }
+    _elements
+      ..clear()
+      ..addAll(loaded.map(_normalizeElementLayer))
+      ..sort(_compareElements);
+    _elementsById
+      ..clear()
+      ..addEntries(
+        _elements.map(
+          (CanvasElement element) =>
+              MapEntry<String, CanvasElement>(element.id, element),
+        ),
+      );
+    _rebuildPaintOrder();
+    _spatialIndex.rebuild(
+      _elements.map(
+        (CanvasElement element) =>
+            MapEntry<String, Rect>(element.id, element.worldBounds),
+      ),
+    );
+    for (final CanvasElement element in _elements) {
+      final ui.Image? raster = _elementRaster(element);
+      if (raster != null) {
+        _trackRaster(raster);
+      }
+    }
+    _selectedIds.clear();
+    _undoStack.clear();
+    _redoStack.clear();
+    _nextZIndex = _elements.fold<int>(
+      0,
+      (int next, CanvasElement element) => math.max(next, element.zIndex + 1),
+    );
+    _markElementsChanged();
+    _markSelectionChanged();
+  }
 
   /// Hydrates this controller from its [CanvasRepository].
   ///
@@ -1019,10 +1112,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       _bookmarks
         ..clear()
         ..addAll(loadedBookmarks);
-      _markElementsChanged();
-      for (final CanvasElement element in loaded) {
-        addElementToStore(element);
-      }
+      _replaceElementsForHydration(loaded);
     } finally {
       _hydrating = false;
     }
@@ -1616,6 +1706,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     _viewportSize = size;
+    _viewportElementsView = null;
   }
 
   /// World-space rectangle currently visible in the viewport.
@@ -1913,6 +2004,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
     _persistLayers(List<CanvasLayer>.of(_layers));
     _elements.sort(_compareElements);
+    _rebuildPaintOrder();
     _markElementsChanged();
     _notifyElements();
   }
@@ -4544,14 +4636,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
   }
 
-  CanvasElement? _elementById(String id) {
-    for (final CanvasElement element in _elements) {
-      if (element.id == id) {
-        return element;
-      }
-    }
-    return null;
-  }
+  CanvasElement? _elementById(String id) => _elementsById[id];
 
   static double _distanceSquared(Offset a, Offset b) {
     final double dx = a.dx - b.dx;
@@ -4693,11 +4778,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     String id,
     CanvasElement Function(CanvasElement current) update,
   ) {
-    final int index = _elements.indexWhere((CanvasElement e) => e.id == id);
-    if (index < 0) {
+    final int? index = paintOrderById[id];
+    if (index == null) {
       return;
     }
-    _elements[index] = update(_elements[index]);
+    final CanvasElement updated = update(_elements[index]);
+    _elements[index] = updated;
+    _elementsById[id] = updated;
     _markElementsChanged();
   }
 
@@ -4772,7 +4859,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           if (raster != null) {
             _untrackRaster(raster);
             raster.dispose();
-            _elements[i] = element.copyWith(clearRaster: true);
+            final ImageElement cleared = element.copyWith(clearRaster: true);
+            _elements[i] = cleared;
+            _elementsById[element.id] = cleared;
             _markElementsChanged();
           }
         case PdfElement():
@@ -4780,7 +4869,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           if (raster != null) {
             _untrackRaster(raster);
             raster.dispose();
-            _elements[i] = element.copyWith(clearRaster: true);
+            final PdfElement cleared = element.copyWith(clearRaster: true);
+            _elements[i] = cleared;
+            _elementsById[element.id] = cleared;
             _markElementsChanged();
           }
       }

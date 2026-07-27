@@ -16,11 +16,10 @@ import 'package:zenno/canvas/render/shape_painter.dart';
 /// Paints the committed [elements] layer, culled to the visible viewport.
 ///
 /// The world-to-screen transform is applied to the [Canvas] once, so every
-/// element is drawn in world coordinates. Before drawing, the visible region
-/// is mapped back into world space and the [spatialIndex] is queried for the
-/// ids whose [CanvasElement.worldBounds] intersect it — only those elements
-/// are painted. Render cost is therefore bounded by what is on screen, not by
-/// the total element count.
+/// element is drawn in world coordinates. In interactive use the controller
+/// supplies only the spatial-query hits in [elements], already in paint order.
+/// Standalone callers may omit [allElementsById] and [paintOrderById], in which
+/// case the painter performs its legacy query-and-filter fallback.
 ///
 /// Elements are painted in ascending [CanvasElement.zIndex] order (the order
 /// the controller already keeps [elements] in). The `switch` over the element
@@ -293,15 +292,16 @@ class _TilePicture {
 class ElementsPainter extends CustomPainter {
   /// Creates a painter for the committed [elements] under [viewport].
   ///
-  /// [spatialIndex] must be the index the controller keeps in sync with
-  /// [elements]; it is used purely to cull off-screen elements. [selectedIds]
-  /// are the ids of lasso-selected elements; while [selectionDragDelta] or
-  /// [selectionTransformPreview] is active those elements are painted as live
-  /// previews before the edit is committed.
+  /// [spatialIndex] must be the index kept in sync with the full element store.
+  /// [selectedIds] are the ids of lasso-selected elements; while
+  /// [selectionDragDelta] or [selectionTransformPreview] is active those
+  /// elements are painted as live previews before the edit is committed.
   const ElementsPainter({
     required this.elements,
     required this.spatialIndex,
     required this.viewport,
+    this.allElementsById,
+    this.paintOrderById,
     this.elementsRevision,
     this.selectionRevision,
     this.selectionPreviewRevision,
@@ -313,6 +313,15 @@ class ElementsPainter extends CustomPainter {
 
   /// The committed elements, in paint order (ascending z-index).
   final List<CanvasElement> elements;
+
+  /// Full constant-time lookup supplied by the interactive controller.
+  ///
+  /// When this and [paintOrderById] are present, [elements] is already the
+  /// ordered viewport-visible subset and no full-list paint scan is needed.
+  final Map<String, CanvasElement>? allElementsById;
+
+  /// Full id-to-paint-order lookup paired with [allElementsById].
+  final Map<String, int>? paintOrderById;
 
   /// Monotonic token bumped when committed element content changes.
   final int? elementsRevision;
@@ -386,14 +395,7 @@ class ElementsPainter extends CustomPainter {
       return;
     }
 
-    // The set of element ids whose world bounds intersect the visible region.
     final Rect visibleWorldRect = _visibleWorldRect(size);
-    final Set<String> visibleIds = spatialIndex.query(visibleWorldRect).toSet();
-    // Fast path: nothing visible and no selection preview that could pull an
-    // off-screen selected element into view — there is nothing to paint.
-    if (visibleIds.isEmpty && !_dragging && !_transforming) {
-      return;
-    }
 
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
@@ -411,7 +413,16 @@ class ElementsPainter extends CustomPainter {
       }
     }
 
-    _paintVisibleElements(canvas, visibleIds);
+    if (allElementsById != null && paintOrderById != null) {
+      _paintVisibleElements(canvas);
+    } else {
+      final Set<String> visibleIds = spatialIndex
+          .query(visibleWorldRect)
+          .toSet();
+      if (visibleIds.isNotEmpty || _dragging || _transforming) {
+        _paintVisibleElements(canvas, visibleIds: visibleIds);
+      }
+    }
     canvas.restore();
   }
 
@@ -419,21 +430,24 @@ class ElementsPainter extends CustomPainter {
     if (_dragging ||
         _transforming ||
         selectedIds.isNotEmpty ||
-        tileCache == null) {
+        tileCache == null ||
+        allElementsById == null ||
+        paintOrderById == null) {
       return false;
     }
     return strokeRenderQualityForScale(viewport.scale) !=
         StrokeRenderQuality.highZoom;
   }
 
-  void _paintVisibleElements(Canvas canvas, Set<String> visibleIds) {
+  void _paintVisibleElements(Canvas canvas, {Set<String>? visibleIds}) {
     // Iterate `elements` (already z-ordered) and skip the culled ones, so the
     // surviving elements are still painted back-to-front. A selected element
     // mid-preview is never culled — its preview copy can leave the original
     // culled bounds.
     for (final CanvasElement element in elements) {
       final bool selected = selectedIds.contains(element.id);
-      if (!visibleIds.contains(element.id) &&
+      if (visibleIds != null &&
+          !visibleIds.contains(element.id) &&
           !(selected && (_dragging || _transforming))) {
         continue;
       }
@@ -490,13 +504,8 @@ class ElementsPainter extends CustomPainter {
 
   void _paintCachedTiles(Canvas canvas, Rect visibleRect) {
     final ElementsTileCache cache = tileCache!;
-    final Map<String, CanvasElement> elementsById = <String, CanvasElement>{};
-    final Map<String, int> paintOrderById = <String, int>{};
-    for (var i = 0; i < elements.length; i += 1) {
-      final CanvasElement element = elements[i];
-      elementsById[element.id] = element;
-      paintOrderById[element.id] = i;
-    }
+    final Map<String, CanvasElement> elementsById = allElementsById!;
+    final Map<String, int> paintOrder = paintOrderById!;
 
     final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
     final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();
@@ -510,7 +519,7 @@ class ElementsPainter extends CustomPainter {
           key: key,
           tileRect: key.rect,
           elementsById: elementsById,
-          paintOrderById: paintOrderById,
+          paintOrderById: paintOrder,
           spatialIndex: spatialIndex,
           paintElement: _paintUnselectedElement,
         );

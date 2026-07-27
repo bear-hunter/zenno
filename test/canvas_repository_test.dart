@@ -224,6 +224,40 @@ void main() {
     expect(await repo.loadBookmarks(canvasId), isEmpty);
   });
 
+  test(
+    'controller bulk-hydrates a large ordered store and lookup index',
+    () async {
+      final List<CanvasElement> fixtures = List<CanvasElement>.generate(
+        1000,
+        (int index) => TextElement(
+          id: 'bulk-$index',
+          zIndex: 1000 - index,
+          worldBounds: Rect.fromLTWH(index * 20, 0, 12, 12),
+          text: '$index',
+          color: 0xFFFFFFFF,
+          fontSize: 12,
+        ),
+        growable: false,
+      );
+      await repo.upsertElements(canvasId, fixtures);
+      final controller = CanvasController(repository: repo, canvasId: canvasId);
+      addTearDown(controller.dispose);
+
+      await controller.load();
+
+      expect(controller.elements, hasLength(fixtures.length));
+      expect(controller.elements.first.zIndex, 1);
+      expect(controller.elements.last.zIndex, 1000);
+      expect(controller.elementsById, hasLength(fixtures.length));
+      expect(controller.elementsById['bulk-999'], controller.elements.first);
+      expect(
+        controller.spatialIndex.query(const Rect.fromLTWH(0, 0, 13, 13)),
+        contains('bulk-0'),
+      );
+      expect(controller.canUndo, isFalse);
+    },
+  );
+
   group('ink element round-trip', () {
     test('save then load reconstructs the InkElement', () async {
       const stroke = Stroke(

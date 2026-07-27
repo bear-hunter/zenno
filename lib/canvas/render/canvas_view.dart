@@ -1529,6 +1529,7 @@ class _CanvasViewState extends State<CanvasView> {
               final bool hasFiniteSize =
                   size.width.isFinite && size.height.isFinite;
               final Size rasterSize = hasFiniteSize ? size : Size.zero;
+              _controller.setViewportSize(rasterSize);
               _queueRasterScheduling(rasterSize);
               return Stack(
                 fit: StackFit.expand,
@@ -1568,8 +1569,10 @@ class _CanvasViewState extends State<CanvasView> {
                     builder: (context, _) => RepaintBoundary(
                       child: CustomPaint(
                         painter: ElementsPainter(
-                          elements: _controller.visibleElements,
+                          elements: _controller.viewportElements,
                           spatialIndex: _controller.spatialIndex,
+                          allElementsById: _controller.elementsById,
+                          paintOrderById: _controller.paintOrderById,
                           viewport: _controller.viewport,
                           elementsRevision: _controller.elementsRevision,
                           selectionRevision: _controller.selectionRevision,
