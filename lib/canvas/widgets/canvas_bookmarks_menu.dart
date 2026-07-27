@@ -24,7 +24,7 @@ class CanvasBookmarksMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     // Rebuild with the controller so a freshly saved bookmark appears at once.
     return ListenableBuilder(
-      listenable: controller,
+      listenable: controller.bookmarksListenable,
       builder: (context, _) {
         final List<Bookmark> bookmarks = controller.bookmarks;
         return PopupMenuButton<String>(
