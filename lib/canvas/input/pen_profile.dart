@@ -9,16 +9,12 @@ class PenProfile {
     this.smoothing = 0.35,
     this.pressureCurve = PressureCurveKind.normal,
     this.customPressureExponent = 1.0,
-    this.startTaper = 0.72,
-    this.endTaper = 0.78,
   });
 
   final double stabilizer;
   final double smoothing;
   final PressureCurveKind pressureCurve;
   final double customPressureExponent;
-  final double startTaper;
-  final double endTaper;
 
   double mapPressure(double raw) {
     final double p = raw.clamp(0.0, 1.0);
@@ -36,8 +32,6 @@ class PenProfile {
     'smoothing': smoothing,
     'pressureCurve': pressureCurve.name,
     'customPressureExponent': customPressureExponent,
-    'startTaper': startTaper,
-    'endTaper': endTaper,
   };
 
   String encode() => jsonEncode(toJson());
@@ -54,8 +48,6 @@ class PenProfile {
             decoded['customPressureExponent'],
             1.0,
           ),
-          startTaper: _double(decoded['startTaper'], 0.72),
-          endTaper: _double(decoded['endTaper'], 0.78),
         );
       }
     } catch (_) {
@@ -69,8 +61,6 @@ class PenProfile {
     double? smoothing,
     PressureCurveKind? pressureCurve,
     double? customPressureExponent,
-    double? startTaper,
-    double? endTaper,
   }) {
     return PenProfile(
       stabilizer: stabilizer ?? this.stabilizer,
@@ -78,8 +68,6 @@ class PenProfile {
       pressureCurve: pressureCurve ?? this.pressureCurve,
       customPressureExponent:
           customPressureExponent ?? this.customPressureExponent,
-      startTaper: startTaper ?? this.startTaper,
-      endTaper: endTaper ?? this.endTaper,
     );
   }
 
@@ -105,9 +93,7 @@ class PenProfile {
             other.stabilizer == stabilizer &&
             other.smoothing == smoothing &&
             other.pressureCurve == pressureCurve &&
-            other.customPressureExponent == customPressureExponent &&
-            other.startTaper == startTaper &&
-            other.endTaper == endTaper;
+            other.customPressureExponent == customPressureExponent;
   }
 
   @override
@@ -116,7 +102,5 @@ class PenProfile {
     smoothing,
     pressureCurve,
     customPressureExponent,
-    startTaper,
-    endTaper,
   );
 }

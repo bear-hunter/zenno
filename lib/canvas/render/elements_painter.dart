@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/rendering.dart';
 
+import 'package:zenno/canvas/canvas_controller.dart' show CanvasElementDamage;
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
@@ -16,11 +17,10 @@ import 'package:zenno/canvas/render/shape_painter.dart';
 /// Paints the committed [elements] layer, culled to the visible viewport.
 ///
 /// The world-to-screen transform is applied to the [Canvas] once, so every
-/// element is drawn in world coordinates. Before drawing, the visible region
-/// is mapped back into world space and the [spatialIndex] is queried for the
-/// ids whose [CanvasElement.worldBounds] intersect it — only those elements
-/// are painted. Render cost is therefore bounded by what is on screen, not by
-/// the total element count.
+/// element is drawn in world coordinates. In interactive use the controller
+/// supplies only the spatial-query hits in [elements], already in paint order.
+/// Standalone callers may omit [allElementsById] and [paintOrderById], in which
+/// case the painter performs its legacy query-and-filter fallback.
 ///
 /// Elements are painted in ascending [CanvasElement.zIndex] order (the order
 /// the controller already keeps [elements] in). The `switch` over the element
@@ -39,9 +39,9 @@ import 'package:zenno/canvas/render/shape_painter.dart';
 /// Cache for committed element pictures grouped by fixed world-space tiles.
 ///
 /// Owned by the view rather than the painter so pictures survive repaint
-/// delegate instances. A changed element/raster signature invalidates the
-/// whole cache; otherwise each visible tile is recorded once and reused while
-/// panning/zooming.
+/// delegate instances. Local element/raster changes invalidate only pictures
+/// intersecting their old/new bounds; ordering-wide and defensive events still
+/// clear every picture.
 class ElementsTileCache {
   /// Creates a tile-picture cache.
   ElementsTileCache({this.maxTiles = 96});
@@ -52,20 +52,29 @@ class ElementsTileCache {
   static const double tileSize = 2048.0;
 
   final Map<_TileKey, _TilePicture> _pictures = <_TileKey, _TilePicture>{};
-  final StrokePathCache strokePathCache = StrokePathCache();
   int _revision = 0;
   int _tick = 0;
+  int _pictureBuildCount = 0;
 
   /// Number of currently retained tile pictures.
   int get tileCount => _pictures.length;
 
+  /// Committed revision currently represented by retained tile pictures.
+  int get revision => _revision;
+
+  /// Total tile pictures recorded during this cache's lifetime.
+  int get pictureBuildCount => _pictureBuildCount;
+
   /// Clears all retained pictures.
   void clear() {
+    _clearPictures();
+  }
+
+  void _clearPictures() {
     for (final picture in _pictures.values) {
       picture.picture.dispose();
     }
     _pictures.clear();
-    strokePathCache.clear();
   }
 
   /// Releases native picture resources.
@@ -74,14 +83,40 @@ class ElementsTileCache {
   void _syncRevision({
     required List<CanvasElement> elements,
     required int? revision,
+    required CanvasElementDamage? damage,
   }) {
     final int nextRevision =
         revision ?? Object.hashAll(elements.map(_elementRevisionPart));
     if (nextRevision == _revision) {
       return;
     }
+    final bool canInvalidateLocally =
+        revision != null &&
+        damage != null &&
+        !damage.isFull &&
+        damage.fromRevision == _revision &&
+        damage.toRevision == nextRevision;
+    if (canInvalidateLocally) {
+      _invalidateBounds(damage.bounds ?? Rect.zero);
+    } else {
+      _clearPictures();
+    }
     _revision = nextRevision;
-    clear();
+  }
+
+  void _invalidateBounds(Rect bounds) {
+    if (bounds.isEmpty) {
+      return;
+    }
+    final int minX = (bounds.left / tileSize).floor();
+    final int maxX = (bounds.right / tileSize).floor();
+    final int minY = (bounds.top / tileSize).floor();
+    final int maxY = (bounds.bottom / tileSize).floor();
+    for (var y = minY; y <= maxY; y += 1) {
+      for (var x = minX; x <= maxX; x += 1) {
+        _pictures.remove(_TileKey(x, y))?.picture.dispose();
+      }
+    }
   }
 
   ui.Picture _pictureFor({
@@ -116,6 +151,7 @@ class ElementsTileCache {
 
     final picture = recorder.endRecording();
     _pictures[key] = _TilePicture(picture, ++_tick);
+    _pictureBuildCount += 1;
     _evictIfNeeded();
     return picture;
   }
@@ -194,71 +230,6 @@ class ElementsTileCache {
   }
 }
 
-class StrokePathCacheKey {
-  const StrokePathCacheKey({
-    required this.strokeId,
-    required this.revision,
-    required this.scaleBucket,
-    required this.quality,
-    required this.isComplete,
-  });
-
-  final String strokeId;
-  final int revision;
-  final int scaleBucket;
-  final StrokeRenderQuality quality;
-  final bool isComplete;
-
-  @override
-  bool operator ==(Object other) {
-    return other is StrokePathCacheKey &&
-        other.strokeId == strokeId &&
-        other.revision == revision &&
-        other.scaleBucket == scaleBucket &&
-        other.quality == quality &&
-        other.isComplete == isComplete;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(strokeId, revision, scaleBucket, quality, isComplete);
-}
-
-class StrokePathCache {
-  StrokePathCache({this.maxEntries = 2048});
-
-  final int maxEntries;
-  final Map<StrokePathCacheKey, Path> _paths = <StrokePathCacheKey, Path>{};
-
-  void clear() => _paths.clear();
-
-  Path pathFor({
-    required StrokePathCacheKey key,
-    required Stroke stroke,
-    required double viewportScale,
-  }) {
-    final cached = _paths.remove(key);
-    if (cached != null) {
-      _paths[key] = cached;
-      return cached;
-    }
-    final path = stroke.tool == StrokeToolKind.fill
-        ? buildFillBoundaryPath(stroke.points)
-        : buildStrokeOutline(
-            stroke.points,
-            size: stroke.width,
-            viewportScale: viewportScale,
-            quality: key.quality,
-            isComplete: key.isComplete,
-          );
-    _paths[key] = path;
-    while (_paths.length > maxEntries) {
-      _paths.remove(_paths.keys.first);
-    }
-    return path;
-  }
-}
-
 class _TileKey {
   const _TileKey(this.x, this.y);
 
@@ -293,20 +264,23 @@ class _TilePicture {
 class ElementsPainter extends CustomPainter {
   /// Creates a painter for the committed [elements] under [viewport].
   ///
-  /// [spatialIndex] must be the index the controller keeps in sync with
-  /// [elements]; it is used purely to cull off-screen elements. [selectedIds]
-  /// are the ids of lasso-selected elements; while [selectionDragDelta] or
-  /// [selectionTransformPreview] is active those elements are painted as live
-  /// previews before the edit is committed.
+  /// [spatialIndex] must be the index kept in sync with the full element store.
+  /// [selectedIds] are the ids of lasso-selected elements; while
+  /// [selectionDragDelta] or [selectionTransformPreview] is active those
+  /// elements are painted as live previews before the edit is committed.
   const ElementsPainter({
     required this.elements,
     required this.spatialIndex,
     required this.viewport,
+    this.allElementsById,
+    this.paintOrderById,
     this.elementsRevision,
+    this.elementDamage,
     this.selectionRevision,
     this.selectionPreviewRevision,
     this.tileCache,
     this.selectedIds = const <String>{},
+    this.pendingEraseIds = const <String>{},
     this.selectionDragDelta = Offset.zero,
     this.selectionTransformPreview,
   });
@@ -314,8 +288,20 @@ class ElementsPainter extends CustomPainter {
   /// The committed elements, in paint order (ascending z-index).
   final List<CanvasElement> elements;
 
+  /// Full constant-time lookup supplied by the interactive controller.
+  ///
+  /// When this and [paintOrderById] are present, [elements] is already the
+  /// ordered viewport-visible subset and no full-list paint scan is needed.
+  final Map<String, CanvasElement>? allElementsById;
+
+  /// Full id-to-paint-order lookup paired with [allElementsById].
+  final Map<String, int>? paintOrderById;
+
   /// Monotonic token bumped when committed element content changes.
   final int? elementsRevision;
+
+  /// Bounds changed since the tile cache's current committed revision.
+  final CanvasElementDamage? elementDamage;
 
   /// Viewport-culling index over [elements], keyed by element id.
   final SpatialIndex spatialIndex;
@@ -335,6 +321,12 @@ class ElementsPainter extends CustomPainter {
 
   /// Monotonic token bumped when [selectedIds] changes.
   final int? selectionRevision;
+
+  /// Ids the in-progress eraser drag has already crossed.
+  ///
+  /// Painted faded so the user can see what the drag will remove before
+  /// lifting, rather than discovering it afterwards.
+  final Set<String> pendingEraseIds;
 
   /// Live world-space offset applied to selected elements during a drag.
   ///
@@ -386,18 +378,15 @@ class ElementsPainter extends CustomPainter {
       return;
     }
 
-    // The set of element ids whose world bounds intersect the visible region.
     final Rect visibleWorldRect = _visibleWorldRect(size);
-    final Set<String> visibleIds = spatialIndex.query(visibleWorldRect).toSet();
-    // Fast path: nothing visible and no selection preview that could pull an
-    // off-screen selected element into view — there is nothing to paint.
-    if (visibleIds.isEmpty && !_dragging && !_transforming) {
-      return;
-    }
 
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
-    tileCache?._syncRevision(elements: elements, revision: elementsRevision);
+    tileCache?._syncRevision(
+      elements: elements,
+      revision: elementsRevision,
+      damage: elementDamage,
+    );
 
     if (_canUseTileCache(visibleWorldRect)) {
       final ElementsTileCache cache = tileCache!;
@@ -411,7 +400,16 @@ class ElementsPainter extends CustomPainter {
       }
     }
 
-    _paintVisibleElements(canvas, visibleIds);
+    if (allElementsById != null && paintOrderById != null) {
+      _paintVisibleElements(canvas);
+    } else {
+      final Set<String> visibleIds = spatialIndex
+          .query(visibleWorldRect)
+          .toSet();
+      if (visibleIds.isNotEmpty || _dragging || _transforming) {
+        _paintVisibleElements(canvas, visibleIds: visibleIds);
+      }
+    }
     canvas.restore();
   }
 
@@ -419,21 +417,27 @@ class ElementsPainter extends CustomPainter {
     if (_dragging ||
         _transforming ||
         selectedIds.isNotEmpty ||
-        tileCache == null) {
+        // Pending-erase elements are faded individually, which a shared tile
+        // picture cannot express.
+        pendingEraseIds.isNotEmpty ||
+        tileCache == null ||
+        allElementsById == null ||
+        paintOrderById == null) {
       return false;
     }
     return strokeRenderQualityForScale(viewport.scale) !=
         StrokeRenderQuality.highZoom;
   }
 
-  void _paintVisibleElements(Canvas canvas, Set<String> visibleIds) {
+  void _paintVisibleElements(Canvas canvas, {Set<String>? visibleIds}) {
     // Iterate `elements` (already z-ordered) and skip the culled ones, so the
     // surviving elements are still painted back-to-front. A selected element
     // mid-preview is never culled — its preview copy can leave the original
     // culled bounds.
     for (final CanvasElement element in elements) {
       final bool selected = selectedIds.contains(element.id);
-      if (!visibleIds.contains(element.id) &&
+      if (visibleIds != null &&
+          !visibleIds.contains(element.id) &&
           !(selected && (_dragging || _transforming))) {
         continue;
       }
@@ -456,7 +460,30 @@ class ElementsPainter extends CustomPainter {
     }
   }
 
+  /// Opacity applied to an element the live eraser drag has crossed.
+  static const double _pendingEraseOpacity = 0.3;
+
   void _paintElement(
+    Canvas canvas,
+    CanvasElement element, {
+    required bool selected,
+  }) {
+    if (pendingEraseIds.contains(element.id)) {
+      canvas.saveLayer(
+        null,
+        Paint()
+          ..color = const Color(
+            0xFF000000,
+          ).withValues(alpha: _pendingEraseOpacity),
+      );
+      _paintElementBody(canvas, element, selected: selected);
+      canvas.restore();
+      return;
+    }
+    _paintElementBody(canvas, element, selected: selected);
+  }
+
+  void _paintElementBody(
     Canvas canvas,
     CanvasElement element, {
     required bool selected,
@@ -490,13 +517,8 @@ class ElementsPainter extends CustomPainter {
 
   void _paintCachedTiles(Canvas canvas, Rect visibleRect) {
     final ElementsTileCache cache = tileCache!;
-    final Map<String, CanvasElement> elementsById = <String, CanvasElement>{};
-    final Map<String, int> paintOrderById = <String, int>{};
-    for (var i = 0; i < elements.length; i += 1) {
-      final CanvasElement element = elements[i];
-      elementsById[element.id] = element;
-      paintOrderById[element.id] = i;
-    }
+    final Map<String, CanvasElement> elementsById = allElementsById!;
+    final Map<String, int> paintOrder = paintOrderById!;
 
     final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
     final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();
@@ -510,7 +532,7 @@ class ElementsPainter extends CustomPainter {
           key: key,
           tileRect: key.rect,
           elementsById: elementsById,
-          paintOrderById: paintOrderById,
+          paintOrderById: paintOrder,
           spatialIndex: spatialIndex,
           paintElement: _paintUnselectedElement,
         );
@@ -601,58 +623,13 @@ class ElementsPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  Path _strokePathFor(InkElement element) {
-    if (element.stroke.tool == StrokeToolKind.fill) {
-      return element.outlinePath;
-    }
-    final StrokeRenderQuality quality = strokeRenderQualityForScale(
-      viewport.scale,
-    );
-    if (quality != StrokeRenderQuality.highZoom) {
-      return element.outlinePath;
-    }
-    final Stroke stroke = element.stroke;
-    final key = StrokePathCacheKey(
-      strokeId: stroke.id,
-      revision: _strokeRevision(stroke),
-      scaleBucket: strokeScaleBucket(viewport.scale),
-      quality: quality,
-      isComplete: true,
-    );
-    final StrokePathCache? cache = tileCache?.strokePathCache;
-    if (cache == null) {
-      return buildStrokeOutline(
-        stroke.points,
-        size: stroke.width,
-        viewportScale: viewport.scale,
-        quality: quality,
-        isComplete: true,
-      );
-    }
-    return cache.pathFor(
-      key: key,
-      stroke: stroke,
-      viewportScale: viewport.scale,
-    );
-  }
-
-  int _strokeRevision(Stroke stroke) {
-    final StrokePoint? first = stroke.points.isEmpty
-        ? null
-        : stroke.points.first;
-    final StrokePoint? last = stroke.points.isEmpty ? null : stroke.points.last;
-    // Committed strokes are immutable by contract; edits replace the points
-    // list, so the list identity plus endpoints avoids hashing every sample.
-    return Object.hashAll(<Object?>[
-      stroke.id,
-      stroke.width,
-      stroke.tool,
-      stroke.points.length,
-      identityHashCode(stroke.points),
-      first,
-      last,
-    ]);
-  }
+  /// The committed world-space outline for [element].
+  ///
+  /// One path serves every zoom level: the outline is emitted as quadratic
+  /// curves, which Skia tessellates against the device transform, so it stays
+  /// smooth however far in the user zooms. This used to rebuild a denser path
+  /// past 4x to hide the facets of a `lineTo` polygon.
+  Path _strokePathFor(InkElement element) => element.outlinePath;
 
   /// Cheap low-zoom stroke rendering for overview/deep-map navigation.
   void _paintInkOverview(Canvas canvas, InkElement element) {
@@ -1000,6 +977,7 @@ class ElementsPainter extends CustomPainter {
         oldDelegate.viewport != viewport ||
         selectionChanged ||
         oldDelegate.selectionDragDelta != selectionDragDelta ||
+        !setEquals(oldDelegate.pendingEraseIds, pendingEraseIds) ||
         previewChanged;
   }
 }

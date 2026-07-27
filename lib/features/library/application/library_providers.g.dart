@@ -8,12 +8,9 @@ part of 'library_providers.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Provides the singleton [LibraryRepository], wired to the app database.
 
 @ProviderFor(libraryRepository)
 final libraryRepositoryProvider = LibraryRepositoryProvider._();
-
-/// Provides the singleton [LibraryRepository], wired to the app database.
 
 final class LibraryRepositoryProvider
     extends
@@ -23,14 +20,13 @@ final class LibraryRepositoryProvider
           LibraryRepository
         >
     with $Provider<LibraryRepository> {
-  /// Provides the singleton [LibraryRepository], wired to the app database.
   LibraryRepositoryProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
         name: r'libraryRepositoryProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -58,4 +54,4 @@ final class LibraryRepositoryProvider
   }
 }
 
-String _$libraryRepositoryHash() => r'bdcf36594d7f7255f4d9f90893f0c74ec7c779d0';
+String _$libraryRepositoryHash() => r'649e6300c99b2d9129bfa0e8a40f8ac17388190d';

@@ -1,20 +1,25 @@
 import 'dart:ui';
 
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
+import 'package:zenno/core/database/tables/settings_tables.dart';
 import 'package:zenno/features/focus/data/focus_repository.dart';
 import 'package:zenno/features/library/data/library_repository.dart';
 
 void main() {
   late ZennoDatabase db;
   late LibraryRepository repo;
+  late _SelectRecorder selects;
 
   setUp(() {
-    db = ZennoDatabase(NativeDatabase.memory());
+    selects = _SelectRecorder();
+    db = ZennoDatabase(NativeDatabase.memory().interceptWith(selects));
     repo = LibraryRepository(db);
   });
 
@@ -174,4 +179,73 @@ void main() {
     expect(deletedPaths, containsAll(<String>[uniquePath, thumbnailPath]));
     expect(deletedPaths, isNot(contains(sharedPath)));
   });
+
+  test('Drift watch supplies the initial canvas list with one read', () async {
+    await repo.createCanvas(title: 'Existing');
+    selects.statements.clear();
+
+    final canvases = await repo.watchCanvases(LibrarySort.recent).first;
+
+    expect(canvases.single.title, 'Existing');
+    expect(
+      selects.statements.where((sql) => sql.contains('FROM "canvases"')),
+      hasLength(1),
+    );
+  });
+
+  test('orphan cleanup protects every referenced owned path', () async {
+    Set<String>? protectedPaths;
+    final cleanupRepo = LibraryRepository(
+      db,
+      cleanupOwnedFiles: (paths) async => protectedPaths = paths,
+    );
+    final canvasRepo = CanvasRepository(db);
+    final canvasId = await cleanupRepo.createCanvas(title: 'Protected');
+    const imagePath = '/documents/canvas_media/image.png';
+    const pdfPath = '/documents/canvas_media/notes.pdf';
+    const thumbnailPath = '/documents/thumbnails/canvas.png';
+    await canvasRepo.upsertElement(
+      canvasId,
+      const ImageElement(
+        id: 'protected-image',
+        zIndex: 0,
+        worldBounds: Rect.fromLTWH(0, 0, 20, 20),
+        sourceFilePath: imagePath,
+        intrinsicSize: Size(20, 20),
+      ),
+    );
+    await canvasRepo.upsertElement(
+      canvasId,
+      const PdfElement(
+        id: 'protected-pdf',
+        zIndex: 1,
+        worldBounds: Rect.fromLTWH(20, 0, 20, 20),
+        sourceFilePath: pdfPath,
+        pageNumber: 1,
+        pageSize: Size(20, 20),
+      ),
+    );
+    await cleanupRepo.updateThumbnailPath(canvasId, thumbnailPath);
+
+    await cleanupRepo.cleanupOrphanedFiles();
+
+    expect(
+      protectedPaths,
+      containsAll(<String>[imagePath, pdfPath, thumbnailPath]),
+    );
+  });
+}
+
+class _SelectRecorder extends QueryInterceptor {
+  final List<String> statements = <String>[];
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    statements.add(statement);
+    return executor.runSelect(statement, args);
+  }
 }

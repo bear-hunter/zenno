@@ -253,6 +253,7 @@ final class InkElement extends CanvasElement {
         : buildStrokeOutline(
             stroke.points,
             size: stroke.width,
+            tool: stroke.tool,
             isComplete: true,
           );
   }
@@ -377,6 +378,7 @@ final class ImageElement extends CanvasElement {
     required this.sourceFilePath,
     required this.intrinsicSize,
     this.raster,
+    this.rasterScaleBucket = 0,
   }) : _worldBounds = worldBounds;
 
   /// World-space placement rectangle — this element's geometry in full.
@@ -397,6 +399,11 @@ final class ImageElement extends CanvasElement {
   /// Never persisted and never part of equality — see the class doc. The
   /// painter draws a placeholder while this is `null`.
   final ui.Image? raster;
+
+  /// Resolution-ladder bucket used for [raster].
+  ///
+  /// Runtime-only and excluded from equality, like [raster].
+  final int rasterScaleBucket;
 
   @override
   Rect get worldBounds => _rotatedBounds(_worldBounds, rotation);
@@ -420,6 +427,7 @@ final class ImageElement extends CanvasElement {
     String? sourceFilePath,
     Size? intrinsicSize,
     ui.Image? raster,
+    int? rasterScaleBucket,
     bool clearRaster = false,
   }) {
     assert(
@@ -435,6 +443,9 @@ final class ImageElement extends CanvasElement {
       sourceFilePath: sourceFilePath ?? this.sourceFilePath,
       intrinsicSize: intrinsicSize ?? this.intrinsicSize,
       raster: clearRaster ? null : (raster ?? this.raster),
+      rasterScaleBucket: clearRaster
+          ? 0
+          : (rasterScaleBucket ?? this.rasterScaleBucket),
     );
   }
 

@@ -84,6 +84,10 @@ class FocusSessions extends Table {
 
 /// Per-session snapshot of a ritual checklist item, captured at session start
 /// so the label as it was then is preserved.
+@TableIndex(
+  name: 'idx_focus_session_ritual_checks_session_id',
+  columns: {#sessionId},
+)
 class FocusSessionRitualChecks extends Table {
   TextColumn get id => text()();
   TextColumn get sessionId =>

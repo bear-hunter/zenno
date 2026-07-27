@@ -95,7 +95,8 @@ class CanvasEditorPage extends ConsumerStatefulWidget {
   ConsumerState<CanvasEditorPage> createState() => _CanvasEditorPageState();
 }
 
-class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
+class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage>
+    with WidgetsBindingObserver {
   late final CanvasController _controller;
   late final CanvasRepository _repository;
   late Future<bool> _loadFuture;
@@ -117,6 +118,7 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // The repository is read once, here, rather than watched: the controller
     // holds it for the page's lifetime and a Drift repo never changes identity.
     _repository = ref.read(canvasRepositoryProvider);
@@ -205,7 +207,20 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Android kills backgrounded apps freely. Without this, the debounced
+    // viewport write and any in-flight element write are lost on the way out.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_controller.flush());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _navigationRegistration?.dispose();
     // Persist any debounced/in-flight writes before the controller goes away,
     // so a canvas closed straight after a pan still saves its final state.
@@ -484,10 +499,11 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
         if (!didPop) _handleBack();
       },
       child: Scaffold(
-        // Watch the controller so the body swaps from the loading spinner to the
-        // canvas the moment `load` finishes hydrating it.
+        // Gate on load state and import errors only. Listening to the whole
+        // controller here would rebuild the canvas, the toolbar and the
+        // shortcut map on every pen sample, pan frame and selection change.
         body: ListenableBuilder(
-          listenable: _controller,
+          listenable: _controller.editorStateListenable,
           builder: (context, _) {
             final importError = _controller.importErrorMessage;
             if (importError != null) {

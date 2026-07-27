@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
@@ -7,11 +9,26 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/shape_painter.dart';
 
 class LiveStrokePathCache {
+  static const int _stableBatchSize = 64;
+  static const int _tailPointLimit = 128;
+  static const int _overlapPointCount = 16;
+
   String? _strokeId;
   int? _revision;
   int? _scaleBucket;
   StrokeRenderQuality? _quality;
   Path? _path;
+  Path? _stablePath;
+  int _stablePointCount = 0;
+  int _lastPointCount = 0;
+  StrokePoint? _firstPoint;
+  StrokePoint? _lastPoint;
+  double? _strokeWidth;
+  StrokeToolKind? _strokeTool;
+  int _lastRebuiltPointCount = 0;
+
+  /// Largest input slice rebuilt by the latest [pathFor] call.
+  int get lastRebuiltPointCount => _lastRebuiltPointCount;
 
   void clear() {
     _strokeId = null;
@@ -19,6 +36,14 @@ class LiveStrokePathCache {
     _scaleBucket = null;
     _quality = null;
     _path = null;
+    _stablePath = null;
+    _stablePointCount = 0;
+    _lastPointCount = 0;
+    _firstPoint = null;
+    _lastPoint = null;
+    _strokeWidth = null;
+    _strokeTool = null;
+    _lastRebuiltPointCount = 0;
   }
 
   Path pathFor({
@@ -38,22 +63,164 @@ class LiveStrokePathCache {
         _quality == quality) {
       return cached;
     }
-    final Path next = stroke.tool == StrokeToolKind.fill
-        ? buildFillBoundaryPath(stroke.points)
-        : buildStrokeOutline(
-            stroke.points,
-            size: stroke.width,
-            viewportScale: viewportScale,
-            quality: quality,
-            isComplete: false,
-          );
+
+    final bool appendCompatible =
+        _strokeId == stroke.id &&
+        _scaleBucket == scaleBucket &&
+        _quality == quality &&
+        _strokeWidth == stroke.width &&
+        _strokeTool == stroke.tool &&
+        stroke.points.length >= _lastPointCount &&
+        (stroke.points.isEmpty || stroke.points.first == _firstPoint) &&
+        (_lastPointCount == 0 ||
+            stroke.points[_lastPointCount - 1] == _lastPoint);
+    if (!appendCompatible) {
+      _stablePath = null;
+      _stablePointCount = 0;
+    }
+
+    _lastRebuiltPointCount = 0;
+    final Path next;
+    if (stroke.tool == StrokeToolKind.fill) {
+      next = buildFillBoundaryPath(stroke.points);
+      _lastRebuiltPointCount = stroke.points.length;
+    } else {
+      _extendStablePrefix(
+        stroke: stroke,
+        viewportScale: viewportScale,
+        quality: quality,
+      );
+      final int tailStart = (_stablePointCount - _overlapPointCount).clamp(
+        0,
+        stroke.points.length,
+      );
+      final List<StrokePoint> tailPoints = stroke.points.sublist(tailStart);
+      final Path tailPath = buildStrokeOutline(
+        // Only the painted tail is extrapolated — never the stroke buffer —
+        // so nothing predicted is ever committed or persisted.
+        _withPredictedTip(tailPoints),
+        size: stroke.width,
+        tool: stroke.tool,
+        isComplete: false,
+      );
+      _lastRebuiltPointCount = tailPoints.length > _lastRebuiltPointCount
+          ? tailPoints.length
+          : _lastRebuiltPointCount;
+      next = _stablePath == null
+          ? tailPath
+          : (Path.from(_stablePath!)..addPath(tailPath, Offset.zero));
+    }
     _strokeId = stroke.id;
     _revision = revision;
     _scaleBucket = scaleBucket;
     _quality = quality;
     _path = next;
+    _lastPointCount = stroke.points.length;
+    _firstPoint = stroke.points.isEmpty ? null : stroke.points.first;
+    _lastPoint = stroke.points.isEmpty ? null : stroke.points.last;
+    _strokeWidth = stroke.width;
+    _strokeTool = stroke.tool;
     return next;
   }
+
+  void _extendStablePrefix({
+    required Stroke stroke,
+    required double viewportScale,
+    required StrokeRenderQuality quality,
+  }) {
+    final int availableStablePoints = stroke.points.length - _tailPointLimit;
+    while (availableStablePoints - _stablePointCount >= _stableBatchSize) {
+      final int nextStablePointCount = _stablePointCount + _stableBatchSize;
+      final int chunkStart = _stablePointCount == 0
+          ? 0
+          : _stablePointCount - _overlapPointCount;
+      final int chunkEnd = (nextStablePointCount + _overlapPointCount).clamp(
+        0,
+        stroke.points.length,
+      );
+      final List<StrokePoint> chunkPoints = stroke.points.sublist(
+        chunkStart,
+        chunkEnd,
+      );
+      final Path chunkPath = buildStrokeOutline(
+        chunkPoints,
+        size: stroke.width,
+        tool: stroke.tool,
+        isComplete: false,
+      );
+      if (_stablePath == null) {
+        _stablePath = chunkPath;
+      } else {
+        _stablePath!.addPath(chunkPath, Offset.zero);
+      }
+      _stablePointCount = nextStablePointCount;
+      if (chunkPoints.length > _lastRebuiltPointCount) {
+        _lastRebuiltPointCount = chunkPoints.length;
+      }
+    }
+  }
+
+  /// Appends one extrapolated sample ahead of the newest one.
+  ///
+  /// A sample reaches the screen roughly a frame after the nib produced it, so
+  /// ink visibly trails the pen. Extending the drawn tail by about one frame of
+  /// travel closes most of that gap.
+  ///
+  /// The step is capped, and dropped entirely when the stroke is turning
+  /// sharply, so a corner cannot overshoot into a visible spike.
+  static List<StrokePoint> _withPredictedTip(List<StrokePoint> points) {
+    if (points.length < 3) {
+      return points;
+    }
+    final StrokePoint last = points[points.length - 1];
+    final StrokePoint previous = points[points.length - 2];
+    final StrokePoint earlier = points[points.length - 3];
+
+    final Offset recent = last.offset - previous.offset;
+    final Offset prior = previous.offset - earlier.offset;
+    final double recentLength = recent.distance;
+    final double priorLength = prior.distance;
+    if (recentLength < 0.01 || priorLength < 0.01) {
+      return points;
+    }
+
+    // cos of the turn angle: 1 is straight ahead, 0 a right-angle corner.
+    final double alignment =
+        (recent.dx * prior.dx + recent.dy * prior.dy) /
+        (recentLength * priorLength);
+    if (alignment < _minPredictionAlignment) {
+      return points;
+    }
+
+    final double step = math.min(
+      recentLength * _predictionFraction,
+      _maxPredictionDistance,
+    );
+    final Offset tip = last.offset + (recent / recentLength) * step;
+
+    return <StrokePoint>[
+      ...points,
+      StrokePoint(
+        tip.dx,
+        tip.dy,
+        last.pressure,
+        tiltX: last.tiltX,
+        tiltY: last.tiltY,
+        azimuth: last.azimuth,
+        timestampMicros: last.timestampMicros,
+        velocity: last.velocity,
+      ),
+    ];
+  }
+
+  /// Fraction of the last sample's travel to extrapolate forward.
+  static const double _predictionFraction = 0.8;
+
+  /// Hard cap on the predicted step, in world units.
+  static const double _maxPredictionDistance = 12.0;
+
+  /// Straightness required before predicting, as cos of the turn angle.
+  static const double _minPredictionAlignment = 0.7;
 }
 
 /// Paints the single in-progress [liveStroke] under the current [viewport].
@@ -124,8 +291,7 @@ class LiveStrokePainter extends CustomPainter {
             : buildStrokeOutline(
                 stroke.points,
                 size: stroke.width,
-                viewportScale: viewport.scale,
-                quality: strokeRenderQualityForScale(viewport.scale),
+                tool: stroke.tool,
                 isComplete: false,
               ));
 

@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/input/pen_input_processor.dart';
 import 'package:zenno/canvas/input/pen_profile.dart';
-import 'package:zenno/canvas/model/stroke.dart';
 
 void main() {
   test('pressure curves make light easier and firm harder', () {
@@ -19,28 +18,73 @@ void main() {
     expect(firm, lessThan(raw));
   });
 
-  test('stabilizer damps large point jumps', () {
+  test('the stabilizer damps a slow, jittery sample', () {
     final processor = PenInputProcessor(
-      const PenProfile(stabilizer: 0.5, smoothing: 0),
+      const PenProfile(stabilizer: 0.9, smoothing: 0),
     );
 
-    processor.begin(Offset.zero, 0.5);
-    final sample = processor.next(const Offset(100, 0), 0.5);
+    // 2 units over 8 ms: a hand tremor, not a stroke.
+    processor.begin(Offset.zero, 0.5, timestampMicros: 0);
+    final sample = processor.next(
+      const Offset(2, 0),
+      0.5,
+      timestampMicros: 8000,
+    );
 
-    expect(sample.point.dx, closeTo(50, 0.01));
+    expect(sample.point.dx, lessThan(2));
+    expect(sample.point.dx, greaterThan(0));
     expect(sample.point.dy, 0);
   });
 
-  test('adaptive smoothing increases damping on fast movement', () {
-    final processor = PenInputProcessor(
-      const PenProfile(stabilizer: 0, smoothing: 0.8),
-    );
+  test('a fast stroke tracks the nib more closely than a slow one', () {
+    double followedFraction({required double distance, required int micros}) {
+      final processor = PenInputProcessor(
+        const PenProfile(stabilizer: 0.9, smoothing: 0),
+      );
+      processor.begin(Offset.zero, 0.5, timestampMicros: 0);
+      final sample = processor.next(
+        Offset(distance, 0),
+        0.5,
+        timestampMicros: micros,
+      );
+      return sample.point.dx / distance;
+    }
 
-    processor.begin(Offset.zero, 0.5);
-    final sample = processor.next(const Offset(240, 0), 0.5);
+    // Same elapsed time, very different speeds. Jitter lives in slow strokes,
+    // so those are filtered hardest; a fast stroke must stay on the nib.
+    final double slow = followedFraction(distance: 2, micros: 8000);
+    final double fast = followedFraction(distance: 200, micros: 8000);
 
-    expect(sample.point.dx, lessThan(240));
-    expect(sample.point.dx, greaterThan(0));
+    expect(fast, greaterThan(slow));
+  });
+
+  test('lag does not depend on the pen report rate', () {
+    // The same 120-unit sweep over 48 ms, delivered as 4 samples and as 12.
+    // Flutter emits every historical MotionEvent as its own move event, so a
+    // per-sample filter weight would make a fast writer's ink lag differently
+    // from a slow one's.
+    Offset sweep({required int steps}) {
+      final processor = PenInputProcessor(
+        const PenProfile(stabilizer: 0.6, smoothing: 0),
+      );
+      processor.begin(Offset.zero, 0.5, timestampMicros: 0);
+      Offset last = Offset.zero;
+      for (int i = 1; i <= steps; i++) {
+        last = processor
+            .next(
+              Offset(120 * i / steps, 0),
+              0.5,
+              timestampMicros: (48000 * i / steps).round(),
+            )
+            .point;
+      }
+      return last;
+    }
+
+    final Offset coarse = sweep(steps: 4);
+    final Offset dense = sweep(steps: 12);
+
+    expect(dense.dx, closeTo(coarse.dx, 6));
   });
 
   test('samples carry stylus metadata and cached velocity', () {
@@ -69,24 +113,5 @@ void main() {
     expect(second.tiltY, 0.5);
     expect(second.azimuth, 0.6);
     expect(second.velocity, greaterThan(0));
-  });
-
-  test('taper lowers start and end pressure only', () {
-    const points = <StrokePoint>[
-      StrokePoint(0, 0, 1, tiltX: 0.1, timestampMicros: 10),
-      StrokePoint(10, 0, 1, tiltX: 0.2, timestampMicros: 20),
-      StrokePoint(20, 0, 1, tiltX: 0.3, timestampMicros: 30),
-    ];
-
-    final tapered = PenInputProcessor.applyTaper(
-      points,
-      const PenProfile(startTaper: 0.5, endTaper: 0.75),
-    );
-
-    expect(tapered.first.pressure, 0.5);
-    expect(tapered[1].pressure, 1);
-    expect(tapered.last.pressure, 0.75);
-    expect(tapered.first.tiltX, 0.1);
-    expect(tapered.last.timestampMicros, 30);
   });
 }

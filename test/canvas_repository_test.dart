@@ -224,6 +224,40 @@ void main() {
     expect(await repo.loadBookmarks(canvasId), isEmpty);
   });
 
+  test(
+    'controller bulk-hydrates a large ordered store and lookup index',
+    () async {
+      final List<CanvasElement> fixtures = List<CanvasElement>.generate(
+        1000,
+        (int index) => TextElement(
+          id: 'bulk-$index',
+          zIndex: 1000 - index,
+          worldBounds: Rect.fromLTWH(index * 20, 0, 12, 12),
+          text: '$index',
+          color: 0xFFFFFFFF,
+          fontSize: 12,
+        ),
+        growable: false,
+      );
+      await repo.upsertElements(canvasId, fixtures);
+      final controller = CanvasController(repository: repo, canvasId: canvasId);
+      addTearDown(controller.dispose);
+
+      await controller.load();
+
+      expect(controller.elements, hasLength(fixtures.length));
+      expect(controller.elements.first.zIndex, 1);
+      expect(controller.elements.last.zIndex, 1000);
+      expect(controller.elementsById, hasLength(fixtures.length));
+      expect(controller.elementsById['bulk-999'], controller.elements.first);
+      expect(
+        controller.spatialIndex.query(const Rect.fromLTWH(0, 0, 13, 13)),
+        contains('bulk-0'),
+      );
+      expect(controller.canUndo, isFalse);
+    },
+  );
+
   group('ink element round-trip', () {
     test('save then load reconstructs the InkElement', () async {
       const stroke = Stroke(
@@ -563,6 +597,29 @@ void main() {
         expect(settings.toolWheelPresets[0], presets[0]);
         expect(settings.toolWheelPresets[1], presets[1]);
         expect(settings.toolWheelPresets[7].kind, ToolWheelSlotKind.pan);
+      },
+    );
+
+    test(
+      'continuous brush changes collapse to one final settings write',
+      () async {
+        final countingRepo = _CountingCanvasRepository(db);
+        final controller = CanvasController(
+          repository: countingRepo,
+          canvasId: canvasId,
+        );
+        addTearDown(controller.dispose);
+        await controller.load();
+
+        controller
+          ..setPenWidth(8)
+          ..setPenWidth(12)
+          ..setPenWidth(16)
+          ..commitToolSettings();
+        await controller.flush();
+
+        expect(countingRepo.toolSettingsWriteCount, 1);
+        expect((await repo.loadToolSettings(canvasId)).penWidth, 16);
       },
     );
   });
@@ -992,8 +1049,34 @@ class _FailOnceCanvasRepository extends CanvasRepository {
   Future<void> upsertElement(String canvasId, CanvasElement element) {
     if (_shouldFail) {
       _shouldFail = false;
-      return Future<void>.error(StateError('simulated write failure'));
+      // An Exception, not an Error: the controller deliberately treats only
+      // exceptional failures as retryable saves, so a programming mistake in
+      // the repository is not disguised as "could not save".
+      return Future<void>.error(
+        const _SimulatedWriteFailure('simulated write failure'),
+      );
     }
     return super.upsertElement(canvasId, element);
+  }
+}
+
+class _SimulatedWriteFailure implements Exception {
+  const _SimulatedWriteFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'SimulatedWriteFailure: $message';
+}
+
+class _CountingCanvasRepository extends CanvasRepository {
+  _CountingCanvasRepository(super.db);
+
+  int toolSettingsWriteCount = 0;
+
+  @override
+  Future<void> saveToolSettings(String canvasId, CanvasToolSettings settings) {
+    toolSettingsWriteCount += 1;
+    return super.saveToolSettings(canvasId, settings);
   }
 }

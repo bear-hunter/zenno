@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:perfect_freehand/perfect_freehand.dart' hide StrokePoint;
+import 'package:zenno/canvas/engine/stroke_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 
 /// Rendering strategy for converting a stroke centerline into a filled path.
@@ -9,7 +10,6 @@ enum StrokeRenderQuality { overview, normal, highZoom }
 
 const double _overviewScaleThreshold = 0.06;
 const double _highZoomScaleThreshold = 4.0;
-const int _maxHighZoomPoints = 4096;
 
 StrokeRenderQuality strokeRenderQualityForScale(double scale) {
   if (scale < _overviewScaleThreshold) {
@@ -39,23 +39,23 @@ int strokeScaleBucket(double scale) {
 ///
 /// [points] are world-space (or whatever coordinate space the caller wants the
 /// path produced in — see [size]). [size] is the base stroke diameter in that
-/// same coordinate space. [thinning] controls how strongly pressure modulates
-/// width, [smoothing] softens the outline edges, and [streamline] removes
-/// jitter from the input samples. Set [isComplete] once the stroke is finished
-/// so the tail is drawn fully rather than slightly behind the last sample. When
-/// [simulatePressure] is true the per-point pressure values are ignored and
-/// pressure is inferred from velocity instead.
+/// same coordinate space. [tool] selects the thinning, smoothing, cap and
+/// taper appropriate to that instrument — see [strokeStyleFor]. Set
+/// [isComplete] once the stroke is finished so the tail is drawn fully rather
+/// than slightly behind the last sample. When [simulatePressure] is true the
+/// per-point pressure values are ignored and pressure is inferred from
+/// velocity instead, which is what a device with no pressure sensor wants.
+///
+/// The outline is emitted as quadratic curves, which Skia tessellates against
+/// the device transform — so one path renders smoothly at every zoom level and
+/// the result is deliberately independent of the viewport.
 ///
 /// Empty input yields an empty [Path]. A single point yields a small round dot
 /// so an isolated tap still leaves a mark.
 Path buildStrokeOutline(
   List<StrokePoint> points, {
   required double size,
-  double viewportScale = 1,
-  StrokeRenderQuality quality = StrokeRenderQuality.normal,
-  double thinning = 0.6,
-  double smoothing = 0.5,
-  double streamline = 0.4,
+  StrokeToolKind tool = StrokeToolKind.pen,
   bool isComplete = false,
   bool simulatePressure = false,
 }) {
@@ -67,28 +67,35 @@ Path buildStrokeOutline(
     return _dotPath(points.first, size);
   }
 
-  final List<StrokePoint> renderPoints = switch (quality) {
-    StrokeRenderQuality.highZoom => _resampleForHighZoom(
-      points,
-      viewportScale: viewportScale,
-    ),
-    StrokeRenderQuality.overview || StrokeRenderQuality.normal => points,
-  };
-
   final inputPoints = <PointVector>[
-    for (final point in renderPoints)
-      PointVector(point.x, point.y, point.pressure),
+    for (final point in points) PointVector(point.x, point.y, point.pressure),
   ];
+
+  final StrokeToolStyle style = strokeStyleFor(tool);
+  final double taper = style.taperLengthFactor * size;
 
   final outline = getStroke(
     inputPoints,
     options: StrokeOptions(
       size: size,
-      thinning: thinning,
-      smoothing: smoothing,
-      streamline: streamline,
+      thinning: style.thinning,
+      smoothing: style.smoothing,
+      // PenInputProcessor already runs a time-constant filter over the
+      // samples; streamlining here would low-pass them a second time, with the
+      // two lags compounding.
+      streamline: 0,
       simulatePressure: simulatePressure,
       isComplete: isComplete,
+      start: StrokeEndOptions.start(
+        cap: style.cap,
+        taperEnabled: style.tapers,
+        customTaper: style.tapers ? taper : null,
+      ),
+      end: StrokeEndOptions.end(
+        cap: style.cap,
+        taperEnabled: style.tapers,
+        customTaper: style.tapers ? taper : null,
+      ),
     ),
   );
 
@@ -99,12 +106,34 @@ Path buildStrokeOutline(
   // A degenerate outline (everything collapsed to one location) still draws as
   // a dot rather than an invisible zero-area path.
   if (outline.length < 3) {
-    return _dotPath(renderPoints.first, size);
+    return _dotPath(points.first, size);
   }
 
-  final path = Path()..moveTo(outline.first.dx, outline.first.dy);
-  for (var i = 1; i < outline.length; i++) {
-    path.lineTo(outline[i].dx, outline[i].dy);
+  return _outlineToPath(outline);
+}
+
+/// Converts a closed outline polygon into a smooth path.
+///
+/// Each outline vertex becomes a quadratic control point and each edge midpoint
+/// an on-curve point — the construction `perfect_freehand` uses upstream. Skia
+/// tessellates curves against the *device* transform, so the result stays
+/// smooth at any zoom, where a `lineTo` polygon would show its facets and need
+/// resampling to hide them.
+Path _outlineToPath(List<Offset> outline) {
+  final Offset closingMidpoint = Offset(
+    (outline.last.dx + outline.first.dx) / 2,
+    (outline.last.dy + outline.first.dy) / 2,
+  );
+  final path = Path()..moveTo(closingMidpoint.dx, closingMidpoint.dy);
+  for (var i = 0; i < outline.length; i++) {
+    final Offset current = outline[i];
+    final Offset next = outline[(i + 1) % outline.length];
+    path.quadraticBezierTo(
+      current.dx,
+      current.dy,
+      (current.dx + next.dx) / 2,
+      (current.dy + next.dy) / 2,
+    );
   }
   return path..close();
 }
@@ -155,97 +184,6 @@ bool isValidFillBoundary(List<StrokePoint> points) {
   }
   return false;
 }
-
-List<StrokePoint> _resampleForHighZoom(
-  List<StrokePoint> points, {
-  required double viewportScale,
-}) {
-  if (points.length < 3 || points.length >= _maxHighZoomPoints) {
-    return points;
-  }
-  final double targetScreenSegment = viewportScale >= 16 ? 4.0 : 6.0;
-  final List<StrokePoint> resampled = <StrokePoint>[];
-  final int lastSegment = points.length - 2;
-  for (var i = 0; i <= lastSegment; i += 1) {
-    final StrokePoint p0 = points[(i - 1).clamp(0, points.length - 1).toInt()];
-    final StrokePoint p1 = points[i];
-    final StrokePoint p2 = points[i + 1];
-    final StrokePoint p3 = points[(i + 2).clamp(0, points.length - 1).toInt()];
-    if (resampled.isEmpty) {
-      resampled.add(p1);
-    }
-
-    final double screenDistance =
-        (p2.offset - p1.offset).distance * math.max(1, viewportScale);
-    final int wantedSteps = (screenDistance / targetScreenSegment)
-        .ceil()
-        .clamp(1, 24)
-        .toInt();
-    final int remainingSegments = lastSegment - i + 1;
-    final int remainingSlots = _maxHighZoomPoints - resampled.length - 1;
-    final int allowedSteps = remainingSlots <= 0
-        ? 1
-        : math.max(1, remainingSlots ~/ remainingSegments);
-    final int steps = math.min(wantedSteps, allowedSteps);
-
-    for (var j = 1; j <= steps; j += 1) {
-      final double t = j / steps;
-      resampled.add(_interpolateStrokePoint(p0, p1, p2, p3, t));
-    }
-  }
-  return resampled;
-}
-
-StrokePoint _interpolateStrokePoint(
-  StrokePoint p0,
-  StrokePoint p1,
-  StrokePoint p2,
-  StrokePoint p3,
-  double t,
-) {
-  // Catmull-Rom may overshoot at direction changes, so keep each inserted
-  // centerline point inside the segment actually reported by the pen.
-  final double x = _catmullRom(
-    p0.x,
-    p1.x,
-    p2.x,
-    p3.x,
-    t,
-  ).clamp(math.min(p1.x, p2.x), math.max(p1.x, p2.x));
-  final double y = _catmullRom(
-    p0.y,
-    p1.y,
-    p2.y,
-    p3.y,
-    t,
-  ).clamp(math.min(p1.y, p2.y), math.max(p1.y, p2.y));
-  return StrokePoint(
-    x,
-    y,
-    _lerpDouble(p1.pressure, p2.pressure, t),
-    tiltX: _lerpDouble(p1.tiltX, p2.tiltX, t),
-    tiltY: _lerpDouble(p1.tiltY, p2.tiltY, t),
-    azimuth: _lerpDouble(p1.azimuth, p2.azimuth, t),
-    timestampMicros: _lerpDouble(
-      p1.timestampMicros.toDouble(),
-      p2.timestampMicros.toDouble(),
-      t,
-    ).round(),
-    velocity: _lerpDouble(p1.velocity, p2.velocity, t),
-  );
-}
-
-double _catmullRom(double p0, double p1, double p2, double p3, double t) {
-  final double t2 = t * t;
-  final double t3 = t2 * t;
-  return 0.5 *
-      ((2 * p1) +
-          (-p0 + p2) * t +
-          (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
-          (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
-}
-
-double _lerpDouble(double a, double b, double t) => a + (b - a) * t;
 
 /// A small filled circle marking an isolated single-point stroke.
 ///

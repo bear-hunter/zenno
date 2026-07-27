@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
+import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
+import 'package:zenno/canvas/model/viewport_state.dart';
 
 void main() {
   test('default wheel exposes the requested eight direct favorites', () {
@@ -47,6 +49,44 @@ void main() {
     expect(controller.penOpacity, closeTo(0.4, 1 / 255));
     expect(controller.penColor & 0x00FFFFFF, 0x00123456);
     expect(controller.penProfile.smoothing, 0.8);
+  });
+
+  test('Adaptive pen is remembered independently by each brush preset', () {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+
+    expect(controller.adaptivePenEnabled, isTrue);
+    controller.setAdaptivePenEnabled(enabled: false);
+    expect(controller.adaptivePenEnabled, isFalse);
+
+    controller.selectToolWheelPreset(1);
+    expect(controller.adaptivePenEnabled, isTrue);
+
+    controller.selectToolWheelPreset(0);
+    expect(controller.adaptivePenEnabled, isFalse);
+  });
+
+  test('changing Adaptive pen never rewrites existing stroke width', () {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    controller
+      ..setPenWidth(10)
+      ..setViewport(const ViewportState(translation: Offset.zero, scale: 2))
+      ..beginStroke(const Offset(0, 0), 0.5)
+      ..appendToStroke(const Offset(20, 20), 0.5)
+      ..endStroke();
+    final double committedWidth =
+        (controller.elements.single as InkElement).stroke.width;
+
+    controller
+      ..setAdaptivePenEnabled(enabled: false)
+      ..setViewport(const ViewportState(translation: Offset.zero, scale: 4));
+
+    expect(
+      (controller.elements.single as InkElement).stroke.width,
+      committedWidth,
+    );
+    expect(committedWidth, 5);
   });
 
   test('a favorite can be replaced with a duplicate brush or utility', () {

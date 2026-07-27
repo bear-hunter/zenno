@@ -1037,6 +1037,58 @@ void main() {
     expect(controller.activeTool, CanvasTool.pen);
   });
 
+  testWidgets('side-button press converts an active pen stroke into an arrow', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    const int pointer = 41;
+    const Offset start = Offset(60, 80);
+    const Offset beforeButton = Offset(110, 105);
+    const Offset buttonPress = Offset(150, 125);
+    const Offset end = Offset(220, 150);
+    final Offset canvasOrigin = tester.getTopLeft(find.byType(CanvasView));
+    final TestGesture stylus = await tester.createGesture(
+      pointer: pointer,
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(canvasOrigin + start);
+    await stylus.moveTo(canvasOrigin + beforeButton);
+    expect(controller.liveStroke, isNotNull);
+
+    await stylus.updateWithCustomEvent(
+      PointerMoveEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.stylus,
+        position: canvasOrigin + buttonPress,
+        delta: buttonPress - beforeButton,
+        buttons: kPrimaryStylusButton,
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.liveStroke, isNull);
+    expect(controller.liveShapeElement?.shapeKind, ShapeKind.arrow.index);
+    expect(controller.liveShapeElement?.start, start);
+    expect(controller.liveShapeElement?.end, buttonPress);
+
+    await stylus.moveTo(canvasOrigin + end);
+    await stylus.up();
+    await tester.pump();
+
+    expect(controller.elements, hasLength(1));
+    final ShapeElement arrow = controller.elements.single as ShapeElement;
+    expect(arrow.shapeKind, ShapeKind.arrow.index);
+    expect(arrow.start, start);
+    expect(arrow.end, end);
+    expect(controller.activeTool, CanvasTool.pen);
+
+    controller.undo();
+    expect(controller.elements, isEmpty);
+  });
+
   testWidgets('stylus button tap can undo without drawing', (tester) async {
     final CanvasController controller = CanvasController();
     addTearDown(controller.dispose);
@@ -1633,5 +1685,158 @@ void main() {
     expect(quickToolsPositions, const <Offset>[Offset(180, 210)]);
     expect(controller.liveStroke, isNull);
     expect(controller.elementCount, 0);
+  });
+
+  testWidgets('drawing does not rebuild controller-listening chrome', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+
+    // Stands in for the toolbar, which subscribes to the tool-state channel.
+    var chromeBuilds = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 400,
+            height: 400,
+            child: Stack(
+              children: [
+                Positioned.fill(child: CanvasView(controller: controller)),
+                ListenableBuilder(
+                  listenable: controller.toolStateListenable,
+                  builder: (context, _) {
+                    chromeBuilds += 1;
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(40, 40)));
+    await tester.pump();
+
+    // Pen-down is a genuine state change and may rebuild once. Every sample
+    // after it must not: that is what used to rebuild the whole toolbar at
+    // pen report rate.
+    final int buildsAfterPenDown = chromeBuilds;
+    for (int i = 1; i <= 40; i++) {
+      await stylus.moveTo(_canvasGlobal(tester, Offset(40.0 + i * 4, 40)));
+      await tester.pump();
+    }
+
+    expect(
+      chromeBuilds - buildsAfterPenDown,
+      0,
+      reason: 'a pen sample must not rebuild anything outside the live layer',
+    );
+
+    await stylus.up();
+    await tester.pump();
+    expect(controller.elementCount, 1);
+  });
+
+  testWidgets('a committed stroke ends exactly where the pen lifted', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    // A short flick: the last move lands close enough to the previous sample
+    // that the thinning filter would otherwise drop it, leaving the committed
+    // stroke visibly short of the lift point.
+    const Offset liftLocal = Offset(163, 41);
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(40, 40)));
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(160, 40)));
+    await stylus.moveTo(_canvasGlobal(tester, liftLocal));
+    await stylus.up();
+    await tester.pump();
+
+    final InkElement ink =
+        controller.elements.single as InkElement;
+    final Offset lastPoint = ink.stroke.points.last.offset;
+    expect(lastPoint.dx, closeTo(liftLocal.dx, 0.001));
+    expect(lastPoint.dy, closeTo(liftLocal.dy, 0.001));
+  });
+
+  testWidgets('the pen-up sample keeps the previous pressure', (tester) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(40, 40)));
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(160, 90)));
+    await stylus.up();
+    await tester.pump();
+
+    final InkElement ink =
+        controller.elements.single as InkElement;
+    // A PointerUpEvent reports zero pressure; carrying it through would
+    // collapse the stroke's final point to zero width.
+    expect(ink.stroke.points.last.pressure, greaterThan(0));
+  });
+
+  testWidgets('a palm landing just before the pen does not pan', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    final ViewportState before = controller.viewport;
+
+    // The S Pen hovers for a few centimetres before contact, and the writing
+    // hand usually lands first.
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.addPointer(
+      location: _canvasGlobal(tester, const Offset(200, 200)),
+    );
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(204, 202)));
+    await tester.pump();
+
+    final TestGesture palm = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await palm.down(_canvasGlobal(tester, const Offset(120, 300)));
+    await palm.moveTo(_canvasGlobal(tester, const Offset(160, 340)));
+    await palm.up();
+    await tester.pump();
+
+    expect(controller.viewport, before);
+  });
+
+  testWidgets('a finger pans normally when no stylus is around', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    final ViewportState before = controller.viewport;
+
+    final TestGesture touch = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await touch.down(_canvasGlobal(tester, const Offset(120, 300)));
+    await touch.moveTo(_canvasGlobal(tester, const Offset(180, 340)));
+    await touch.up();
+    await tester.pump();
+
+    expect(controller.viewport, isNot(before));
   });
 }

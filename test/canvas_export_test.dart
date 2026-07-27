@@ -410,6 +410,67 @@ void main() {
   });
 
   test(
+    'raster export replaces an undersized cache from durable media',
+    () async {
+      final Directory temp = await Directory.systemTemp.createTemp(
+        'zenno_export_source_test_',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final Image source = await _solidImage(const Color(0xFF00FF00));
+      final ByteData data = (await source.toByteData(
+        format: ImageByteFormat.png,
+      ))!;
+      source.dispose();
+      final File file = File('${temp.path}/green.png');
+      await file.writeAsBytes(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+      final Image lowResolutionCache = await _solidImage(
+        const Color(0xFFFF0000),
+      );
+      final CanvasController controller = CanvasController()
+        ..setViewportSize(const Size(20, 20))
+        ..addElementToStore(
+          ImageElement(
+            id: 'image',
+            zIndex: 0,
+            worldBounds: const Rect.fromLTWH(0, 0, 200, 200),
+            sourceFilePath: file.path,
+            intrinsicSize: const Size(4, 4),
+            raster: lowResolutionCache,
+            rasterScaleBucket: 0,
+          ),
+        );
+      addTearDown(controller.dispose);
+
+      final Uint8List bytes = await CanvasExportService.renderToBytes(
+        controller: controller,
+        options: const CanvasExportOptions(
+          scale: 4,
+          padding: 0,
+          transparentBackground: true,
+          includeGrid: false,
+        ),
+      );
+      final Codec codec = await instantiateImageCodec(bytes);
+      final FrameInfo frame = await codec.getNextFrame();
+      codec.dispose();
+      final ByteData rgba = (await frame.image.toByteData(
+        format: ImageByteFormat.rawRgba,
+      ))!;
+      final int center =
+          ((frame.image.height ~/ 2) * frame.image.width +
+              frame.image.width ~/ 2) *
+          4;
+
+      expect(rgba.getUint8(center), lessThan(15));
+      expect(rgba.getUint8(center + 1), greaterThan(240));
+      expect(rgba.getUint8(center + 2), lessThan(15));
+      frame.image.dispose();
+    },
+  );
+
+  test(
     'raster export fails clearly instead of painting media placeholders',
     () {
       final controller = CanvasController()

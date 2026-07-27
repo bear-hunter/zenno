@@ -25,6 +25,8 @@ class CanvasOverlayPainter extends CustomPainter {
     this.eraserRadius = 0,
     this.lassoPath,
     this.selectionBounds,
+    this.accentColor = const Color(0xFFD8946C),
+    this.paperIsLight = false,
     this.hasClipboardContent = false,
   });
 
@@ -66,8 +68,21 @@ class CanvasOverlayPainter extends CustomPainter {
   /// Whether the selection-overlay Paste action is currently available.
   final bool hasClipboardContent;
 
-  /// Accent colour for selection and lasso chrome (gold, matching the theme).
-  static const Color _accent = Color(0xFFE8B84B);
+  /// Accent for selection and lasso chrome, supplied by the active theme.
+  final Color accentColor;
+
+  /// Whether the canvas paper underneath is light.
+  ///
+  /// Hover and eraser chrome used to be hardcoded white-on-dark, so on a white
+  /// or cream paper preset the pen's hover ring and the eraser's footprint
+  /// were invisible. Their contrast colour is now chosen from the paper.
+  final bool paperIsLight;
+
+  Color get _accent => accentColor;
+
+  /// A colour that reads against the current paper.
+  Color get _onPaper =>
+      paperIsLight ? const Color(0xFF1A1A1A) : const Color(0xFFFFFFFF);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -101,7 +116,7 @@ class CanvasOverlayPainter extends CustomPainter {
       final Paint paint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..color = const Color(0x66FFFFFF);
+        ..color = _onPaper.withValues(alpha: 0.4);
       canvas.drawCircle(center, radius, paint);
     }
   }
@@ -146,14 +161,18 @@ class CanvasOverlayPainter extends CustomPainter {
   /// Strokes one eraser footprint circle: a soft fill plus a crisp ring.
   void _strokeEraserCircle(Canvas canvas, Offset center, double radius) {
     canvas
-      ..drawCircle(center, radius, Paint()..color = const Color(0x14FFFFFF))
+      ..drawCircle(
+        center,
+        radius,
+        Paint()..color = _onPaper.withValues(alpha: 0.08),
+      )
       ..drawCircle(
         center,
         radius,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5
-          ..color = const Color(0xCCFFFFFF),
+          ..color = _onPaper.withValues(alpha: 0.8),
       );
   }
 
@@ -225,7 +244,8 @@ class CanvasOverlayPainter extends CustomPainter {
       connectorPaint,
     );
 
-    final Paint handleFill = Paint()..color = const Color(0xFF181820);
+    final Paint handleFill = Paint()
+      ..color = paperIsLight ? const Color(0xFFFFFFFF) : const Color(0xFF181820);
     final Paint handleBorder = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
@@ -399,6 +419,8 @@ class CanvasOverlayPainter extends CustomPainter {
       !identical(oldDelegate.eraserPath, eraserPath) ||
       oldDelegate.eraserRadius != eraserRadius ||
       !identical(oldDelegate.lassoPath, lassoPath) ||
+      oldDelegate.accentColor != accentColor ||
+      oldDelegate.paperIsLight != paperIsLight ||
       oldDelegate.selectionBounds != selectionBounds ||
       oldDelegate.hasClipboardContent != hasClipboardContent;
 }

@@ -53,7 +53,7 @@ class ZennoDatabase extends _$ZennoDatabase {
     : super(executor ?? openZennoConnection());
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   /// Persist `DateTime` columns as ISO-8601 TEXT (sortable, debuggable, and
   /// export-friendly) rather than Unix timestamp integers.
@@ -152,6 +152,9 @@ class ZennoDatabase extends _$ZennoDatabase {
       if (from < 14) {
         await m.addColumn(canvases, canvases.paperTexture);
         await m.addColumn(canvases, canvases.paperTextureOpacity);
+      }
+      if (from < 15) {
+        await m.createIndex(idxFocusSessionRitualChecksSessionId);
       }
     },
     beforeOpen: (details) async {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/board_tables.dart';
 import 'package:zenno/features/goal_cycle/data/goal_repository.dart';
+import 'package:zenno/features/goal_cycle/data/reflection_repository.dart';
 import 'package:zenno/features/revision/data/revision_repository.dart';
+import 'package:zenno/shared/kanban/kanban_models.dart';
 
 void main() {
   for (final boardType in BoardType.values) {
@@ -92,4 +96,75 @@ void main() {
       expect(card.title, 'Original');
     },
   );
+
+  test(
+    'reflection aggregate stays exact across create edit move and delete',
+    () async {
+      final db = ZennoDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final goalRepository = GoalRepository(db);
+      final reflectionRepository = ReflectionRepository(db);
+      final board =
+          await (db.select(
+                db.boards,
+              )..where((row) => row.boardType.equalsValue(BoardType.goalCycle)))
+              .getSingle();
+      final columns =
+          await (db.select(db.boardColumns)
+                ..where((row) => row.boardId.equals(board.id))
+                ..orderBy([(row) => OrderingTerm.asc(row.position)]))
+              .get();
+      final template =
+          (await reflectionRepository.watchTemplates().first).first;
+      final boards = StreamIterator(goalRepository.watchGoalBoard());
+      addTearDown(boards.cancel);
+      expect(await boards.moveNext(), isTrue);
+
+      final cardId = await goalRepository.addCard(
+        columnId: columns.first.id,
+        title: 'Aggregate card',
+        position: 0,
+      );
+      expect(await boards.moveNext(), isTrue);
+      expect(_reflectionCount(boards.current, cardId), 0);
+
+      final entryId = await reflectionRepository.addEntry(
+        cardId: cardId,
+        template: template,
+        answers: const {'prompt': 'First'},
+      );
+      expect(await boards.moveNext(), isTrue);
+      expect(_reflectionCount(boards.current, cardId), 1);
+
+      await reflectionRepository.updateEntry(
+        entryId,
+        answers: const {'prompt': 'Edited'},
+      );
+      expect(await boards.moveNext(), isTrue);
+      expect(_reflectionCount(boards.current, cardId), 1);
+
+      await goalRepository.moveCard(
+        cardId: cardId,
+        toColumnId: columns[1].id,
+        newPosition: 0,
+      );
+      expect(await boards.moveNext(), isTrue);
+      expect(_reflectionCount(boards.current, cardId), 1);
+      expect(_card(boards.current, cardId).columnId, columns[1].id);
+
+      await reflectionRepository.deleteEntry(entryId);
+      expect(await boards.moveNext(), isTrue);
+      expect(_reflectionCount(boards.current, cardId), 0);
+    },
+  );
+}
+
+KanbanCardData _card(KanbanBoardData board, String cardId) {
+  return board.columns
+      .expand((column) => column.cards)
+      .singleWhere((card) => card.id == cardId);
+}
+
+int _reflectionCount(KanbanBoardData board, String cardId) {
+  return (_card(board, cardId).payload! as GoalCardExtra).reflectionCount;
 }

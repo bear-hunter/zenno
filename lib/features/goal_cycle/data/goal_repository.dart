@@ -55,21 +55,26 @@ class GoalRepository {
   /// Watches the seeded `goalCycle` board as a [KanbanBoardData].
   ///
   /// A single joined query over `boards` → `board_columns` → `board_cards` →
-  /// `goal_card_details` → `reflection_entries` backs the stream, so it
+  /// `goal_card_details` → an aggregate reflection count backs the stream, so it
   /// re-emits on any change to any of those tables (including adding or
   /// deleting a reflection — card badges stay live). Columns and cards are
   /// returned sorted by `position`; each card's `payload` is a [GoalCardExtra].
-  ///
-  /// The join to `reflection_entries` fans out one row per card × reflection,
-  /// so reflection ids are collected into a per-card [Set] and counted —
-  /// double-counting is impossible.
   ///
   /// While the board itself has no cards the join still yields its columns
   /// (an outer join from columns to cards). If — defensively — no goal-cycle
   /// board has been seeded, the stream emits an empty board.
   Stream<KanbanBoardData> watchGoalBoard() {
+    final reflectionCount = _db.reflectionEntries.id.count();
+    final reflectionCounts = Subquery(
+      _db.selectOnly(_db.reflectionEntries)
+        ..addColumns([_db.reflectionEntries.cardId, reflectionCount])
+        ..groupBy([_db.reflectionEntries.cardId]),
+      'reflection_counts',
+    );
+    final readableReflectionCount = reflectionCounts.ref(reflectionCount);
+
     // boards ⟕ board_columns ⟕ board_cards ⟕ goal_card_details
-    //        ⟕ reflection_entries.
+    //        ⟕ grouped reflection counts.
     // Outer joins so a column with no cards, a card with no detail row, and a
     // card with no reflections all still surface.
     final query =
@@ -87,26 +92,33 @@ class GoalRepository {
               _db.goalCardDetails.cardId.equalsExp(_db.boardCards.id),
             ),
             leftOuterJoin(
-              _db.reflectionEntries,
-              _db.reflectionEntries.cardId.equalsExp(_db.boardCards.id),
+              reflectionCounts,
+              reflectionCounts
+                  .ref(_db.reflectionEntries.cardId)
+                  .equalsExp(_db.boardCards.id),
             ),
           ])
           ..where(_db.boards.boardType.equalsValue(BoardType.goalCycle))
+          ..addColumns([readableReflectionCount])
           ..orderBy([
             OrderingTerm.asc(_db.boardColumns.position),
             OrderingTerm.asc(_db.boardCards.position),
           ]);
 
-    return query.watch().map(_rowsToBoard);
+    return query.watch().map(
+      (rows) => _rowsToBoard(rows, readableReflectionCount),
+    );
   }
 
   /// Assembles the flat joined [rows] into a single [KanbanBoardData].
   ///
-  /// Because the joins fan out, the board, each column and each card appear on
-  /// multiple rows; columns and cards are de-duplicated by id while preserving
-  /// first-seen (position-sorted) order. Reflection ids are collected per card
-  /// into a [Set] so the resulting [GoalCardExtra.reflectionCount] is exact.
-  KanbanBoardData _rowsToBoard(List<TypedResult> rows) {
+  /// Columns repeat once per card, so they are de-duplicated by id while
+  /// preserving first-seen (position-sorted) order. Each card appears once
+  /// with its aggregate [reflectionCount].
+  KanbanBoardData _rowsToBoard(
+    List<TypedResult> rows,
+    Expression<int> reflectionCount,
+  ) {
     if (rows.isEmpty) {
       return const KanbanBoardData(id: '', name: 'Goal Cycle', columns: []);
     }
@@ -118,9 +130,9 @@ class GoalRepository {
     final columnById = <String, BoardColumn>{};
     final cardsByColumn = <String, List<BoardCard>>{};
 
-    // Card id → its detail row and the set of distinct reflection ids seen.
+    // Card id → its detail row and aggregate reflection count.
     final detailByCard = <String, GoalCardDetail?>{};
-    final reflectionIdsByCard = <String, Set<String>>{};
+    final reflectionCountByCard = <String, int>{};
 
     for (final row in rows) {
       final column = row.readTableOrNull(_db.boardColumns);
@@ -135,15 +147,10 @@ class GoalRepository {
       final card = row.readTableOrNull(_db.boardCards);
       if (card == null) continue; // Column with no cards.
 
-      if (!reflectionIdsByCard.containsKey(card.id)) {
+      if (!reflectionCountByCard.containsKey(card.id)) {
         cardsByColumn[column.id]!.add(card);
         detailByCard[card.id] = row.readTableOrNull(_db.goalCardDetails);
-        reflectionIdsByCard[card.id] = <String>{};
-      }
-
-      final reflection = row.readTableOrNull(_db.reflectionEntries);
-      if (reflection != null) {
-        reflectionIdsByCard[card.id]!.add(reflection.id);
+        reflectionCountByCard[card.id] = row.read(reflectionCount) ?? 0;
       }
     }
 
@@ -161,7 +168,7 @@ class GoalRepository {
                 _toCardData(
                   card,
                   detailByCard[card.id],
-                  reflectionIdsByCard[card.id]!.length,
+                  reflectionCountByCard[card.id]!,
                 ),
             ],
           ),

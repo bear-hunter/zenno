@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/io/canvas_export.dart';
@@ -106,6 +107,9 @@ class CanvasToolbar extends StatefulWidget {
   static const String toolButtonKeyPrefix = 'canvas-tool';
   static const String widthButtonKeyPrefix = 'canvas-width';
   static const String penWidthModeButtonKeyPrefix = 'canvas-pen-width-mode';
+  static const Key adaptivePenToggleKey = ValueKey<String>(
+    'canvas-adaptive-pen-toggle',
+  );
   static const String swatchButtonKeyPrefix = 'canvas-swatch';
   static const String palettePresetButtonKeyPrefix = 'canvas-palette-preset';
   static const String paperKindButtonKeyPrefix = 'canvas-paper-kind';
@@ -123,6 +127,10 @@ class CanvasToolbar extends StatefulWidget {
   static const Key canvasSettingsDockKey = ValueKey<String>(
     'canvas-settings-dock',
   );
+
+  /// Undo/redo beside the wheel, present on every wheel page.
+  static const Key undoSideButtonKey = ValueKey<String>('canvas-undo-side');
+  static const Key redoSideButtonKey = ValueKey<String>('canvas-redo-side');
   static const Key penDockKey = ValueKey<String>('canvas-pen-dock');
   static const Key topNavigationDockKey = ValueKey<String>(
     'canvas-top-navigation-dock',
@@ -193,6 +201,7 @@ class CanvasToolbarState extends State<CanvasToolbar> {
   }
 
   void _handleCenterTap() {
+    HapticFeedback.selectionClick();
     setState(() {
       _wheelPage = switch (_wheelPage) {
         _WheelPage.tools =>
@@ -300,8 +309,6 @@ class _CanvasToolbarContent extends StatelessWidget {
 
   static const String toolButtonKeyPrefix = CanvasToolbar.toolButtonKeyPrefix;
   static const String widthButtonKeyPrefix = CanvasToolbar.widthButtonKeyPrefix;
-  static const String penWidthModeButtonKeyPrefix =
-      CanvasToolbar.penWidthModeButtonKeyPrefix;
   static const String swatchButtonKeyPrefix =
       CanvasToolbar.swatchButtonKeyPrefix;
   static const Key importImageKey = CanvasToolbar.importImageKey;
@@ -315,18 +322,25 @@ class _CanvasToolbarContent extends StatelessWidget {
   static const List<int> _defaultSwatches = CanvasToolbar._defaultSwatches;
   static const double _rotationStep = 0.2617993877991494; // 15 degrees.
   static const List<double> _widths = <double>[1, 2, 4, 8, 12, 20];
-  static const double _wheelLeft = 8;
+  /// Smallest top offset the cluster may occupy, clearing the top chrome.
   static const double _wheelTop = 60;
+
+  /// Where the cluster sits until the user drags it, in normalized space.
+  ///
+  /// Lower-right: a right-handed pen user in landscape would otherwise have to
+  /// cross the whole writing surface to reach it. The position is persisted
+  /// per user, so this only picks the starting corner.
+  static const Offset _defaultWheelPosition = Offset(1, 1);
   static const double _clusterMargin = 8;
   static const double _paletteGap = 8;
-  static const double _paletteHeight = 32;
+  static const double _paletteHeight = AppSpacing.touchTarget;
   static const double _sideButtonGap = 4;
-  static const double _sideButtonWidth = 34;
+  static const double _sideButtonWidth = AppSpacing.touchTarget;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: controller.toolStateListenable,
       builder: (context, _) {
         return SafeArea(
           child: LayoutBuilder(
@@ -366,20 +380,9 @@ class _CanvasToolbarContent extends StatelessWidget {
                   ? _wheelTop
                   : _clusterMargin;
               final double maxTop = math.max(minTop, availableMaxTop);
-              final double defaultLeft = _wheelLeft
-                  .clamp(_clusterMargin, maxLeft)
-                  .toDouble();
-              final double defaultTop = _wheelTop
-                  .clamp(minTop, maxTop)
-                  .toDouble();
               final double horizontalRange = maxLeft - _clusterMargin;
               final double verticalRange = maxTop - minTop;
-              final Offset defaultPosition = Offset(
-                horizontalRange == 0
-                    ? 0
-                    : (defaultLeft - _clusterMargin) / horizontalRange,
-                verticalRange == 0 ? 0 : (defaultTop - minTop) / verticalRange,
-              );
+              const Offset defaultPosition = _defaultWheelPosition;
               final Offset normalizedPosition = toolWheelPosition == null
                   ? defaultPosition
                   : Offset(
@@ -597,28 +600,38 @@ class _CanvasToolbarContent extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (_effectiveWheelPage == _WheelPage.tools)
-                          Positioned(
-                            top: 22,
-                            left: wheelSize + _sideButtonGap,
-                            child: Column(
-                              children: <Widget>[
-                                _WheelSideButton(
-                                  icon: Icons.undo,
-                                  tooltip: 'Undo',
-                                  onPressed: controller.canUndo
-                                      ? controller.undo
-                                      : null,
-                                ),
-                                const SizedBox(height: 6),
-                                _WheelSideButton(
-                                  icon: Icons.redo,
-                                  tooltip: 'Redo',
-                                  onPressed: controller.canRedo
-                                      ? controller.redo
-                                      : null,
-                                ),
-                                const SizedBox(height: 6),
+                        // Undo is never modal: it stays reachable whichever
+                        // wheel page is open.
+                        Positioned(
+                          top: 22,
+                          left: wheelSize + _sideButtonGap,
+                          child: Column(
+                            children: <Widget>[
+                              _WheelSideButton(
+                                key: CanvasToolbar.undoSideButtonKey,
+                                icon: Icons.undo,
+                                tooltip: 'Undo',
+                                onPressed: controller.canUndo
+                                    ? () {
+                                        HapticFeedback.selectionClick();
+                                        controller.undo();
+                                      }
+                                    : null,
+                              ),
+                              const SizedBox(height: 6),
+                              _WheelSideButton(
+                                key: CanvasToolbar.redoSideButtonKey,
+                                icon: Icons.redo,
+                                tooltip: 'Redo',
+                                onPressed: controller.canRedo
+                                    ? () {
+                                        HapticFeedback.selectionClick();
+                                        controller.redo();
+                                      }
+                                    : null,
+                              ),
+                              const SizedBox(height: 6),
+                              if (_effectiveWheelPage == _WheelPage.tools)
                                 _WheelSideButton(
                                   key: canvasSettingsDockKey,
                                   icon: Icons.more_horiz,
@@ -626,9 +639,9 @@ class _CanvasToolbarContent extends StatelessWidget {
                                   onPressed: () =>
                                       onWheelPageChanged(_WheelPage.more),
                                 ),
-                              ],
-                            ),
+                            ],
                           ),
+                        ),
                         Positioned(
                           key: CanvasToolbar.paletteDockKey,
                           top: wheelSize + _paletteGap,
@@ -640,7 +653,10 @@ class _CanvasToolbarContent extends StatelessWidget {
                                 ? _defaultSwatches
                                 : palette,
                             selectedColor: controller.penColor,
-                            onSelect: controller.setPenRgbColor,
+                            onSelect: (color) {
+                              HapticFeedback.selectionClick();
+                              controller.setPenRgbColor(color);
+                            },
                           ),
                         ),
                       ],
@@ -898,6 +914,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                 _showToolSettings(context);
               }
             } else {
+              HapticFeedback.selectionClick();
               controller.selectToolWheelPreset(index);
             }
           },
@@ -922,6 +939,7 @@ class _CanvasToolbarContent extends StatelessWidget {
           onDragDelta: (delta) => controller.setPenWidth(
             (controller.penWidth + delta / 8).clamp(0.5, 96).toDouble(),
           ),
+          onDragEnd: controller.commitToolSettings,
         ),
       _WheelPropertyAction(
         icon: Icons.opacity_outlined,
@@ -932,6 +950,7 @@ class _CanvasToolbarContent extends StatelessWidget {
         onDragDelta: (delta) => controller.setPenOpacity(
           (controller.penOpacity + delta / 140).clamp(0, 1).toDouble(),
         ),
+        onDragEnd: controller.commitToolSettings,
       ),
       _WheelPropertyAction(
         icon: Icons.gesture,
@@ -944,7 +963,18 @@ class _CanvasToolbarContent extends StatelessWidget {
               .clamp(0, 1)
               .toDouble(),
         ),
+        onDragEnd: controller.commitToolSettings,
       ),
+      if (controller.activeToolWheelPreset.kind != ToolWheelSlotKind.fill)
+        _WheelPropertyAction(
+          icon: Icons.line_weight,
+          label: 'Adaptive pen',
+          valueLabel: controller.adaptivePenEnabled ? 'On' : 'Off',
+          angle: math.pi / 2,
+          onTap: () => controller.setAdaptivePenEnabled(
+            enabled: !controller.adaptivePenEnabled,
+          ),
+        ),
     ];
   }
 
@@ -1284,15 +1314,12 @@ class _CanvasToolbarContent extends StatelessWidget {
           onTap: () => _stepPenWidth(1),
         ),
         _WheelAction(
-          icon: Icons.aspect_ratio,
-          label: controller.penWidthMode == PenWidthMode.screen
-              ? 'Screen width'
-              : 'Canvas width',
-          selected: controller.penWidthMode == PenWidthMode.screen,
-          onTap: () => controller.setPenWidthMode(
-            controller.penWidthMode == PenWidthMode.screen
-                ? PenWidthMode.canvas
-                : PenWidthMode.screen,
+          icon: Icons.line_weight,
+          label: 'Adaptive pen',
+          valueLabel: controller.adaptivePenEnabled ? 'On' : 'Off',
+          selected: controller.adaptivePenEnabled,
+          onTap: () => controller.setAdaptivePenEnabled(
+            enabled: !controller.adaptivePenEnabled,
           ),
         ),
       ],
@@ -1314,7 +1341,10 @@ class _CanvasToolbarContent extends StatelessWidget {
             icon: Icons.circle_outlined,
             label: 'Eraser ${radius.round()}',
             selected: controller.eraserRadius.round() == radius.round(),
-            onTap: () => controller.setEraserRadius(radius),
+            onTap: () {
+              controller.setEraserRadius(radius);
+              controller.commitToolSettings();
+            },
           ),
       ],
       CanvasTool.lasso => <_WheelAction>[
@@ -1477,6 +1507,7 @@ class _CanvasToolbarContent extends StatelessWidget {
     }
     final next = (closest + direction).clamp(0, _widths.length - 1);
     controller.setPenWidth(_widths[next]);
+    controller.commitToolSettings();
   }
 
   Future<void> _showToolSettings(BuildContext context) {
@@ -1507,7 +1538,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(12),
                         child: ListenableBuilder(
-                          listenable: controller,
+                          listenable: controller.toolStateListenable,
                           builder: (context, _) => Wrap(
                             key: controller.activeTool == CanvasTool.pen
                                 ? penDockKey
@@ -1568,7 +1599,7 @@ class _CanvasToolbarContent extends StatelessWidget {
             enabled: !controller.pressureEnabled,
           ),
         ),
-        _widthModePicker(),
+        _adaptivePenToggle(),
       ],
       CanvasTool.eraser => <Widget>[
         const _ContextLabel(
@@ -1599,6 +1630,7 @@ class _CanvasToolbarContent extends StatelessWidget {
             divisions: 15,
             label: controller.eraserRadius.round().toString(),
             onChanged: controller.setEraserRadius,
+            onChangeEnd: (_) => controller.commitToolSettings(),
           ),
         ),
         _HudLabel(controller.eraserRadius.round().toString()),
@@ -1785,7 +1817,10 @@ class _CanvasToolbarContent extends StatelessWidget {
     return PopupMenuButton<double>(
       tooltip: 'Width ${controller.penWidth.toStringAsFixed(0)}',
       initialValue: controller.penWidth,
-      onSelected: controller.setPenWidth,
+      onSelected: (width) {
+        controller.setPenWidth(width);
+        controller.commitToolSettings();
+      },
       itemBuilder: (context) => <PopupMenuEntry<double>>[
         for (final double width in _widths)
           PopupMenuItem<double>(
@@ -1819,41 +1854,19 @@ class _CanvasToolbarContent extends StatelessWidget {
     );
   }
 
-  Widget _widthModePicker() {
-    final String label = controller.penWidthMode == PenWidthMode.screen
-        ? 'Screen'
-        : 'Canvas';
-    return PopupMenuButton<PenWidthMode>(
-      tooltip: 'Width behavior: $label',
-      initialValue: controller.penWidthMode,
-      onSelected: controller.setPenWidthMode,
-      itemBuilder: (context) => <PopupMenuEntry<PenWidthMode>>[
-        PopupMenuItem<PenWidthMode>(
-          key: ValueKey<String>(
-            '$penWidthModeButtonKeyPrefix-${PenWidthMode.screen}',
-          ),
-          value: PenWidthMode.screen,
-          child: const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.aspect_ratio),
-            title: Text('Screen width'),
-            subtitle: Text('Looks the same size while zooming'),
-          ),
-        ),
-        PopupMenuItem<PenWidthMode>(
-          key: ValueKey<String>(
-            '$penWidthModeButtonKeyPrefix-${PenWidthMode.canvas}',
-          ),
-          value: PenWidthMode.canvas,
-          child: const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.draw_outlined),
-            title: Text('Canvas width'),
-            subtitle: Text('Scales with the canvas'),
-          ),
-        ),
-      ],
-      child: _ToolbarValueButton(icon: Icons.straighten, label: label),
+  Widget _adaptivePenToggle() {
+    final bool enabled = controller.adaptivePenEnabled;
+    return Tooltip(
+      message: enabled
+          ? 'Adaptive pen is on: brush size stays visually constant while zooming'
+          : 'Adaptive pen is off: brush size scales with the canvas',
+      child: FilterChip(
+        key: CanvasToolbar.adaptivePenToggleKey,
+        avatar: const Icon(Icons.line_weight, size: 16),
+        label: const Text('Adaptive pen'),
+        selected: enabled,
+        onSelected: (value) => controller.setAdaptivePenEnabled(enabled: value),
+      ),
     );
   }
 
@@ -2342,7 +2355,7 @@ class _LayerDialog extends StatelessWidget {
       content: SizedBox(
         width: 420,
         child: ListenableBuilder(
-          listenable: controller,
+          listenable: controller.toolStateListenable,
           builder: (context, _) {
             final layers = controller.layers;
             return Column(
@@ -2681,7 +2694,8 @@ class _WheelPropertyAction {
     required this.valueLabel,
     required this.angle,
     required this.onTap,
-    required this.onDragDelta,
+    this.onDragDelta,
+    this.onDragEnd,
   });
 
   final IconData icon;
@@ -2689,7 +2703,8 @@ class _WheelPropertyAction {
   final String valueLabel;
   final double angle;
   final VoidCallback onTap;
-  final ValueChanged<double> onDragDelta;
+  final ValueChanged<double>? onDragDelta;
+  final VoidCallback? onDragEnd;
 }
 
 class _RadialWheel extends StatelessWidget {
@@ -2730,7 +2745,10 @@ class _RadialWheel extends StatelessWidget {
         );
         final Offset center = Offset(size / 2, size / 2);
         final double outerRadius = size / 2;
-        final double innerRadius = size * 58 / 176;
+        // The ring's thickness and the hub's diameter are deliberately
+        // independent: coupling them capped every wedge's radial hit area at
+        // ~36dp, well under the 48dp minimum.
+        final double innerRadius = size * 44 / 176;
         final double centerSize = size * 58 / 176;
         final double centerRadius = centerSize / 2;
         final int count = actions.length;
@@ -2738,8 +2756,20 @@ class _RadialWheel extends StatelessWidget {
         final double gap = math.min(0.045, sweep * 0.12);
         final double firstStart = -math.pi / 2 - sweep / 2;
         final double iconRadius = (outerRadius + innerRadius) / 2;
-        const double actionExtent = 40;
-        final double actionLabelSize = size >= 150 ? 7 : 6.2;
+        // Sized from the wedge's own angular width so the icon stack never
+        // reaches the gap between wedges — those gaps are transparent on
+        // purpose, so a stroke can be drawn straight through the wheel.
+        final double wedgeClearance = count == 0
+            ? size
+            : 2 * iconRadius * math.sin(sweep / 2) * 0.62;
+        final double actionExtent = math.min(size * 0.26, wedgeClearance);
+        // Everything inside a wedge is sized from its extent so the stack
+        // always fits; the ink dot is the first thing to give way.
+        final bool showSwatchDot = actionExtent >= 48;
+        final double actionIconSize = (actionExtent * 0.44).clamp(14.0, 22.0);
+        // Labels were 7px — decorative at a tablet's arm's length, which
+        // defeated the point of enlarging the wheel.
+        final double actionLabelSize = (actionExtent * 0.235).clamp(8.5, 11.5);
         final Color centerForeground = activeColor.computeLuminance() > 0.42
             ? Colors.black
             : Colors.white;
@@ -2791,7 +2821,7 @@ class _RadialWheel extends StatelessWidget {
                   left:
                       center.dx +
                       math.cos(-math.pi / 2 + index * sweep) * iconRadius -
-                      20,
+                      actionExtent / 2,
                   top:
                       center.dy +
                       math.sin(-math.pi / 2 + index * sweep) * iconRadius -
@@ -2817,31 +2847,63 @@ class _RadialWheel extends StatelessWidget {
                         onPanEnd: onDragEnd == null
                             ? null
                             : (_) => onDragEnd!(),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
+                        // The stack is sized from the wedge's clearance, which
+                        // gets tight on a small wheel; scaling down is always
+                        // preferable to clipping a label.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
                             Icon(
                               actions[index].icon,
-                              size: size >= 170 ? 18 : 16,
+                              size: actionIconSize,
+                              // Deliberately never the ink colour: a white pen
+                              // glyph on the cream wedge of the light theme is
+                              // about 1.1:1 against its background. The ink is
+                              // shown as a swatch dot below instead.
                               color: actions[index].destructive
                                   ? Theme.of(context).colorScheme.error
                                   : actions[index].onTap == null
                                   ? Theme.of(context).colorScheme.onSurface
-                                        .withValues(alpha: 0.3)
-                                  : actions[index].swatchColor ??
-                                        (actions[index].selected
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.onPrimaryContainer
-                                            : Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant),
+                                        .withValues(alpha: 0.38)
+                                  : actions[index].selected
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                             ),
+                            if (showSwatchDot)
+                              if (actions[index].swatchColor
+                                  case final Color ink)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: ink,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outlineVariant,
+                                      width: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             const SizedBox(height: 1),
-                            Flexible(
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: actionExtent,
+                              ),
                               child: Text(
                                 actions[index].label,
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context).textTheme.labelSmall
@@ -2857,7 +2919,7 @@ class _RadialWheel extends StatelessWidget {
                                           ? Theme.of(context)
                                                 .colorScheme
                                                 .onSurface
-                                                .withValues(alpha: 0.3)
+                                                .withValues(alpha: 0.38)
                                           : actions[index].selected
                                           ? Theme.of(
                                               context,
@@ -2881,7 +2943,8 @@ class _RadialWheel extends StatelessWidget {
                                       ).colorScheme.onSurfaceVariant,
                                     ),
                               ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -2910,10 +2973,20 @@ class _RadialWheel extends StatelessWidget {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: property.onTap,
-                        onHorizontalDragUpdate: (details) =>
-                            property.onDragDelta(details.delta.dx),
-                        onVerticalDragUpdate: (details) =>
-                            property.onDragDelta(-details.delta.dy),
+                        onHorizontalDragUpdate: property.onDragDelta == null
+                            ? null
+                            : (details) =>
+                                  property.onDragDelta!(details.delta.dx),
+                        onHorizontalDragEnd: property.onDragEnd == null
+                            ? null
+                            : (_) => property.onDragEnd!(),
+                        onVerticalDragUpdate: property.onDragDelta == null
+                            ? null
+                            : (details) =>
+                                  property.onDragDelta!(-details.delta.dy),
+                        onVerticalDragEnd: property.onDragEnd == null
+                            ? null
+                            : (_) => property.onDragEnd!(),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
@@ -3145,11 +3218,11 @@ class _WheelSideButton extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: SizedBox.square(
-          dimension: 34,
+          dimension: AppSpacing.touchTarget,
           child: IconButton(
             onPressed: onPressed,
             padding: EdgeInsets.zero,
-            iconSize: 17,
+            iconSize: 22,
             icon: Icon(icon),
           ),
         ),
@@ -3570,7 +3643,7 @@ class _PresetPropertySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: ListenableBuilder(
-        listenable: controller,
+        listenable: controller.toolStateListenable,
         builder: (context, _) {
           final double value = switch (property) {
             _PresetProperty.size => controller.penWidth,
@@ -3628,6 +3701,7 @@ class _PresetPropertySheet extends StatelessWidget {
                   divisions: divisions,
                   label: _propertyValueLabel(property, value),
                   onChanged: setValue,
+                  onChangeEnd: (_) => controller.commitToolSettings(),
                 ),
                 Wrap(
                   spacing: 8,
@@ -3637,7 +3711,10 @@ class _PresetPropertySheet extends StatelessWidget {
                       ChoiceChip(
                         label: Text(_propertyValueLabel(property, preset)),
                         selected: (value - preset).abs() < 0.01,
-                        onSelected: (_) => setValue(preset),
+                        onSelected: (_) {
+                          setValue(preset);
+                          controller.commitToolSettings();
+                        },
                       ),
                   ],
                 ),

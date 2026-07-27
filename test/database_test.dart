@@ -586,8 +586,60 @@ void main() {
     schema.close();
   });
 
-  for (var version = 1; version < 14; version++) {
-    test('v$version migrates to the exact v14 schema', () async {
+  test('v14 migrates to v15 and indexes existing ritual snapshots', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(14);
+    schema.rawDatabase.execute(
+      '''
+      INSERT INTO focus_sessions (
+        id, started_at, goal_text, pre_energy, timer_kind,
+        planned_duration_secs, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ''',
+      [
+        'session-v14',
+        DateTime.utc(2026, 7, 20).toIso8601String(),
+        'Existing history',
+        4,
+        0,
+        1500,
+        1,
+      ],
+    );
+    schema.rawDatabase.execute(
+      '''
+      INSERT INTO focus_session_ritual_checks (
+        id, session_id, item_label_snapshot, was_checked
+      ) VALUES (?, ?, ?, ?)
+      ''',
+      ['check-v14', 'session-v14', 'Clear desk', 1],
+    );
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    final checks = await migrated
+        .select(migrated.focusSessionRitualChecks)
+        .get();
+    final indexes = await migrated
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND name = 'idx_focus_session_ritual_checks_session_id'",
+        )
+        .get();
+
+    expect(checks.single.itemLabelSnapshot, 'Clear desk');
+    expect(checks.single.wasChecked, isTrue);
+    expect(indexes, hasLength(1));
+
+    await migrated.close();
+    schema.close();
+  });
+
+  for (var version = 1; version < 15; version++) {
+    test('v$version migrates to the exact v15 schema', () async {
       driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       addTearDown(() {
         driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
@@ -598,7 +650,7 @@ void main() {
 
       await verifier.migrateAndValidate(
         migrated,
-        14,
+        15,
         options: const ValidationOptions(validateDropped: true),
       );
 

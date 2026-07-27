@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'package:zenno/canvas/input/pen_profile.dart';
-import 'package:zenno/canvas/model/stroke.dart';
 
 class PenSample {
   const PenSample({
@@ -71,16 +70,15 @@ class PenInputProcessor {
         timestampMicros: timestampMicros,
       );
     }
-    final double distance = (point - previous).distance;
-    final double adaptiveSmoothing =
-        profile.smoothing.clamp(0.0, 0.95) * (distance / (distance + 24.0));
-    final double damping = math.max(
-      profile.stabilizer.clamp(0.0, 0.9),
-      adaptiveSmoothing,
-    );
-    final double follow = (1.0 - damping).clamp(0.12, 1.0);
-    final Offset smoothed = previous + (point - previous) * follow;
     final int? previousMicros = _lastTimestampMicros;
+    final Offset smoothed =
+        previous +
+        (point - previous) *
+            _followFactor(
+              distance: (point - previous).distance,
+              previousMicros: previousMicros,
+              currentMicros: timestampMicros,
+            );
     final double velocity = _velocity(
       previous,
       smoothed,
@@ -105,41 +103,51 @@ class PenInputProcessor {
     _lastTimestampMicros = null;
   }
 
-  static List<StrokePoint> applyTaper(
-    List<StrokePoint> points,
-    PenProfile profile,
-  ) {
-    if (points.length < 2) {
-      return points;
+  /// How far this sample moves the filtered point toward the raw one.
+  ///
+  /// An exponential filter expressed as a time constant rather than a
+  /// per-sample weight. Two properties matter:
+  ///
+  /// * **Time-normalised.** Flutter delivers every historical MotionEvent as
+  ///   its own move, so an S Pen writing fast produces several samples per
+  ///   frame. Applying a fixed weight per *sample* made effective lag depend on
+  ///   report rate and stroke speed instead of on the profile.
+  /// * **Relaxes with speed.** Jitter lives in slow, deliberate strokes;
+  ///   fast strokes need to track the nib. The time constant therefore shrinks
+  ///   as speed rises, which is the opposite of damping harder when fast.
+  ///
+  /// `perfect_freehand`'s own `streamline` is left at zero: filtering happens
+  /// here, once, rather than being applied twice with compounding lag.
+  double _followFactor({
+    required double distance,
+    required int? previousMicros,
+    required int currentMicros,
+  }) {
+    final double stabilizer = profile.stabilizer.clamp(0.0, 0.9);
+    final double smoothing = profile.smoothing.clamp(0.0, 0.95);
+    // The profile's two knobs set the filter's maximum time constant, in
+    // seconds — roughly "how long the ink takes to catch up with the nib".
+    final double baseTau = math.max(stabilizer, smoothing) * _maxTauSeconds;
+    if (baseTau <= 0) {
+      return 1;
     }
-    final List<StrokePoint> tapered = List<StrokePoint>.of(points);
-    tapered[0] = _scalePressure(tapered[0], profile.startTaper);
-    tapered[tapered.length - 1] = _scalePressure(
-      tapered.last,
-      profile.endTaper,
-    );
-    if (tapered.length > 3) {
-      tapered[1] = _scalePressure(tapered[1], (1 + profile.startTaper) / 2);
-      tapered[tapered.length - 2] = _scalePressure(
-        tapered[tapered.length - 2],
-        (1 + profile.endTaper) / 2,
-      );
-    }
-    return tapered;
+
+    final double dt = previousMicros == null
+        ? _nominalFrameSeconds
+        : ((currentMicros - previousMicros) / 1e6).clamp(1e-4, 0.05);
+    final double speed = distance / dt;
+    final double tau = baseTau / (1 + speed / _speedRelaxation);
+    return (1 - math.exp(-dt / math.max(tau, 1e-4))).clamp(0.0, 1.0);
   }
 
-  static StrokePoint _scalePressure(StrokePoint point, double factor) {
-    return StrokePoint(
-      point.x,
-      point.y,
-      (point.pressure * factor.clamp(0.1, 1.0)).clamp(0.0, 1.0),
-      tiltX: point.tiltX,
-      tiltY: point.tiltY,
-      azimuth: point.azimuth,
-      timestampMicros: point.timestampMicros,
-      velocity: point.velocity,
-    );
-  }
+  /// Time constant at full stabilizer and zero speed.
+  static const double _maxTauSeconds = 0.045;
+
+  /// Speed (world units/second) at which the time constant halves.
+  static const double _speedRelaxation = 900.0;
+
+  /// Assumed interval for the first move, before two timestamps exist.
+  static const double _nominalFrameSeconds = 1 / 120;
 
   static double _velocity(
     Offset previous,

@@ -27,8 +27,9 @@ Future<void> deleteOwnedLibraryFiles(Iterable<String> paths) async {
 }
 
 Future<void> deleteOrphanedOwnedLibraryFiles(
-  Set<String> referencedPaths,
-) async {
+  Set<String> referencedPaths, {
+  Duration graceWindow = const Duration(minutes: 10),
+}) async {
   try {
     final List<Directory> roots = await _ownedRoots();
     final Set<String> resolvedReferences = <String>{};
@@ -38,12 +39,19 @@ Future<void> deleteOrphanedOwnedLibraryFiles(
         resolvedReferences.add(await file.resolveSymbolicLinks());
       }
     }
+    // An import copies its file into canvas_media before the element row that
+    // references it is written. Anything younger than the grace window may be
+    // mid-import, so it is never treated as an orphan.
+    final DateTime cutoff = DateTime.now().subtract(graceWindow);
     for (final root in roots) {
       if (!await root.exists()) continue;
       await for (final entity in root.list(followLinks: false)) {
         if (entity is! File) continue;
         final String resolved = await entity.resolveSymbolicLinks();
-        if (!resolvedReferences.contains(resolved)) await entity.delete();
+        if (resolvedReferences.contains(resolved)) continue;
+        final FileStat stat = await entity.stat();
+        if (stat.modified.isAfter(cutoff)) continue;
+        await entity.delete();
       }
     }
   } catch (_) {

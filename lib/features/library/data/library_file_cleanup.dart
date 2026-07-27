@@ -8,6 +8,16 @@ Future<void> deleteOwnedLibraryFiles(Iterable<String> paths) {
 }
 
 /// Removes app-owned files that no persisted canvas row references anymore.
-Future<void> deleteOrphanedOwnedLibraryFiles(Set<String> referencedPaths) {
-  return platform.deleteOrphanedOwnedLibraryFiles(referencedPaths);
+///
+/// Files modified within [graceWindow] are skipped: an import writes its media
+/// file before the element row referencing it exists, so a young unreferenced
+/// file may simply be mid-import rather than orphaned.
+Future<void> deleteOrphanedOwnedLibraryFiles(
+  Set<String> referencedPaths, {
+  Duration graceWindow = const Duration(minutes: 10),
+}) {
+  return platform.deleteOrphanedOwnedLibraryFiles(
+    referencedPaths,
+    graceWindow: graceWindow,
+  );
 }
