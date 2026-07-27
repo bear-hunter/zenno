@@ -1232,13 +1232,21 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void _track(Future<void> Function() write) {
     late final Future<void> tracked;
     tracked = write()
-        .catchError((Object error) {
-          _saveError = error;
-          _failedWrites.add(write);
-          if (!_disposed) {
-            notifyListeners();
-          }
-        })
+        .catchError(
+          (Object error) {
+            _saveError = error;
+            _failedWrites.add(write);
+            if (!_disposed) {
+              notifyListeners();
+            }
+          },
+          // A TypeError is a bug in our own code, not a failed write: turning
+          // one into a "could not save" banner both misleads the user and
+          // queues a retry that would fail identically forever. Everything
+          // else - including Drift's StateError for a closed database - is a
+          // genuine persistence failure worth surfacing and retrying.
+          test: (Object error) => error is! TypeError,
+        )
         .whenComplete(() {
           _pendingWrites.remove(tracked);
         });
@@ -4555,7 +4563,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         pageNumber: element.pageNumber,
         scaleBucket: bucket,
       );
-    } on Object {
+    } on Object catch (error) {
+      // A page that cannot be rasterised shows its placeholder forever, so
+      // say so rather than leaving the user staring at an empty frame.
+      debugPrint('PDF page rasterisation failed: $error');
+      _importErrorMessage =
+          'Could not render a page of that PDF. The file may be damaged.';
+      if (!_disposed) {
+        notifyListeners();
+      }
       return;
     }
     if (result == null) {

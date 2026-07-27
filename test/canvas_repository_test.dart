@@ -974,8 +974,22 @@ class _FailOnceCanvasRepository extends CanvasRepository {
   Future<void> upsertElement(String canvasId, CanvasElement element) {
     if (_shouldFail) {
       _shouldFail = false;
-      return Future<void>.error(StateError('simulated write failure'));
+      // An Exception, not an Error: the controller deliberately treats only
+      // exceptional failures as retryable saves, so a programming mistake in
+      // the repository is not disguised as "could not save".
+      return Future<void>.error(
+        const _SimulatedWriteFailure('simulated write failure'),
+      );
     }
     return super.upsertElement(canvasId, element);
   }
+}
+
+class _SimulatedWriteFailure implements Exception {
+  const _SimulatedWriteFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'SimulatedWriteFailure: $message';
 }
