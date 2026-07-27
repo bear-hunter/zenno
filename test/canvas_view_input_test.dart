@@ -1037,6 +1037,58 @@ void main() {
     expect(controller.activeTool, CanvasTool.pen);
   });
 
+  testWidgets('side-button press converts an active pen stroke into an arrow', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    const int pointer = 41;
+    const Offset start = Offset(60, 80);
+    const Offset beforeButton = Offset(110, 105);
+    const Offset buttonPress = Offset(150, 125);
+    const Offset end = Offset(220, 150);
+    final Offset canvasOrigin = tester.getTopLeft(find.byType(CanvasView));
+    final TestGesture stylus = await tester.createGesture(
+      pointer: pointer,
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(canvasOrigin + start);
+    await stylus.moveTo(canvasOrigin + beforeButton);
+    expect(controller.liveStroke, isNotNull);
+
+    await stylus.updateWithCustomEvent(
+      PointerMoveEvent(
+        pointer: pointer,
+        kind: PointerDeviceKind.stylus,
+        position: canvasOrigin + buttonPress,
+        delta: buttonPress - beforeButton,
+        buttons: kPrimaryStylusButton,
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.liveStroke, isNull);
+    expect(controller.liveShapeElement?.shapeKind, ShapeKind.arrow.index);
+    expect(controller.liveShapeElement?.start, start);
+    expect(controller.liveShapeElement?.end, buttonPress);
+
+    await stylus.moveTo(canvasOrigin + end);
+    await stylus.up();
+    await tester.pump();
+
+    expect(controller.elements, hasLength(1));
+    final ShapeElement arrow = controller.elements.single as ShapeElement;
+    expect(arrow.shapeKind, ShapeKind.arrow.index);
+    expect(arrow.start, start);
+    expect(arrow.end, end);
+    expect(controller.activeTool, CanvasTool.pen);
+
+    controller.undo();
+    expect(controller.elements, isEmpty);
+  });
+
   testWidgets('stylus button tap can undo without drawing', (tester) async {
     final CanvasController controller = CanvasController();
     addTearDown(controller.dispose);

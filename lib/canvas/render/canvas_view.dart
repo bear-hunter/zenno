@@ -25,13 +25,20 @@ import 'package:zenno/canvas/render/selection_overlay_geometry.dart';
 /// and its latest [position] in surface-local coordinates so per-move deltas
 /// can be computed.
 class _ActivePointer {
-  _ActivePointer({required this.kind, required this.position});
+  _ActivePointer({
+    required this.kind,
+    required this.position,
+    required this.buttons,
+  });
 
   /// The canvas-relevant category of this pointer.
   final CanvasInputKind kind;
 
   /// The pointer's most recent surface-local position.
   Offset position;
+
+  /// Button mask from the pointer's most recent event.
+  int buttons;
 }
 
 /// The interactive infinite-canvas surface.
@@ -195,6 +202,7 @@ class _CanvasViewState extends State<CanvasView> {
   StylusButtonAction? _stylusButtonDragAction;
   bool _toolGestureUsesTemporaryTool = false;
   bool _stylusLongPressToolActive = false;
+  bool _stylusButtonConvertedStroke = false;
   _SelectionPointerSession? _selectionPointerSession;
   Set<String>? _selectionBeforeBackgroundGesture;
 
@@ -300,6 +308,7 @@ class _CanvasViewState extends State<CanvasView> {
     _pointers[event.pointer] = _ActivePointer(
       kind: kind,
       position: event.localPosition,
+      buttons: event.buttons,
     );
 
     // A finger normally transforms the viewport — never draws or erases. When
@@ -509,7 +518,9 @@ class _CanvasViewState extends State<CanvasView> {
       return;
     }
     final Offset previous = pointer.position;
+    final int previousButtons = pointer.buttons;
     pointer.position = event.localPosition;
+    pointer.buttons = event.buttons;
     final Offset? touchDown = _touchDownPositions[event.pointer];
     if (touchDown != null &&
         (event.localPosition - touchDown).distance > CanvasController.tapSlop) {
@@ -538,6 +549,7 @@ class _CanvasViewState extends State<CanvasView> {
         _stylusLongPressTimer?.cancel();
         _stylusButtonHoldTimer?.cancel();
       }
+      _convertActiveStrokeToArrow(event, previousButtons);
       if (_selectionPointerSession != null) {
         _routeSelectionPointerMove(event);
         return;
@@ -757,6 +769,36 @@ class _CanvasViewState extends State<CanvasView> {
       case null:
         break;
     }
+  }
+
+  void _convertActiveStrokeToArrow(
+    PointerMoveEvent event,
+    int previousButtons,
+  ) {
+    final _ActivePointer? pointer = _pointers[event.pointer];
+    final Offset? startWorld = _controller.liveStroke?.points.first.offset;
+    if (pointer?.kind != CanvasInputKind.stylus ||
+        _toolGesture != _ToolGesture.draw ||
+        widget.stylusButtonMapping.drag != StylusButtonAction.arrow ||
+        hasStylusButton(previousButtons) ||
+        !hasStylusButton(event.buttons) ||
+        startWorld == null) {
+      return;
+    }
+
+    _stylusLongPressTimer?.cancel();
+    _stylusButtonHoldTimer?.cancel();
+    _controller.cancelStroke();
+    _penInputProcessor?.reset();
+    _stylusButtonDragAction = StylusButtonAction.arrow;
+    _stylusButtonConvertedStroke = true;
+    _toolGestureUsesTemporaryTool = _pushTemporaryToolFor(
+      StylusButtonAction.arrow,
+    );
+    _controller
+      ..beginShape(startWorld)
+      ..updateShape(_toWorld(event.localPosition));
+    _toolGesture = _ToolGesture.shape;
   }
 
   void _onPointerUp(PointerUpEvent event) {
@@ -1025,6 +1067,7 @@ class _CanvasViewState extends State<CanvasView> {
     }
     if (_stylusButtonDragAction != null &&
         !_stylusLongPressToolActive &&
+        !_stylusButtonConvertedStroke &&
         !cancelled &&
         !_toolPointerMoved) {
       _cancelToolGesture();
@@ -1287,6 +1330,7 @@ class _CanvasViewState extends State<CanvasView> {
     }
     _toolGestureUsesTemporaryTool = false;
     _stylusLongPressToolActive = false;
+    _stylusButtonConvertedStroke = false;
     _stylusButtonDragAction = null;
   }
 
