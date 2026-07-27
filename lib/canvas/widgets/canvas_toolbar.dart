@@ -949,6 +949,16 @@ class _CanvasToolbarContent extends StatelessWidget {
         ),
         onDragEnd: controller.commitToolSettings,
       ),
+      if (controller.activeToolWheelPreset.kind != ToolWheelSlotKind.fill)
+        _WheelPropertyAction(
+          icon: Icons.line_weight,
+          label: 'Adaptive pen',
+          valueLabel: controller.adaptivePenEnabled ? 'On' : 'Off',
+          angle: math.pi / 2,
+          onTap: () => controller.setAdaptivePenEnabled(
+            enabled: !controller.adaptivePenEnabled,
+          ),
+        ),
     ];
   }
 
@@ -2668,8 +2678,8 @@ class _WheelPropertyAction {
     required this.valueLabel,
     required this.angle,
     required this.onTap,
-    required this.onDragDelta,
-    required this.onDragEnd,
+    this.onDragDelta,
+    this.onDragEnd,
   });
 
   final IconData icon;
@@ -2677,8 +2687,8 @@ class _WheelPropertyAction {
   final String valueLabel;
   final double angle;
   final VoidCallback onTap;
-  final ValueChanged<double> onDragDelta;
-  final VoidCallback onDragEnd;
+  final ValueChanged<double>? onDragDelta;
+  final VoidCallback? onDragEnd;
 }
 
 class _RadialWheel extends StatelessWidget {
@@ -2899,12 +2909,20 @@ class _RadialWheel extends StatelessWidget {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: property.onTap,
-                        onHorizontalDragUpdate: (details) =>
-                            property.onDragDelta(details.delta.dx),
-                        onHorizontalDragEnd: (_) => property.onDragEnd(),
-                        onVerticalDragUpdate: (details) =>
-                            property.onDragDelta(-details.delta.dy),
-                        onVerticalDragEnd: (_) => property.onDragEnd(),
+                        onHorizontalDragUpdate: property.onDragDelta == null
+                            ? null
+                            : (details) =>
+                                  property.onDragDelta!(details.delta.dx),
+                        onHorizontalDragEnd: property.onDragEnd == null
+                            ? null
+                            : (_) => property.onDragEnd!(),
+                        onVerticalDragUpdate: property.onDragDelta == null
+                            ? null
+                            : (details) =>
+                                  property.onDragDelta!(-details.delta.dy),
+                        onVerticalDragEnd: property.onDragEnd == null
+                            ? null
+                            : (_) => property.onDragEnd!(),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
