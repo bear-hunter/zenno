@@ -1094,6 +1094,66 @@ void main() {
       expect(controller.hasSelection, isTrue);
     });
 
+    test('lasso selects only the stroke touched by a small crossing loop', () {
+      final CanvasController controller = CanvasController()
+        ..addElementToStore(
+          InkElement.fromStroke(
+            const Stroke(
+              id: 'touched',
+              points: <StrokePoint>[
+                StrokePoint(0, 0, 0.5),
+                StrokePoint(100, 0, 0.5),
+              ],
+              color: 0xFFFFFFFF,
+              width: 4,
+            ),
+            zIndex: 0,
+          ),
+        )
+        ..addElementToStore(
+          InkElement.fromStroke(
+            const Stroke(
+              id: 'nearby',
+              points: <StrokePoint>[
+                StrokePoint(0, 24, 0.5),
+                StrokePoint(100, 24, 0.5),
+              ],
+              color: 0xFFFFFFFF,
+              width: 4,
+            ),
+            zIndex: 1,
+          ),
+        )
+        ..setTool(CanvasTool.lasso)
+        ..beginLasso(const Offset(45, -10))
+        ..appendLasso(const Offset(55, -10))
+        ..appendLasso(const Offset(55, 10))
+        ..appendLasso(const Offset(45, 10))
+        ..endLasso();
+      addTearDown(controller.dispose);
+
+      expect(controller.selectedIds, <String>{'touched'});
+    });
+
+    test('lasso contact selection also follows a geometric line', () {
+      final CanvasController controller = CanvasController()
+        ..setTool(CanvasTool.shape)
+        ..setShapeKind(ShapeKind.line)
+        ..beginShape(Offset.zero)
+        ..updateShape(const Offset(100, 0))
+        ..endShape()
+        ..setTool(CanvasTool.lasso)
+        ..beginLasso(const Offset(45, -10))
+        ..appendLasso(const Offset(55, -10))
+        ..appendLasso(const Offset(55, 10))
+        ..appendLasso(const Offset(45, 10))
+        ..endLasso();
+      addTearDown(controller.dispose);
+
+      expect(controller.selectedElements, hasLength(1));
+      expect(controller.selectedElements.single, isA<ShapeElement>());
+    });
+
     test('lasso that encloses nothing leaves the selection empty', () {
       final CanvasController controller = CanvasController()
         ..setTool(CanvasTool.lasso);

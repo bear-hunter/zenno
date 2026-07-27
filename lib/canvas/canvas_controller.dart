@@ -3049,15 +3049,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _notifyOverlay();
   }
 
-  /// Closes the lasso loop and selects the elements substantially inside it.
+  /// Closes the lasso loop and selects elements inside or touched by it.
   ///
   /// The loop is auto-closed (its first vertex links back to its last). Broad
-  /// phase: the spatial index is queried for the loop's bounding box. Narrow
-  /// phase: each candidate is tested with an even-odd point-in-polygon rule —
-  /// an ink element is selected when a majority of its centerline points fall
-  /// inside the loop. A loop with too few points (an accidental tap) preserves
-  /// the prior selection. Selection is held in the controller, not committed as
-  /// a command.
+  /// phase: the spatial index is queried for the loop's bounding box plus a
+  /// small screen-space contact tolerance. Narrow phase keeps the existing
+  /// majority-inside rule and also selects rendered geometry touched by the
+  /// lasso boundary. A loop with too few points (an accidental tap) preserves
+  /// the prior selection. Selection is held in the controller, not committed
+  /// as a command.
   void endLasso() {
     final List<Offset>? path = _lassoPath;
     _lassoPath = null;
@@ -3069,7 +3069,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
 
     final Set<String> hits = <String>{};
-    final Rect area = CanvasGeometry.boundsOfPoints(path);
+    final double touchSlop = tapSlop / viewport.scale;
+    final List<Offset> boundary = <Offset>[...path, path.first];
+    final Rect area = CanvasGeometry.boundsOfPoints(path).inflate(touchSlop);
     final Set<String> candidateIds = _spatialIndex.query(area).toSet();
     for (final CanvasElement element in _elements) {
       if (!_isElementEditable(element)) {
@@ -3078,7 +3080,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       if (!candidateIds.contains(element.id)) {
         continue;
       }
-      if (_lassoSelects(element, path)) {
+      if (_lassoSelects(element, path, boundary, touchSlop)) {
         hits.add(element.id);
       }
     }
@@ -3114,18 +3116,62 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }, SelectionMode.replace);
   }
 
-  /// Whether the closed lasso [polygon] substantially encloses [element].
+  /// Whether the closed lasso substantially encloses or touches [element].
   ///
-  /// For ink, "substantially" means a majority (> 50%) of the stroke's
-  /// centerline points lie inside the polygon — so brushing the lasso past a
-  /// stroke's tip does not grab it, but looping most of it does.
+  /// The majority-inside rule remains for ordinary loops. A second
+  /// geometry-aware contact rule makes a partial loop useful: crossing or
+  /// grazing the rendered edge selects the element without requiring its
+  /// remaining geometry to be enclosed.
   ///
-  /// For an image / PDF / link element the same majority rule is applied to a
-  /// small fixed sample set of its placement rectangle (its four corners and
-  /// its centre): the element is selected when most of those representative
-  /// points fall inside the loop. This keeps mixed selections consistent — a
-  /// lasso that loops a picture or a link chip grabs it just as it grabs ink.
-  bool _lassoSelects(CanvasElement element, List<Offset> polygon) {
+  /// [boundary] is explicitly closed and [touchSlop] is expressed in world
+  /// units, derived from a constant screen-space tolerance at the current zoom.
+  bool _lassoSelects(
+    CanvasElement element,
+    List<Offset> polygon,
+    List<Offset> boundary,
+    double touchSlop,
+  ) {
+    if (_lassoSubstantiallyContains(element, polygon)) {
+      return true;
+    }
+
+    switch (element) {
+      case InkElement():
+        if (element.stroke.tool == StrokeToolKind.fill) {
+          return boundary.any(element.outlinePath.contains) ||
+              CanvasGeometry.polylinesWithinDistance(
+                boundary,
+                _closedFillBoundary(element),
+                touchSlop,
+              );
+        }
+        final List<Offset> centerline = <Offset>[
+          for (final StrokePoint point in element.stroke.points) point.offset,
+        ];
+        return CanvasGeometry.polylinesWithinDistance(
+          boundary,
+          centerline,
+          touchSlop + element.stroke.width / 2,
+        );
+      case ImageElement():
+      case PdfElement():
+      case LinkElement():
+      case TextElement():
+        return _pathReachesRotatedRect(
+          boundary,
+          _placementBoundsOf(element)!,
+          element.rotation,
+          touchSlop,
+        );
+      case ShapeElement():
+        return _pathReachesShape(boundary, element, touchSlop);
+    }
+  }
+
+  bool _lassoSubstantiallyContains(
+    CanvasElement element,
+    List<Offset> polygon,
+  ) {
     switch (element) {
       case InkElement():
         final List<Offset> centerline = <Offset>[
