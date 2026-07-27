@@ -14443,6 +14443,10 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     'idx_focus_sessions_started_at',
     'CREATE INDEX idx_focus_sessions_started_at ON focus_sessions (started_at)',
   );
+  late final Index idxFocusSessionRitualChecksSessionId = Index(
+    'idx_focus_session_ritual_checks_session_id',
+    'CREATE INDEX idx_focus_session_ritual_checks_session_id ON focus_session_ritual_checks (session_id)',
+  );
   late final Index idxDistractionsSessionId = Index(
     'idx_distractions_session_id',
     'CREATE INDEX idx_distractions_session_id ON distractions (session_id)',
@@ -14509,6 +14513,7 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     idxCanvasElementsCanvasId,
     idxCanvasElementsCanvasIdZIndex,
     idxFocusSessionsStartedAt,
+    idxFocusSessionRitualChecksSessionId,
     idxDistractionsSessionId,
     idxBoardColumnsBoardId,
     idxBoardCardsColumnIdPosition,

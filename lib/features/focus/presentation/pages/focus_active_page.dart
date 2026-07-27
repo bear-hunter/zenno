@@ -7,6 +7,7 @@ import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
 import 'package:zenno/core/widgets/aurora.dart';
 import 'package:zenno/features/focus/application/active_session_controller.dart';
+import 'package:zenno/features/focus/domain/focus_session_config.dart';
 import 'package:zenno/features/focus/domain/timer_engine.dart';
 import 'package:zenno/features/focus/presentation/pages/focus_review_page.dart';
 import 'package:zenno/features/focus/presentation/widgets/distraction_sheet.dart';
@@ -32,9 +33,17 @@ class _FocusActivePageState extends ConsumerState<FocusActivePage> {
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(activeSessionControllerProvider);
+    final session = ref.watch(
+      activeSessionControllerProvider.select(
+        (state) => (
+          hasSession: state.hasSession,
+          reviewPending: state.reviewPending,
+          hasSnapshot: state.snapshot != null,
+          config: state.config,
+        ),
+      ),
+    );
     final controller = ref.read(activeSessionControllerProvider.notifier);
-    final snapshot = session.snapshot;
     final busy = _action != null;
 
     return PopScope<void>(
@@ -59,11 +68,10 @@ class _FocusActivePageState extends ConsumerState<FocusActivePage> {
                         ),
                       ),
                     )
-                  : snapshot == null
+                  : !session.hasSnapshot
                   ? const _NoSession()
                   : _ActiveBody(
-                      session: session,
-                      snapshot: snapshot,
+                      config: session.config,
                       controller: controller,
                       action: _action,
                       onPause: () => _runTimerAction(
@@ -249,8 +257,7 @@ class _ReviewPending extends StatelessWidget {
 /// The live timer body.
 class _ActiveBody extends StatelessWidget {
   const _ActiveBody({
-    required this.session,
-    required this.snapshot,
+    required this.config,
     required this.controller,
     required this.action,
     required this.onPause,
@@ -260,8 +267,7 @@ class _ActiveBody extends StatelessWidget {
     required this.onFinish,
   });
 
-  final ActiveSessionState session;
-  final TimerSnapshot snapshot;
+  final FocusSessionConfig? config;
   final ActiveSessionController controller;
   final _ActiveAction? action;
   final VoidCallback onPause;
@@ -273,8 +279,8 @@ class _ActiveBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final goal = session.config?.goalText ?? '';
-    final planned = session.config?.plannedDuration;
+    final goal = config?.goalText ?? '';
+    final planned = config?.plannedDuration;
     final target = planned != null && planned > Duration.zero
         ? '${_durationLabel(planned)} target'
         : '';
@@ -297,10 +303,7 @@ class _ActiveBody extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xl),
             ],
-            TimerDisplay(snapshot: snapshot),
-            const SizedBox(height: AppSpacing.xxl),
-            _PrimaryControls(
-              snapshot: snapshot,
+            _TimerAndPhaseControls(
               action: action,
               onPause: onPause,
               onResume: onResume,
@@ -308,16 +311,13 @@ class _ActiveBody extends StatelessWidget {
               onSkipBreak: onSkipBreak,
             ),
             const SizedBox(height: AppSpacing.lg),
-            if (session.config?.linkedCanvasId != null) ...[
+            if (config?.linkedCanvasId != null) ...[
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),
                 onPressed: action == null
-                    ? () => openCanvasEditor(
-                        context,
-                        session.config!.linkedCanvasId!,
-                      )
+                    ? () => openCanvasEditor(context, config!.linkedCanvasId!)
                     : null,
                 icon: const Icon(Icons.draw_outlined),
                 label: const Text('Open canvas'),
@@ -332,6 +332,45 @@ class _ActiveBody extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The only subtree that observes the controller's 1 Hz timer snapshot.
+class _TimerAndPhaseControls extends ConsumerWidget {
+  const _TimerAndPhaseControls({
+    required this.action,
+    required this.onPause,
+    required this.onResume,
+    required this.onEndStretch,
+    required this.onSkipBreak,
+  });
+
+  final _ActiveAction? action;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
+  final VoidCallback onEndStretch;
+  final VoidCallback onSkipBreak;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snapshot = ref.watch(
+      activeSessionControllerProvider.select((state) => state.snapshot),
+    );
+    if (snapshot == null) return const SizedBox.shrink();
+    return Column(
+      children: [
+        TimerDisplay(snapshot: snapshot),
+        const SizedBox(height: AppSpacing.xxl),
+        _PrimaryControls(
+          snapshot: snapshot,
+          action: action,
+          onPause: onPause,
+          onResume: onResume,
+          onEndStretch: onEndStretch,
+          onSkipBreak: onSkipBreak,
+        ),
+      ],
     );
   }
 }
