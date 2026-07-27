@@ -31,6 +31,9 @@ dependencies:
   flutter:
     sdk: flutter
   collection: ^1.19.1
+  # Some transitive Flutter widgets reference CupertinoIcons; without this the
+  # release build warns that the font family cannot be resolved.
+  cupertino_icons: ^1.0.8
 
   drift: ^2.31.0
   drift_flutter: ^0.2.8
