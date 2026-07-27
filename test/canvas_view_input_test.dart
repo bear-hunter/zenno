@@ -1544,4 +1544,51 @@ void main() {
     expect(controller.liveStroke, isNull);
     expect(controller.elementCount, 0);
   });
+
+  testWidgets('a committed stroke ends exactly where the pen lifted', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    // A short flick: the last move lands close enough to the previous sample
+    // that the thinning filter would otherwise drop it, leaving the committed
+    // stroke visibly short of the lift point.
+    const Offset liftLocal = Offset(163, 41);
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(40, 40)));
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(160, 40)));
+    await stylus.moveTo(_canvasGlobal(tester, liftLocal));
+    await stylus.up();
+    await tester.pump();
+
+    final InkElement ink =
+        controller.elements.single as InkElement;
+    final Offset lastPoint = ink.stroke.points.last.offset;
+    expect(lastPoint.dx, closeTo(liftLocal.dx, 0.001));
+    expect(lastPoint.dy, closeTo(liftLocal.dy, 0.001));
+  });
+
+  testWidgets('the pen-up sample keeps the previous pressure', (tester) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(40, 40)));
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(160, 90)));
+    await stylus.up();
+    await tester.pump();
+
+    final InkElement ink =
+        controller.elements.single as InkElement;
+    // A PointerUpEvent reports zero pressure; carrying it through would
+    // collapse the stroke's final point to zero width.
+    expect(ink.stroke.points.last.pressure, greaterThan(0));
+  });
 }

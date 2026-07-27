@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zenno — Improvement Plan</title>
+<style>
+  :root {
+    --paper: #F7F3EA;
+    --panel: #EFE8DA;
+    --panel-2: #E9E1D0;
+    --ink: #241F17;
+    --ink-soft: #5C554A;
+    --ink-faint: #8A8274;
+    --accent: #C97B4A;
+    --accent-deep: #A85F33;
+    --line: #DCD3C0;
+    --good: #4A7A56;
+    --warn: #B08A2E;
+    --crit: #A8442E;
+    --code-bg: #EBE4D4;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151512;
+      --panel: #1D1C18;
+      --panel-2: #24221D;
+      --ink: #E8E4DA;
+      --ink-soft: #ABA599;
+      --ink-faint: #7E786C;
+      --accent: #D8946C;
+      --accent-deep: #E3A87F;
+      --line: #33302A;
+      --good: #7FAE8C;
+      --warn: #CBA84E;
+      --crit: #D07156;
+      --code-bg: #24221C;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.6;
+    padding: 0 24px 96px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-deep); font-weight: 600; margin-bottom: 14px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 500; font-size: 44px;
+    line-height: 1.12; letter-spacing: -0.01em; text-wrap: balance; margin-bottom: 18px;
+  }
+  .lede { color: var(--ink-soft); max-width: 62ch; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 24px; font-size: 13px; color: var(--ink-faint); }
+  .meta-row b { color: var(--ink-soft); font-weight: 600; }
+
+  nav.toc {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 24px 0; border-bottom: 1px solid var(--line);
+  }
+  nav.toc a {
+    font-size: 13px; text-decoration: none; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px;
+    background: var(--panel);
+  }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent-deep); border-color: var(--accent); outline: none; }
+
+  section { padding-top: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  h2 {
+    font-family: var(--serif); font-weight: 500; font-size: 29px;
+    letter-spacing: -0.01em; text-wrap: balance;
+  }
+  .sec-count { font-size: 13px; color: var(--ink-faint); white-space: nowrap; }
+  .sec-intro { color: var(--ink-soft); max-width: 68ch; margin-bottom: 24px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 22px; margin-bottom: 14px;
+  }
+  .card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  h3 { font-size: 16.5px; font-weight: 650; letter-spacing: -0.005em; }
+  .chip {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    border-radius: 4px; padding: 2px 8px; white-space: nowrap; align-self: center;
+  }
+  .p0 { background: var(--crit); color: var(--paper); }
+  .p1 { background: var(--warn); color: var(--paper); }
+  .p2 { background: var(--ink-faint); color: var(--paper); }
+  .effort { font-size: 12px; color: var(--ink-faint); margin-left: auto; white-space: nowrap; }
+
+  .card p { margin-bottom: 10px; }
+  .card p:last-child { margin-bottom: 0; }
+  .label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .label.problem { color: var(--crit); }
+  .label.fix { color: var(--good); }
+
+  code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--code-bg); border-radius: 4px; padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; margin: 10px 0; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; font-size: 13px; }
+
+  ul.tight { margin: 6px 0 10px 20px; }
+  ul.tight li { margin-bottom: 5px; }
+  ul.tight li:last-child { margin-bottom: 0; }
+
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px; margin-top: 28px;
+  }
+  .stat {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px;
+  }
+  .stat .n { font-family: var(--serif); font-size: 30px; color: var(--accent-deep); font-variant-numeric: tabular-nums; }
+  .stat .t { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--panel); }
+  th {
+    text-align: left; font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 700; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-soft); }
+
+  .verify {
+    border-left: 3px solid var(--good); background: var(--panel-2);
+    border-radius: 0 8px 8px 0; padding: 10px 16px; font-size: 14px; margin-top: 10px;
+  }
+  .verify b { color: var(--good); }
+
+  .callout {
+    border: 1px solid var(--accent); background: var(--panel);
+    border-radius: 10px; padding: 18px 22px; margin: 24px 0;
+  }
+  .callout .label { color: var(--accent-deep); }
+  a { color: var(--accent-deep); }
+  footer { margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Zenno · Engineering Plan</div>
+  <h1>Codebase review &amp; improvement plan</h1>
+  <p class="lede">Findings from a three-pass review — pen/ink engine, UI/UX, and architecture/performance — condensed into one prioritized plan. The codebase is in good shape structurally: command-backed undo, a loose quadtree, tile-picture caching, and disciplined migrations. What holds it back is one coarse notification channel, two god files, a handful of pen-feel defects, and one genuine data-loss vector.</p>
+  <div class="meta-row">
+    <span><b>Branch</b> feat/intuitive-tool-wheel</span>
+    <span><b>Date</b> 2026-07-28</span>
+    <span><b>Target</b> Galaxy Tab S9 FE · S Pen</span>
+    <span><b>Scope</b> ~88.7k non-generated Dart lines · 430 tests</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#critical">1 · Data safety</a>
+  <a href="#pen">2 · Pen engine</a>
+  <a href="#ui">3 · Tool wheel &amp; canvas UX</a>
+  <a href="#perf">4 · Performance</a>
+  <a href="#polish">5 · Visual consistency &amp; a11y</a>
+  <a href="#health">6 · Code health</a>
+  <a href="#tests">7 · Tests</a>
+  <a href="#roadmap">8 · Roadmap</a>
+</nav>
+
+<div class="summary-grid">
+  <div class="stat"><div class="n">4</div><div class="t">correctness / data-loss fixes, all small diffs</div></div>
+  <div class="stat"><div class="n">~120×/s</div><div class="t">full page + 4,841-line toolbar rebuilds while inking or hovering</div></div>
+  <div class="stat"><div class="n">O(n²)</div><div class="t">live-stroke tessellation cost per stroke — re-tessellated from point 0 every frame</div></div>
+  <div class="stat"><div class="n">7&nbsp;px</div><div class="t">current tool-wheel label size; 48dp targets missed by nearly every control</div></div>
+</div>
+
+<div class="callout">
+  <div class="label">The single biggest win</div>
+  <p style="margin-top:6px">Scope the rebuilds. One <code>ChangeNotifier</code> with 87 <code>notifyListeners()</code> call sites drives the whole editor: every ink frame, every hover event (~120&nbsp;Hz), and every pan frame rebuilds <code>CanvasView</code>, the entire toolbar, and an 18-closure shortcut map. <code>RepaintBoundary</code> stops paint, not build. Splitting the notifier (items 2.1 / 4.1) is the highest-leverage change in this plan and a prerequisite for the pen feeling right.</p>
+</div>
+
+<!-- ============================================================ -->
+<section id="critical">
+  <div class="sec-head"><h2>1 · Critical correctness &amp; data safety</h2><span class="sec-count">4 items</span></div>
+  <p class="sec-intro">Small diffs, real user-data consequences. Do these first, in any order.</p>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>File-cleanup race can delete a just-imported image</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — <code>library_providers.dart:18-25</code> fires <code>cleanupOrphanedFiles()</code> as a fire-and-forget side effect of the provider factory, and the provider is <code>autoDispose</code> — so it re-runs every time the user re-enters the Library. <code>CanvasImporter</code> copies a picked file into <code>canvas_media/</code> <em>before</em> the element row exists; a cleanup pass landing in that window deletes the user's file.</p>
+    <p><span class="label fix">Fix</span> — Move cleanup out of the factory into a one-shot startup task in <code>main.dart</code>; mark the repository <code>@Riverpod(keepAlive: true)</code>. Have the importer stage files in <code>canvas_media/.staging/</code> (excluded from cleanup) and move them only after the row commits.</p>
+    <div class="verify"><b>Verify:</b> new test — import file, run cleanup mid-window, file survives; plus a temp-dir test for <code>deleteOrphanedOwnedLibraryFiles</code> (never deletes outside owned roots, rejects symlink escape).</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>No flush when Android backgrounds the app</h3><span class="effort">~2 h</span></div>
+    <p><span class="label problem">Problem</span> — only <code>_closeEditor</code>/<code>dispose</code> call <code>flush()</code> (<code>canvas_editor_page.dart:213, 267</code>). Android freely kills backgrounded apps; up to 400&nbsp;ms of debounced viewport state plus any in-flight element write is lost.</p>
+    <p><span class="label fix">Fix</span> — make <code>_CanvasEditorPageState</code> a <code>WidgetsBindingObserver</code>; call <code>_controller.flush()</code> on <code>AppLifecycleState.paused</code>.</p>
+    <div class="verify"><b>Verify:</b> widget test simulating lifecycle change asserts repository received the pending write.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>Tool-settings write storm: one SQLite transaction per drag frame</h3><span class="effort">~2 h</span></div>
+    <p><span class="label problem">Problem</span> — <code>_saveToolSettings()</code> (<code>canvas_controller.dart:1926</code>) JSON-encodes the whole 8-slot wheel and issues a <code>canvases</code> UPDATE, undebounced, from every setter — and those setters are wired to continuous slider/drag handlers (<code>canvas_toolbar.dart:918, 928, 938, 1580</code>). Width drag = one DB transaction per frame. Same for <code>setPaperStyle</code>.</p>
+    <p><span class="label fix">Fix</span> — mirror the existing 400&nbsp;ms viewport debounce pattern (<code>canvas_controller.dart:227, 1040</code>); cancel in <code>dispose()</code>, drain in <code>flush()</code>.</p>
+    <div class="verify"><b>Verify:</b> test — 50 rapid <code>setPenWidth</code> calls produce exactly one repository write after the debounce window.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>Final pen-up point is never appended to the stroke</h3><span class="effort">~2 h</span></div>
+    <p><span class="label problem">Problem</span> — <code>_onPointerUp</code> (<code>canvas_view.dart:742-747</code>) calls <code>endStroke()</code> without pushing the up-event's position. Combined with EMA smoothing lag, every stroke terminates short of where the pen lifted — visible on short ticks, commas, fast flick tails.</p>
+    <p><span class="label fix">Fix</span> — for <code>_ToolGesture.draw</code>, push one final unsmoothed sample at <code>event.localPosition</code> before <code>endStroke()</code>, bypassing both <code>PenInputProcessor</code> and the min-distance filter (add <code>force: true</code> to <code>appendToStroke</code>, <code>canvas_controller.dart:1283</code>).</p>
+    <div class="verify"><b>Verify:</b> input test — stroke's last point equals pointer-up position.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="pen">
+  <div class="sec-head"><h2>2 · Pen &amp; ink engine</h2><span class="sec-count">8 items</span></div>
+  <p class="sec-intro">The input model is already strong — raw <code>Listener</code> (no gesture-arena latency), structural palm rejection, frame-coalesced live-stroke notifications, a real vector eraser. These items close the gap between "works" and "feels like Samsung Notes."</p>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>2.1 · Stop rebuilding the world on every ink frame</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — <code>canvas_editor_page.dart:488-490</code> wraps the whole Scaffold body in <code>ListenableBuilder(listenable: _controller)</code>; the toolbar adds a second one (<code>canvas_toolbar.dart:324</code>). Every appended point rebuilds the full widget tree 60–120×/sec. Worse: <code>setHoverPoint</code> (<code>canvas_controller.dart:1974</code>) notifies unconditionally at ~120&nbsp;Hz — merely <em>hovering</em> the S&nbsp;Pen rebuilds the entire editor.</p>
+    <p><span class="label fix">Fix</span> —</p>
+    <ul class="tight">
+      <li>Narrow the outer <code>ListenableBuilder</code> to the load-state gate only; hoist <code>CanvasView</code>/<code>CanvasToolbar</code> outside it. Hoist the 18-entry <code>CallbackShortcuts</code> map (<code>canvas_editor_page.dart:546-622</code>).</li>
+      <li>Split the notifier: <code>liveStrokeTick</code>, <code>viewportNotifier</code>, <code>toolNotifier</code>, <code>elementsNotifier</code>. Wrap only the live layer in a <code>ValueListenableBuilder</code>; painters can take <code>repaint:</code> directly and skip widget builds entirely.</li>
+      <li>Guard <code>setHoverPoint</code> with an equality check and route it through <code>_notifyLiveStrokeSoon</code>.</li>
+    </ul>
+    <div class="verify"><b>Verify:</b> rebuild counter in a widget test — toolbar builds during a 100-point stroke drop from ~100 to 0.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>2.2 · Incremental live-stroke tessellation (kill the O(n²))</h3><span class="effort">~1–2 days</span></div>
+    <p><span class="label problem">Problem</span> — <code>LiveStrokePathCache</code> keys on <code>revision</code>, bumped every point (<code>live_stroke_painter.dart:34-39</code>, <code>canvas_controller.dart:1298</code>) — the cache never hits mid-stroke. Each frame runs <code>getStroke</code> over the whole buffer plus a fresh <code>List.unmodifiable</code> copy (<code>canvas_controller.dart:341</code>). At ~1&nbsp;px sampling a screen-crossing stroke is ~2,000 points; long strokes degrade visibly as they grow.</p>
+    <p><span class="label fix">Fix</span> — frozen-prefix + live-tail: every K≈32 points, record points <code>[0..n−K]</code> into a <code>ui.Picture</code> (with ~8-point overlap for smoothing continuity); per frame, tessellate only the tail and <code>drawPicture</code> + <code>drawPath</code>. Stop copying the point list per frame — expose an unsafe view or memoize the snapshot against the revision.</p>
+    <div class="verify"><b>Verify:</b> golden test on <code>buildStrokeOutline</code> first (none exists); then frame-time trace on device with a 3,000-point stroke.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>2.3 · Rewrite the stabilizer — it's backwards, and you're smoothing twice</h3><span class="effort">~1 day + on-device tuning</span></div>
+    <p><span class="label problem">Problem</span> — <code>pen_input_processor.dart:74-82</code>: damping <em>grows</em> with speed, so fast strokes get more lag and slow (jittery) strokes get less filtering — the inverse of every shipped stylus stabilizer. It's also per-sample rather than per-dt, so lag varies with the S&nbsp;Pen's report rate (~120–240&nbsp;Hz). And <code>perfect_freehand</code>'s <code>streamline: 0.4</code> (<code>stroke_builder.dart:58</code>) adds a second low-pass on top.</p>
+    <p><span class="label fix">Fix</span> — time-constant EMA: <code>alpha = 1 − exp(−dt/τ)</code> with τ shrinking as speed rises. Then set <code>streamline: 0.0</code> everywhere — own the filtering in exactly one place.</p>
+<pre><code>final dt = ((tMicros - prevMicros) / 1e6).clamp(1e-4, 0.05);
+final speed = distance / dt;
+final tau = profile.stabilizer * (1.0 / (1.0 + speed / 800.0)); // less smoothing when fast
+final alpha = 1 - math.exp(-dt / math.max(tau, 1e-4));
+final smoothed = previous + (point - previous) * alpha;</code></pre>
+    <div class="verify"><b>Verify:</b> unit test — identical stroke sampled at 120&nbsp;Hz vs 240&nbsp;Hz produces near-identical output; hand-feel pass on the Tab S9 FE.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>2.4 · Tail prediction on the live layer</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — no extrapolation ahead of the last sample; perceived pen-to-ink gap ≈ 25–35&nbsp;ms. <code>isComplete: false</code> even draws the tail slightly <em>behind</em> the last point.</p>
+    <p><span class="label fix">Fix</span> — extrapolate ~1 frame from the last 3 samples' velocity, clamped to 8–12&nbsp;px and disabled at high curvature; append to the painter's tail path only, never to the stroke data. (Android 14's <code>MotionPredictor</code> via platform channel is the stretch goal; the Dart version gets most of the benefit.)</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>2.5 · Close the palm-rejection gap around pen-down/pen-up</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — touch is only suppressed while a tool pointer is down (<code>canvas_view.dart:311, 551</code>). Before the nib lands and right after it lifts, a resting palm pans the viewport — the classic mid-sentence canvas jump.</p>
+    <p><span class="label fix">Fix</span> — track <code>_lastStylusEventMicros</code> (hover events already arrive, <code>canvas_view.dart:1295</code>); reject touch-down within ~400&nbsp;ms of any stylus activity or while the stylus hovers. Consider <code>event.radiusMajor</code> as a secondary palm heuristic.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>2.6 · Per-tool perfect_freehand tuning + built-in tapers</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — one hardcoded parameter set for all six tools (<code>stroke_builder.dart:56-60</code>): highlighter/marker get pressure thinning they shouldn't; non-pressure input gets dead uniform width instead of free <code>simulatePressure</code>; <code>applyTaper</code> (<code>pen_input_processor.dart:108-129</code>) hand-rolls a 4-point width step, applied only at commit — so live and committed stroke ends look different.</p>
+    <p><span class="label fix">Fix</span> — a <code>StrokeOptions</code> factory keyed on tool kind (pen: thinning 0.55 + <code>StrokeEndOptions</code> tapers; highlighter: thinning 0, cap off; etc.), <code>simulatePressure: !pressureEnabled</code>, <code>easing: profile.pressureCurveFn</code>. Delete the hand-rolled taper and the commit-time taper (<code>canvas_controller.dart:1317-1321</code>).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>2.7 · Incremental, previewable eraser</h3><span class="effort">~1–2 days</span></div>
+    <p><span class="label problem">Problem</span> — <code>appendErase</code> (<code>canvas_controller.dart:2031-2038</code>) appends every move event unfiltered and notifies unbatched (~2,400 full-page rebuilds per 10&nbsp;s scrub); all hit testing defers to pointer-up where <code>polylinesWithinDistance</code> (<code>canvas_geometry.dart:69-108</code>) explodes to tens of millions of ops on the UI thread; nothing shows what will be erased until you lift.</p>
+    <p><span class="label fix">Fix</span> — distance-filter and frame-batch the path like ink; hit-test incrementally per new segment against <code>spatialIndex.query()</code> candidates into a <code>_pendingEraseIds</code> set; render pending elements at ~30% opacity; memoize the <code>eraserPath</code> view (mirror <code>_selectedIdsView</code> at <code>canvas_controller.dart:554</code>).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>2.8 · Quadratic outlines + ink codec v4</h3><span class="effort">~1–2 days</span></div>
+    <p><span class="label problem">Problem</span> — outline path is a raw polygon (<code>stroke_builder.dart:105-109</code>); facets at high zoom are patched by an expensive Catmull-Rom resampler (<code>:159-197</code>, up to 4,096 points). Codec spends 48&nbsp;B/point (<code>ink_codec.dart:52-69</code>), persisting derivable velocity and absolute float64 timestamps — dense pages run to tens of MB.</p>
+    <p><span class="label fix">Fix</span> — emit midpoint quadratic Béziers (the upstream JS approach); Skia tessellates curves against the device transform, sharp at any zoom — then delete the resampler and the <code>highZoom</code> cache branch. Codec v4: drop velocity, delta-encode timestamps (int64 base + uint32 delta), pack pressure/tilt into small ints → ~16&nbsp;B/point. Keep v1–v3 decoders as today.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="ui">
+  <div class="sec-head"><h2>3 · Tool wheel &amp; canvas UX</h2><span class="sec-count">8 items</span></div>
+  <p class="sec-intro">The wheel was enlarged but its type and targets weren't. On the Tab S9 FE nearly every control misses the 48dp minimum, labels are 7&nbsp;px, and the app has zero haptics.</p>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>3.1 · Readable labels &amp; visible tool icons</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — wedge labels are 7&nbsp;px, property labels 6.5&nbsp;px, center 9&nbsp;px (<code>canvas_toolbar.dart:2709, 2899, 2946</code>) — decorative noise at arm's length, undercutting the whole "easier to scan" branch. And wedge icons are painted in the <em>ink color</em> (<code>:2798</code>): default white pen ink on cream <code>surfaceContainerHigh</code> ≈ 1.1:1 contrast — invisible in light theme.</p>
+    <p><span class="label fix">Fix</span> — labels to 10–11&nbsp;px, grow <code>actionExtent</code> 40→56 (derive from wheel size). Render glyphs in <code>onPrimaryContainer</code>/<code>onSurfaceVariant</code>; show ink color as a separate 8dp dot or a colored arc on the wedge's outer edge — which doubles as a stronger active-tool signal.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p0">P0</span><h3>3.2 · Meet 48dp touch targets</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — wedge ring is 36dp radial, icon stacks 40×40, side buttons 34×34, pucks 34×34, swatches ~35×32, HUD buttons 44 (<code>canvas_toolbar.dart:2699-2707, 3115-3119, 2869, 318-320, 3312</code>). <code>AppSpacing.touchTarget</code> is imported and used once in 4,841 lines.</p>
+    <p><span class="label fix">Fix</span> — decouple <code>innerRadius</code> from <code>centerSize</code> (coupled for no reason at <code>:2700-2701</code>): ring thickness ≥48; side buttons/palette/HUD to 48; pucks to 44 (watch the 0.4dp center clearance at <code>:2857-2870</code>).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>3.3 · Haptics everywhere that state changes silently</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — zero <code>HapticFeedback</code> calls in the repo. Two-/three-finger tap = undo/redo (<code>canvas_view.dart:993-997</code>) with <em>no feedback of any kind</em> — silent destructive-ish actions.</p>
+    <p><span class="label fix">Fix</span> — <code>mediumImpact</code> on gesture undo/redo (highest-value single line in this plan); <code>selectionClick</code> on tool select, wheel page change, swatch tap; <code>lightImpact</code> on wheel drag pick-up/drop and selection commit.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>3.4 · Undo must never be modal; context page must be reachable</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — Undo/Redo side buttons are gated on the tools wheel page (<code>canvas_toolbar.dart:596</code>) and vanish on every other page. The context page (pen kinds, eraser modes, zoom presets) is dead code for touch users: <code>_handleCenterTap</code>'s <code>tools→context</code> branch is shadowed by the color-picker override (<code>:569-574</code>) — reachable only via a mapped stylus button.</p>
+    <p><span class="label fix">Fix</span> — hoist Undo/Redo out of the page gate. Restore center-tap → context (move color picking to center long-press) or add a dedicated "tool settings" wedge.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>3.5 · Right-handed default position + honest drag affordance</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — wheel defaults to upper-left (<code>:314-315</code>); a right-handed pen user crosses 1,152dp of writing surface. Every wedge doubles as a drag surface with no slop guard (<code>:2746-2751</code>) — drifting taps slide the cluster; the Semantics hint describes a nonexistent "outer ring". Tooltip long-press collides with the brush-picker long-press (<code>:2768-2780</code>).</p>
+    <p><span class="label fix">Fix</span> — default to lower-right; add a handedness setting next to the stylus mappings. Move dragging to a dedicated grip puck (or <code>onLongPressMoveUpdate</code>); add "Reset wheel position" to the View page; kill the tooltip trigger collision.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>3.6 · Tame accidental canvas rotation &amp; the finger-lasso trap</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — rotation is unlocked by default and applied on every pinch (<code>canvas_view.dart:1406-1408</code>) → constant accidental page skew in a handwriting app, no 0° detent. A 520&nbsp;ms single-finger hold starts a lasso regardless of tool (<code>:800-816</code>) — undiscoverable and conflicts with finger=pan.</p>
+    <p><span class="label fix">Fix</span> — lock rotation by default with a ±4° snap detent; keep the existing lock toggle as the escape hatch. Gate the hold-lasso behind the lasso tool or a setting; at minimum add a haptic on engage.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>3.7 · Empty state + surfaced gesture guide</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — a new canvas is a bare grid; the gesture guide is buried three taps deep. Nothing teaches finger=pan / stylus=draw / two-finger undo.</p>
+    <p><span class="label fix">Fix</span> — when <code>contentBounds == null</code>, show a dismissible card ("Draw with your S&nbsp;Pen. Two fingers to pan and zoom.") with a "See all gestures" button; persist dismissal.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>3.8 · Immersive mode &amp; navigation hygiene</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — <code>immersiveSticky</code> app-wide (<code>main.dart:9</code>) fights the back gesture, zeroes SafeArea (the title chip sits under the landscape camera cutout), and hides bars even on Library/Settings. <code>PopScope(canPop: false)</code> kills predictive back on the most-used route. Focus/Templates sub-pages bypass go_router via raw <code>MaterialPageRoute</code>.</p>
+    <p><span class="label fix">Fix</span> — switch to <code>edgeToEdge</code> + <code>SystemUiOverlayStyle</code>; promote sub-pages to <code>GoRoute</code>s.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="perf">
+  <div class="sec-head"><h2>4 · Rendering &amp; data-layer performance</h2><span class="sec-count">5 items</span></div>
+  <p class="sec-intro">Beyond the notifier split, a handful of algorithmic fixes that show up on large canvases.</p>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>4.1 · Cull before iterating in the painter</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — <code>_paintVisibleElements</code> iterates <em>all</em> elements per frame to preserve z-order (<code>elements_painter.dart:434</code>), and the tile cache is bypassed whenever anything is selected or dragging (<code>:418</code>) — dragging one stroke on a 20k-element canvas is a 20k loop per frame. The fast path also rebuilds two full maps per paint (<code>:493-499</code>).</p>
+    <p><span class="label fix">Fix</span> — paint from <code>visibleIds</code> sorted by a cached paint-order map; cache <code>elementsById</code>/<code>paintOrderById</code> per <code>elementsRevision</code> (invalidation hook already exists at <code>:74</code>).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>4.2 · Linear hydration + id→index map</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — <code>load()</code> is O(n²) twice over: per-element duplicate scan + sorted-insertion scan (<code>canvas_controller.dart:791-807</code>) on data that arrives pre-sorted. A 5,000-stroke canvas ≈ 50M comparisons on open. Four more linear scans (<code>:1196, 4247, 4381, 4396</code>) hit per-frame paths.</p>
+    <p><span class="label fix">Fix</span> — bulk hydrate: <code>addAll</code> + single sort + <code>SpatialIndex.rebuild</code> (exists, unused — <code>spatial_index.dart:117</code>); maintain an <code>id → index</code> map alongside <code>_elements</code>.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>4.3 · Batch element writes; stop re-ensuring the default layer</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — <code>upsertElements</code> awaits 2 inserts per element in a loop (<code>canvas_repository.dart:350-374</code>): a 500-element lasso move = 1,000+ sequential round trips. <code>_ensureDefaultContentLayer</code> issues an INSERT-OR-IGNORE on every load <em>and</em> every save (<code>:84, 349, 654, 985</code>).</p>
+    <p><span class="label fix">Fix</span> — Drift <code>batch()</code> (used exactly once in the codebase today, <code>focus_repository.dart:335</code> — the pattern exists); memoize the layer check per canvasId.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>4.4 · Move heavy codecs off the UI isolate</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — <code>InkCodec.decodePoints</code> decodes millions of points synchronously during canvas load; <code>ZennoDocumentCodec</code> does full-canvas JSON on the UI isolate (<code>zenno_document.dart:44, 61</code>). Only one <code>compute()</code> exists in the repo.</p>
+    <p><span class="label fix">Fix</span> — <code>compute()</code> for bulk ink decode on load and for .zenno encode/decode. (PDF and image decode are already engine-side — leave them.)</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>4.5 · Memoize per-build allocations</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — <code>selectionBounds</code> scans every element on every build even with nothing selected (<code>canvas_controller.dart:583-599</code>); <code>eraserPath</code>/<code>lassoPath</code> rebuild <code>List.unmodifiable</code> per build (<code>:545-551</code>); <code>spatialIndex.query(...).toSet()</code> allocates per paint (<code>elements_painter.dart:391</code>).</p>
+    <p><span class="label fix">Fix</span> — early-return on empty selection; cache against revision tokens (the <code>_selectedIdsView</code> pattern at <code>:554</code> is the model).</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="polish">
+  <div class="sec-head"><h2>5 · Visual consistency &amp; accessibility</h2><span class="sec-count">4 items</span></div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>5.1 · Theme the canvas overlay — chrome is invisible on light paper</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — <code>canvas_overlay_painter.dart</code> hardcodes a legacy gold accent (<code>:66</code>, no longer the theme's terracotta), white-alpha hover/eraser rings (<code>:100, 145-152</code>) and a dark handle fill (<code>:224</code>). Paper presets include pure white — hover ring and eraser footprint vanish. Same class of bug in <code>elements_painter.dart:361-373</code>, <code>shape_painter.dart:13</code>. Default paper is a blue-navy (<code>canvas_style.dart:275</code>) matching neither theme.</p>
+    <p><span class="label fix">Fix</span> — pass <code>ColorScheme</code> into the painters (the wheel painter already takes <code>colors</code>); derive ring/handle colors from paper luminance; align default paper with the warm-paper/neutral-dark identity.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>5.2 · Canvas accessibility pass</h3><span class="effort">~1–2 days</span></div>
+    <p><span class="label problem">Problem</span> — 9 <code>Semantics</code> widgets in the whole app. Palette swatches announce raw hex strings to TalkBack (<code>canvas_toolbar.dart:3158-3194</code>); HUD buttons and the selection overlay are invisible to a11y; disabled alpha 0.3 is below M3's 0.38 (<code>:2796, 2827</code>).</p>
+    <p><span class="label fix">Fix</span> — <code>Semantics(button: true, label: tooltip)</code> on HUD buttons; human color names on swatches; semantics builder for selection handles; alpha to 0.38.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>5.3 · Token cleanup in the toolbar</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — ~40 raw spacing literals, 7 hardcoded <code>fontSize</code> overrides, <code>Colors.white24</code>/<code>Colors.black</code> dark-theme-only assumptions (<code>:4061, 4175, 4214, 4631, 4705</code>), dead <code>canvasBackground</code> (<code>:157</code>), marker icon differs between wheel and dock and collides with Freeform fill's glyph (<code>:22</code> vs <code>:1240, 1656</code>). Serif styles reference <code>fontFamily: 'serif'</code> with no assets declared.</p>
+    <p><span class="label fix">Fix</span> — sweep to <code>AppSpacing</code>/<code>textTheme</code>/<code>colorScheme</code> tokens; unify icon vocabulary; either bundle the intended serif or drop the family reference.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>5.4 · Motion</h3><span class="effort">~1 day</span></div>
+    <p><span class="label problem">Problem</span> — wheel page changes are instant <code>setState</code> swaps of 8 wedges; no <code>Hero</code> from library card → canvas; chrome over dense ink is flat alpha with no depth.</p>
+    <p><span class="label fix">Fix</span> — 140&nbsp;ms <code>AnimatedSwitcher</code> on the wheel action list (matching existing dialog transitions); <code>AnimatedScale</code> on the selected wedge; <code>Hero</code> on canvas thumbnails.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="health">
+  <div class="sec-head"><h2>6 · Code health</h2><span class="sec-count">4 items</span></div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>6.1 · Break up the two god files (9,369 lines between them)</h3><span class="effort">~3–4 days, mechanical</span></div>
+    <p><span class="label problem">Problem</span> — <code>canvas_controller.dart</code> (4,528 lines, ~14 responsibilities incl. ~450 lines of pure static geometry) and <code>canvas_toolbar.dart</code> (4,841 lines, 50+ private widget classes).</p>
+    <p><span class="label fix">Fix</span> — extract in risk order: raster scheduler (<code>:4065-4505</code>, clean boundary + test seam) → static geometry into the existing <code>tools/canvas_geometry.dart</code> → persistence coordinator (<code>:862-1117</code>) → selection controller (<code>:2582-3457</code>). Toolbar into <code>widgets/toolbar/{wheel,dialogs,palette,docks}/</code>.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>6.2 · View models to kill UI→DB coupling</h3><span class="effort">~1–2 days</span></div>
+    <p><span class="label problem">Problem</span> — 15 presentation files import Drift row classes directly (<code>library_page.dart:283</code> et al.); <code>drift show Value</code> leaks into controller APIs (<code>goal_providers.dart:1</code>, <code>revision_providers.dart:1</code>). The riverpod_generator limitation being worked around is a signal, not an obstacle.</p>
+    <p><span class="label fix">Fix</span> — add <code>CanvasSummary</code>, <code>FolderSummary</code>, <code>RitualItem</code>, <code>FocusSettings</code> beside the existing hand-written models (<code>SettingsModel</code>, <code>KanbanBoardData</code> prove the pattern); four providers then return to codegen. Also dedupe the near-identical <code>GoalBoardController</code>/<code>RevisionBoardController</code>.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p2">P2</span><h3>6.3 · Prune dead dependencies &amp; dead code</h3><span class="effort">~2 h</span></div>
+    <p><span class="label problem">Problem</span> — <code>freezed</code>, <code>freezed_annotation</code>, <code>json_serializable</code>, <code>json_annotation</code>, <code>collection</code>, <code>cupertino_icons</code>: zero usages (no <code>@freezed</code> class exists despite the stated stack). <code>Result&lt;T&gt;</code> (<code>core/util/result.dart</code>) has zero importers. Two identical image-decode implementations (<code>canvas_controller.dart:4300</code> / <code>canvas_export.dart:391</code>).</p>
+    <p><span class="label fix">Fix</span> — drop the six deps (faster build_runner); either adopt <code>Result</code> at repository boundaries or delete it — a polished dead abstraction implies a convention nobody follows; dedupe the decoder.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="chip p1">P1</span><h3>6.4 · Stop swallowing errors users need to see</h3><span class="effort">~½ day</span></div>
+    <p><span class="label problem">Problem</span> — attach/update failures only <code>debugPrint</code> (<code>card_canvas_attachments_section.dart:86, 176</code>); corrupt PDF pages silently placeholder forever (<code>canvas_controller.dart:4336</code>, bare <code>on Object { return; }</code>); <code>_track</code>'s <code>.catchError</code> without a <code>test:</code> parameter converts programming errors into "save failed" banners (<code>:1106</code>).</p>
+    <p><span class="label fix">Fix</span> — SnackBar on attachment failures; route PDF raster errors to the existing import-error snackbar path; narrow <code>.catchError</code> with <code>test: (e) =&gt; e is IOException || e is DriftWrappedException</code>-style predicate.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="tests">
+  <div class="sec-head"><h2>7 · Test coverage gaps</h2><span class="sec-count">5 items</span></div>
+  <p class="sec-intro">430 tests and exhaustive migration coverage — but the gaps sit exactly where this plan makes changes. Write these <em>before</em> the corresponding refactors.</p>
+  <ul class="tight">
+    <li><b>Golden test for <code>buildStrokeOutline</code></b> — no <code>stroke_builder_test.dart</code> exists; prerequisite for items 2.2 / 2.6 / 2.8.</li>
+    <li><b><code>pointer_classifier.dart</code>: zero coverage</b> — the entry point of the entire input pipeline. All six device kinds, <code>normalizedPressure</code> with <code>pressureMin == pressureMax</code>, both button masks.</li>
+    <li><b>Controller persistence state machine</b> — fake repository failing on demand: write → fail → <code>hasSaveError</code> → retry → <code>syncCanvasState</code> reconciles; <code>flush()</code> wave-draining; dispose-during-in-flight-write.</li>
+    <li><b>Raster budget</b> — <code>debugRasterBytesInUse</code> is an unused test seam: eviction over budget, on-screen never evicted, epoch-token discard of late decodes.</li>
+    <li><b><code>zenno_document.dart</code> fuzz/round-trip</b> — 464 lines, 2 tests: one round-trip per element kind + truncated/corrupt rejection. Verify ink codec v1/v2 legacy decoders have real legacy-buffer tests.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="roadmap">
+  <div class="sec-head"><h2>8 · Phased roadmap</h2></div>
+  <p class="sec-intro">Sequenced so each phase is independently shippable and verified on-device. Rough calendar assumes one developer.</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Phase</th><th>Contents</th><th>Est.</th><th>Exit criteria</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>1 · Stop the bleeding</b></td>
+        <td>All of §1 (cleanup race, lifecycle flush, tool-settings debounce, pen-up point) + safety tests from §7</td>
+        <td class="num">~3 days</td>
+        <td>No write path lost on process kill; import-during-cleanup test green; strokes end at the pen tip</td>
+      </tr>
+      <tr>
+        <td><b>2 · Make the pen feel right</b></td>
+        <td>2.1 notifier split → 2.2 incremental tessellation → 2.3 stabilizer → 2.4 prediction → 2.5 palm gap; golden test first</td>
+        <td class="num">~1.5 wks</td>
+        <td>Toolbar rebuilds during a stroke = 0; long-stroke frame time flat on device; hand-feel sign-off on the Tab S9 FE</td>
+      </tr>
+      <tr>
+        <td><b>3 · Wheel usability</b></td>
+        <td>3.1 labels/contrast, 3.2 48dp, 3.3 haptics, 3.4 undo/context, 3.5 handedness — finishes the intent of this branch</td>
+        <td class="num">~1 wk</td>
+        <td>All targets ≥48dp; labels legible at arm's length; undo always visible; light-theme icons pass contrast</td>
+      </tr>
+      <tr>
+        <td><b>4 · Scale &amp; polish</b></td>
+        <td>§4 perf items, 2.6 per-tool tuning, 2.7 eraser, 3.6–3.8, 5.1 overlay theming</td>
+        <td class="num">~1.5 wks</td>
+        <td>5k-element canvas opens without jank; erase scrub smooth; no invisible chrome on white paper</td>
+      </tr>
+      <tr>
+        <td><b>5 · Structure &amp; debt</b></td>
+        <td>6.1 god-file split, 6.2 view models, 6.3 pruning, 2.8 codec v4, 5.2–5.4, remaining §7 tests</td>
+        <td class="num">~2 wks</td>
+        <td>No file &gt;1,500 lines in canvas/; zero UI→DB imports; a11y scanner clean on the editor</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p style="margin-top:20px; color:var(--ink-soft)">Phases 1–2 are the payoff phases: they close the only data-loss vector and remove the dominant jank source. If time is short, ship those two and the branch's own goal (phase 3) and defer the rest.</p>
+</section>
+
+<footer>
+  Generated 2026-07-28 from three parallel review passes (pen/ink engine · UI/UX · architecture &amp; performance) over ~88.7k lines of non-generated Dart. File:line references are against <code>feat/intuitive-tool-wheel</code> @ 7e53357.
+</footer>
+
+</div>
+</body>
+</html>

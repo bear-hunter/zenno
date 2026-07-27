@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zenno UI/UX Review Findings Fix Plan</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; background: #111; color: #eee; }
+    main { max-width: 920px; margin: 0 auto; padding: 32px 20px 56px; }
+    h1 { font-size: 28px; margin: 0 0 24px; }
+    h2 { font-size: 18px; margin: 28px 0 10px; color: #e8b84b; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 6px 0; }
+    code { background: #222; padding: 1px 5px; border-radius: 4px; }
+    .note { color: #bbb; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Zenno UI/UX Review Findings Fix Plan</h1>
+
+  <h2>Outcome</h2>
+  <p>All review-listed UI/UX findings are resolved against the current Flutter codebase: no silent data loss on back/dismiss paths, mutating actions are guarded with loading/error feedback, errors are friendly and retryable, destructive actions have confirmation or undo, Kanban drag/drop works on real boards, and remaining accessibility/responsive/design-system polish is brought into the shared token system.</p>
+
+  <h2>Codebase Evidence</h2>
+  <ul>
+    <li>Read all review artifacts under <code>reviews/</code>: <code>README.md</code>, <code>00-executive-summary.md</code>, and per-area files <code>01</code> through <code>06</code>.</li>
+    <li>Verified the highest-risk patterns are still present in source: only <code>revision_card_detail_sheet.dart</code> currently uses <code>PopScope</code>; canvas editor, Focus Active/Review, goal detail, reflection editor, and template editor do not.</li>
+    <li>Verified unguarded async writes: <code>focus_setup_page.dart</code>, <code>focus_active_page.dart</code>, <code>focus_review_page.dart</code>, <code>goal_card_detail_sheet.dart</code>, <code>library_page.dart</code>, <code>canvas_card.dart</code>, <code>settings_page.dart</code>, <code>card_canvas_attachments_section.dart</code>, and canvas import paths still await repository/controller calls without complete loading/error handling.</li>
+    <li>Verified canvas findings in <code>canvas_editor_page.dart</code>, <code>canvas_controller.dart</code>, <code>canvas_import.dart</code>, <code>canvas_toolbar.dart</code>, <code>canvas_bookmarks_menu.dart</code>, <code>link_target_dialog.dart</code>, <code>canvas_view.dart</code>, <code>elements_painter.dart</code>, <code>canvas_overlay_painter.dart</code>, <code>pointer_classifier.dart</code>, and <code>pdf_raster_service.dart</code>.</li>
+    <li>Verified Focus findings in <code>focus_setup_page.dart</code>, <code>focus_active_page.dart</code>, <code>focus_review_page.dart</code>, <code>focus_history_page.dart</code>, <code>timer_display.dart</code>, <code>timer_type_picker.dart</code>, <code>ritual_checklist.dart</code>, <code>distraction_sheet.dart</code>, <code>energy_rating_selector.dart</code>, and controller clamps/error propagation.</li>
+    <li>Verified Goal Cycle findings in <code>goal_card_detail_sheet.dart</code>, <code>reflection_editor_page.dart</code>, <code>template_editor_page.dart</code>, <code>templates_page.dart</code>, <code>goal_board_page.dart</code>, <code>goal_card_tile.dart</code>, <code>reflection_entry_tile.dart</code>, <code>reflection_form.dart</code>, and <code>template_tile.dart</code>.</li>
+    <li>Verified Revision/Library/Settings findings in <code>revision_board_page.dart</code>, <code>revision_card_tile.dart</code>, <code>mastery_flag_chip.dart</code>, <code>revision_card_detail_sheet.dart</code>, <code>library_page.dart</code>, <code>canvas_card.dart</code>, and <code>settings_page.dart</code>.</li>
+    <li>Verified shared Kanban/attachment findings in <code>kanban_board_view.dart</code>, <code>kanban_column_view.dart</code>, <code>kanban_models.dart</code>, <code>canvas_picker_dialog.dart</code>, <code>card_canvas_attachments_section.dart</code>, and attachment repository behavior.</li>
+    <li>Verified foundation/design-system gaps in <code>app_spacing.dart</code>, <code>app_theme.dart</code>, <code>app_scaffold.dart</code>, and <code>relative_time.dart</code>; there is no radius scale, icon-size scale, standard dialog wrapper, or responsive shell fallback.</li>
+    <li>Relevant existing tests found: <code>test/canvas_view_input_test.dart</code>, <code>test/kanban_board_view_test.dart</code>, <code>test/revision_card_detail_sheet_test.dart</code>, <code>test/card_canvas_attachment_repository_test.dart</code>, repository tests, and controller tests.</li>
+  </ul>
+  <p class="note">Review status: I did not find source evidence contradicting the review’s major claims. Some low-severity items are subjective polish, but the underlying code patterns called out by the review are present.</p>
+
+  <h2>Assumptions</h2>
+  <ul>
+    <li>Fix the full review scope, but implement in priority order: High first, shared Mediums second, Low polish last.</li>
+    <li>Avoid new third-party dependencies unless Kanban autoscroll proves too brittle with a custom implementation.</li>
+    <li>Do not change database schema unless a true Undo flow requires persistence that cannot be safely reconstructed from existing repository data.</li>
+  </ul>
+
+  <h2>Plan</h2>
+  <ol>
+    <li><strong>Build shared UI/UX primitives first.</strong> Add <code>AppRadii</code>, <code>AppIconSizes</code>, a responsive <code>AppDialog</code> wrapper, a retryable <code>AsyncValueWidget</code>, a friendly error presenter/logger, a guarded async-action helper/widget for buttons, and a destructive-action helper for confirm/undo SnackBars. Replace obvious token violations in theme-level code as the primitives land.</li>
+    <li><strong>Stop unsaved-changes data loss.</strong> Add dirty tracking plus <code>PopScope</code> guards to <code>canvas_editor_page.dart</code>, <code>focus_active_page.dart</code>, <code>focus_review_page.dart</code>, <code>goal_card_detail_sheet.dart</code>, <code>reflection_editor_page.dart</code>, and <code>template_editor_page.dart</code>. Route all app-bar, system-back, scrim, and drag-dismiss paths through the same confirm/save-error flow.</li>
+    <li><strong>Guard every mutating async action.</strong> Apply the guarded helper to canvas import/clear/bookmarks/cards, Focus start/finish/review/distractions/rituals, goal save/delete/date/reflection actions, revision flag/mark/delete/save, library create/rename/delete, settings controls, Kanban actions, and attachment add/detach/rename. Disable controls while in flight, show inline spinners where appropriate, catch failures, use friendly SnackBars, and keep mounted checks after awaits.</li>
+    <li><strong>Fix error and retry surfaces.</strong> Replace raw <code>$error</code> UI text with friendly messages and log raw details. Add retry to board/library/settings/template/canvas-list error panels. Fix masked errors in <code>link_target_dialog.dart</code> and Focus Review’s distraction <code>StreamBuilder</code>. Keep persistent save/import failures visible until resolved, not merely dismissed.</li>
+    <li><strong>Address destructive-action safety.</strong> Add confirmation or Undo to canvas clear, lasso/delete-selection affordances, bookmark removal, Kanban column deletion, ritual retire, attachment detach, canvas delete/rename feedback, reflection delete, and empty-text-note deletion. For Kanban column delete, either delay commit until the Undo window expires or capture enough state to restore the column/cards.</li>
+    <li><strong>Repair core Canvas UX.</strong> Show the real canvas title in the app bar; surface image/PDF import failures; make the toolbar horizontally scrollable and 48dp-hit-testable; make the note and link dialogs responsive; fix link-dialog autofocus and error states; route painter colors through <code>AppColors</code>; improve placeholders/hover contrast; handle PDF page render failures distinctly; tune trackpad/unknown pointer behavior and pinch pointer tracking.</li>
+    <li><strong>Repair Focus UX.</strong> Add Setup start loading/error handling; guard Active back/finish/abandon and Review save/back/discard; make the timer ring responsive with <code>FittedBox</code> and useful semantics; fix open-ended/phase-complete ring states; add distraction/ritual error handling; clamp duration controls and disable stepper bounds; clamp long free text in active/history/setup; add semantics to mode cards, ritual rows, and energy pips.</li>
+    <li><strong>Repair Goal Cycle and Reflection UX.</strong> Bring goal detail sheet to the same save/dirty/error standard as the reflection/template editors; make target date and status note follow one persistence model; fix reflection form <code>setState</code> so Save tracks input immediately; add inline validation/autofocus; add “Duplicate &amp; edit” for read-only templates; reconcile template delete copy with RESTRICT behavior; clamp overflowing goal/reflection/template text.</li>
+    <li><strong>Repair Revision, Library, and Settings UX.</strong> Decouple revision flag saving from unrelated buttons and show flag progress; keep Mark revised sheet open or prompt for mastery before close; add flag shape/glyph differences; drop synchronous thumbnail <code>existsSync()</code>; guard library create and canvas card rename/delete with success/failure feedback; make settings writes await/catch, commit slider changes on <code>onChangeEnd</code>, and add retry to settings load errors.</li>
+    <li><strong>Repair shared Kanban and attachments.</strong> Add horizontal and vertical edge autoscroll during card/column drags; widen column/card drop targets while keeping visual indicators thin; add scrollbars/edge affordances; make drag handles accessible and at least 48dp; choose an honest drag model, preferably handle-based drag to avoid tap conflicts; collapse the source slot while dragging; make lower empty lane area a drop target; add length caps; hide raw Kanban errors; fix <code>KanbanPositions.between</code> collision/renormalization handling. For attachments, add guarded add/detach/rename, detach Undo, validation, title ellipsis, duplicate attach feedback, and remove the duplicate open affordance.</li>
+    <li><strong>Finish responsive/accessibility/design polish.</strong> Add selected rail icons and a narrow-width shell fallback; clamp all user-entered text in rows/cards; raise all sub-48dp touch targets; use shared dialog widths/radii/icon sizes; fix <code>canvas_picker_dialog.dart</code> raw <code>DateTime</code> with <code>relativeTime()</code>; add scrollbars where embedded lists scroll; tune <code>relative_time.dart</code> week/month boundary if desired.</li>
+  </ol>
+
+  <h2>Validation</h2>
+  <ul>
+    <li>Add/extend widget tests for <code>PopScope</code> discard confirmations and guarded button loading/error behavior on the six editing surfaces.</li>
+    <li>Extend <code>test/kanban_board_view_test.dart</code> for widened drop zones, source collapse, handle semantics, and edge-autoscroll controller behavior where practical.</li>
+    <li>Extend <code>test/canvas_view_input_test.dart</code> for pinch pointer stability, pointer classification behavior, and toolbar/link-dialog behavior where practical.</li>
+    <li>Extend <code>test/revision_card_detail_sheet_test.dart</code>, focus controller/page tests, and attachment tests for async failures, validation, and undo/confirm flows.</li>
+    <li>Run <code>flutter analyze</code>.</li>
+    <li>Run <code>flutter test</code>.</li>
+    <li>Build smoke test: <code>flutter build apk --debug</code> or another Android build command already used for this repo.</li>
+    <li>Manual tablet pass on Samsung Galaxy Tab S9 FE with S Pen: back gestures, scrim dismiss, import failures, Kanban drag to off-screen columns/cards, settings writes, touch target comfort, and large text scale/portrait or split-screen layouts.</li>
+  </ul>
+
+  <h2>Risks And Guardrails</h2>
+  <ul>
+    <li>This is a broad UI pass; keep implementation staged by shared primitives, then High findings, then Medium/Low polish to avoid mixing unrelated behavior changes.</li>
+    <li>Undo for destructive database cascades can be risky. Prefer delayed commit or explicit restore APIs with tests; do not introduce data-loss-prone “undo” shortcuts.</li>
+    <li>Kanban autoscroll and handle-based drag can regress existing drag tests; implement behind small helper classes and test controller math separately from full gesture integration.</li>
+    <li>Settings writes are stream-driven; loading guards must not make controls feel stuck if the stream re-emits slowly.</li>
+    <li>Do not add dependencies, run migrations, or change schema without explicit review if a UI fix can be done safely in presentation/repository layers.</li>
+    <li>No Git commits, pushes, or PRs without Karl’s explicit request.</li>
+  </ul>
+
+  <h2>Open Questions</h2>
+  <ul>
+    <li>None blocking. The only implementation choice to confirm during execution is whether Kanban column delete should use delayed commit or immediate delete plus restore-from-snapshot Undo.</li>
+  </ul>
+</main>
+</body>
+</html>

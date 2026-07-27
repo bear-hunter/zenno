@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Schedule Revision Kanban Improvements Plan</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #1f2937; }
+    h1 { font-size: 28px; margin-bottom: 24px; }
+    h2 { font-size: 18px; margin-top: 28px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+    ul, ol { padding-left: 24px; }
+    code { background: #f3f4f6; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Schedule Revision Kanban Improvements Plan</h1>
+
+  <h2>Outcome</h2>
+  <p>The Schedule Revision board columns fill the available screen height, cards can be repeatedly dragged between any columns with persisted column/status updates, and card creation exposes the same revision options available when opening an existing card.</p>
+
+  <h2>Codebase Evidence</h2>
+  <ul>
+    <li><code>lib/features/revision/presentation/pages/revision_board_page.dart</code>: Schedule Revision renders <code>KanbanBoardView</code> and opens <code>showRevisionCardDetailSheet</code> on card tap.</li>
+    <li><code>lib/shared/kanban/kanban_board_view.dart</code>: board uses a horizontal <code>SingleChildScrollView</code> with <code>IntrinsicHeight</code>; this is likely why columns size to content instead of full body height.</li>
+    <li><code>lib/shared/kanban/kanban_column_view.dart</code>: columns already contain <code>Expanded</code> card lists and <code>LongPressDraggable</code>/<code>DragTarget</code> card drop zones; add-card currently uses a simple title/notes dialog only.</li>
+    <li><code>lib/features/revision/data/revision_repository.dart</code>: <code>moveCard</code> persists <code>columnId</code> and <code>position</code>; <code>addCard</code> creates revision details with default yellow mastery.</li>
+    <li><code>lib/features/revision/presentation/widgets/revision_card_detail_sheet.dart</code>: existing card sheet supports title, notes, mastery, revision stats, canvas attachments, mark revised, save, and delete.</li>
+    <li><code>test/kanban_board_view_test.dart</code> and <code>test/revision_card_detail_sheet_test.dart</code>: existing widget coverage for add-card dialog, tap semantics, and revision detail behavior.</li>
+  </ul>
+
+  <h2>Assumptions</h2>
+  <ul>
+    <li>“Status” means the card’s current Kanban column/bucket, represented by <code>BoardCards.columnId</code>, not a separate status field.</li>
+    <li>“When adding a card it should also give me options that is also when I am clicking the card” means after creating a revision card, immediately open the full revision detail sheet for that new card, or replace the add flow with a creation sheet that includes those same controls.</li>
+  </ul>
+
+  <h2>Plan</h2>
+  <ol>
+    <li>Make <code>KanbanBoardView</code> height-aware: remove the content-sizing <code>IntrinsicHeight</code> path and constrain the horizontal scroll content to <code>constraints.maxHeight</code> (or wrap the row in a full-height <code>SizedBox</code>) so each <code>KanbanColumnView</code> stretches to the bottom of the Scaffold body.</li>
+    <li>Harden card drag/drop for repeat cross-column moves in <code>KanbanColumnView</code>: keep the existing fractional position logic, but add widget tests that drag a card from column A to B and then from B to A using an updated board snapshot. If touch long-press is the usability blocker, make the drag handle or whole card support immediate mouse/stylus drag while preserving tap-to-open.</li>
+    <li>Expose a post-create hook from the generic Kanban layer: change <code>KanbanController.addCard</code> to return the new card id, and add an optional <code>onCardAdded</code>/<code>onAddCardComplete</code> callback to <code>KanbanBoardView</code>/<code>KanbanColumnView</code>. Update revision and goal controllers/repositories to match the new return type.</li>
+    <li>For Schedule Revision, after add-card succeeds, locate the newly emitted card from <code>revisionBoardProvider</code> or construct a minimal <code>KanbanCardData</code> with default <code>RevisionCardExtra</code>, then open <code>showRevisionCardDetailSheet</code>. This gives the same options as tapping a card without duplicating the whole detail UI.</li>
+    <li>If Karl wants true “options before save” instead, create a revision-specific add-card sheet using the existing detail-sheet fields for title, notes, mastery, and attachments after save; keep generic add-card behavior for Goal Cycle unchanged except for the return-type plumbing.</li>
+    <li>Update tests for full-height layout, repeated cross-column move callbacks, new <code>addCard</code> return type, and revision add-card opening the detail/options flow.</li>
+  </ol>
+
+  <h2>Validation</h2>
+  <ul>
+    <li>Run targeted widget tests: <code>flutter test test/kanban_board_view_test.dart test/revision_card_detail_sheet_test.dart</code>.</li>
+    <li>Run <code>flutter analyze</code> for Dart API changes across shared Kanban, revision, goal cycle, and test fakes.</li>
+    <li>Manual Android tablet smoke test: open Schedule Revision, confirm columns fill the visible body height, drag the same card between multiple columns repeatedly, kill/reopen app and confirm it remains in the last column, add a card and confirm full card options are available.</li>
+  </ul>
+
+  <h2>Risks And Guardrails</h2>
+  <ul>
+    <li>Changing <code>KanbanController.addCard</code> affects both Schedule Revision and Goal Cycle plus test fakes; keep the API change small and mechanical.</li>
+    <li>Opening a detail sheet immediately after insert depends on the board stream timing; prefer using the returned id plus the next provider emission, or a minimal newly-created card object with known defaults.</li>
+    <li>No database migration should be needed if “status” remains <code>columnId</code>.</li>
+    <li>No Git writes, dependency changes, or destructive operations are required.</li>
+  </ul>
+
+  <h2>Open Questions</h2>
+  <ul>
+    <li>Should add-card open the full options sheet after creating with title/notes, or should the initial add-card UI itself include mastery/mark-revised/canvas options before saving?</li>
+  </ul>
+</body>
+</html>

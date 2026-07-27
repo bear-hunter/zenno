@@ -742,8 +742,30 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerUp(PointerUpEvent event) {
     if (event.pointer == _toolPointerId) {
       _toolPointerUpPosition = event.localPosition;
+      _appendPenUpSample(event);
     }
     _endPointer(event.pointer);
+  }
+
+  /// Appends the pointer-up position as the stroke's final sample.
+  ///
+  /// The smoothing filter always trails the true nib position, so ending a
+  /// stroke at the last *smoothed* move leaves it visibly short of where the
+  /// user lifted — worst on short ticks and fast flicks. This pushes the raw
+  /// up-event position, bypassing both the filter and the thinning threshold.
+  void _appendPenUpSample(PointerUpEvent event) {
+    if (_toolGesture != _ToolGesture.draw) {
+      return;
+    }
+    _controller.appendToStroke(
+      _toWorld(event.localPosition),
+      _controller.liveStrokeLastPressure ?? _pressure(event),
+      tiltX: _tiltX(event),
+      tiltY: _tiltY(event),
+      azimuth: event.orientation,
+      timestampMicros: event.timeStamp.inMicroseconds,
+      force: true,
+    );
   }
 
   void _onPointerCancel(PointerCancelEvent event) {

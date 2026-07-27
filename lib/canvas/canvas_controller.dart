@@ -229,6 +229,18 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Pending debounced viewport-save timer, or `null` when none is scheduled.
   Timer? _viewportSaveTimer;
 
+  /// Debounce window for persisting tool-wheel/pen settings and paper style.
+  ///
+  /// Width, opacity and smoothing are bound to continuous drag handlers, so
+  /// these saves need the same collapsing the viewport gets.
+  static const Duration _toolSettingsSaveDebounce = Duration(milliseconds: 400);
+
+  /// Pending debounced tool-settings-save timer.
+  Timer? _toolSettingsSaveTimer;
+
+  /// Pending debounced paper-style-save timer.
+  Timer? _paperStyleSaveTimer;
+
   /// In-flight persistence futures, awaited by [flush] so the editor page can
   /// guarantee every write has hit SQLite before it disposes.
   final Set<Future<void>> _pendingWrites = <Future<void>>{};
@@ -340,6 +352,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// only when [endStroke] commits it.
   Stroke? get liveStroke => _liveStrokeBuilder?.snapshot();
   _LiveStrokeBuilder? _liveStrokeBuilder;
+
+  /// Pressure of the newest live-stroke sample, or `null` when idle.
+  ///
+  /// A `PointerUpEvent` reports zero pressure, so the pen-up sample reuses
+  /// this rather than collapsing the stroke's final point to zero width.
+  double? get liveStrokeLastPressure => _liveStrokeBuilder?.last.pressure;
 
   /// The active interaction tool. Drawing always starts as [CanvasTool.pen].
   CanvasTool activeTool = CanvasTool.pen;
@@ -935,6 +953,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       _viewportSaveTimer = null;
       _saveViewportNow();
     }
+    final Timer? toolSettingsTimer = _toolSettingsSaveTimer;
+    if (toolSettingsTimer != null && toolSettingsTimer.isActive) {
+      toolSettingsTimer.cancel();
+      _saveToolSettingsNow();
+    }
+    final Timer? paperTimer = _paperStyleSaveTimer;
+    if (paperTimer != null && paperTimer.isActive) {
+      paperTimer.cancel();
+      _savePaperStyleNow();
+    }
     // Drain in waves: awaiting a write may itself enqueue another (a viewport
     // save scheduled just before flush, an upsert mid-transaction).
     while (_pendingWrites.isNotEmpty) {
@@ -1263,6 +1291,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Appends a sample at the [world] point with [pressure] to [liveStroke].
   ///
   /// A no-op when no stroke is in progress.
+  ///
+  /// Pass [force] to bypass the distance/pressure thinning filter. The pen-up
+  /// sample uses it so a stroke always terminates exactly where the nib lifted
+  /// rather than at the last sample that happened to clear the threshold.
   void appendToStroke(
     Offset world,
     double pressure, {
@@ -1271,16 +1303,21 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     double azimuth = 0,
     int timestampMicros = 0,
     double velocity = 0,
+    bool force = false,
   }) {
     final _LiveStrokeBuilder? stroke = _liveStrokeBuilder;
     if (stroke == null) {
       return;
     }
     final StrokePoint last = stroke.last;
-    final double minDistance = _strokeSampleMinDistanceWorld(stroke.width);
-    final bool movedEnough = (world - last.offset).distance >= minDistance;
-    final bool pressureChanged = (pressure - last.pressure).abs() >= 0.035;
-    if (!movedEnough && !pressureChanged) {
+    if (!force) {
+      final double minDistance = _strokeSampleMinDistanceWorld(stroke.width);
+      final bool movedEnough = (world - last.offset).distance >= minDistance;
+      final bool pressureChanged = (pressure - last.pressure).abs() >= 0.035;
+      if (!movedEnough && !pressureChanged) {
+        return;
+      }
+    } else if (world == last.offset) {
       return;
     }
     stroke.append(
@@ -1899,14 +1936,29 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   /// Updates the per-canvas paper style.
+  ///
+  /// Debounced like the tool settings: the paper dialog drives this from live
+  /// colour/opacity sliders.
   void setPaperStyle(CanvasPaperStyle style) {
     paperStyle = style;
-    final CanvasRepository? repo = _repository;
-    final String? canvasId = _canvasId;
-    if (repo != null && canvasId != null) {
-      _track(() => repo.savePaperStyle(canvasId, style));
+    if (_repository != null && _canvasId != null) {
+      _paperStyleSaveTimer?.cancel();
+      _paperStyleSaveTimer = Timer(
+        _toolSettingsSaveDebounce,
+        _savePaperStyleNow,
+      );
     }
     notifyListeners();
+  }
+
+  void _savePaperStyleNow() {
+    _paperStyleSaveTimer = null;
+    final CanvasRepository? repo = _repository;
+    final String? canvasId = _canvasId;
+    if (repo == null || canvasId == null) {
+      return;
+    }
+    _track(() => repo.savePaperStyle(canvasId, paperStyle));
   }
 
   /// Enables or disables snap-to-grid for precision placement.
@@ -1923,7 +1975,25 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     setSnapToGridEnabled(enabled: !snapToGridEnabled);
   }
 
+  /// Schedules a debounced save of the tool wheel and pen settings.
+  ///
+  /// Width/opacity/smoothing are driven by continuous drag handlers, so an
+  /// undebounced save here is one JSON encode plus one SQLite transaction per
+  /// drag frame. Collapsed to one write per [_toolSettingsSaveDebounce] (and
+  /// once more on [flush]), mirroring the viewport.
   void _saveToolSettings() {
+    if (_repository == null || _canvasId == null) {
+      return;
+    }
+    _toolSettingsSaveTimer?.cancel();
+    _toolSettingsSaveTimer = Timer(
+      _toolSettingsSaveDebounce,
+      _saveToolSettingsNow,
+    );
+  }
+
+  void _saveToolSettingsNow() {
+    _toolSettingsSaveTimer = null;
     final CanvasRepository? repo = _repository;
     final String? canvasId = _canvasId;
     if (repo == null || canvasId == null) {
@@ -4520,6 +4590,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _disposed = true;
     _viewportSaveTimer?.cancel();
     _viewportSaveTimer = null;
+    _toolSettingsSaveTimer?.cancel();
+    _toolSettingsSaveTimer = null;
+    _paperStyleSaveTimer?.cancel();
+    _paperStyleSaveTimer = null;
     _disposeAllRasters();
     // Fire-and-forget: closing pooled PDFium handles need not block teardown.
     unawaited(_pdfRasterService.dispose());

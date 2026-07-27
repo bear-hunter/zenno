@@ -9,11 +9,19 @@ part of 'library_providers.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// Provides the singleton [LibraryRepository], wired to the app database.
+///
+/// Kept alive deliberately: this repository owns orphaned-file housekeeping,
+/// and an autoDispose rebuild would re-run that scan every time the library
+/// screen is re-entered.
 
 @ProviderFor(libraryRepository)
 final libraryRepositoryProvider = LibraryRepositoryProvider._();
 
 /// Provides the singleton [LibraryRepository], wired to the app database.
+///
+/// Kept alive deliberately: this repository owns orphaned-file housekeeping,
+/// and an autoDispose rebuild would re-run that scan every time the library
+/// screen is re-entered.
 
 final class LibraryRepositoryProvider
     extends
@@ -24,13 +32,17 @@ final class LibraryRepositoryProvider
         >
     with $Provider<LibraryRepository> {
   /// Provides the singleton [LibraryRepository], wired to the app database.
+  ///
+  /// Kept alive deliberately: this repository owns orphaned-file housekeeping,
+  /// and an autoDispose rebuild would re-run that scan every time the library
+  /// screen is re-entered.
   LibraryRepositoryProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
         name: r'libraryRepositoryProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -58,4 +70,4 @@ final class LibraryRepositoryProvider
   }
 }
 
-String _$libraryRepositoryHash() => r'bdcf36594d7f7255f4d9f90893f0c74ec7c779d0';
+String _$libraryRepositoryHash() => r'e93f1a20594d02648fb3da64fd15f596dad574a0';
