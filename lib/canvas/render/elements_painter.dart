@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/rendering.dart';
 
+import 'package:zenno/canvas/canvas_controller.dart' show CanvasElementDamage;
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
@@ -38,9 +39,9 @@ import 'package:zenno/canvas/render/shape_painter.dart';
 /// Cache for committed element pictures grouped by fixed world-space tiles.
 ///
 /// Owned by the view rather than the painter so pictures survive repaint
-/// delegate instances. A changed element/raster signature invalidates the
-/// whole cache; otherwise each visible tile is recorded once and reused while
-/// panning/zooming.
+/// delegate instances. Local element/raster changes invalidate only pictures
+/// intersecting their old/new bounds; ordering-wide and defensive events still
+/// clear every picture.
 class ElementsTileCache {
   /// Creates a tile-picture cache.
   ElementsTileCache({this.maxTiles = 96});
@@ -54,17 +55,28 @@ class ElementsTileCache {
   final StrokePathCache strokePathCache = StrokePathCache();
   int _revision = 0;
   int _tick = 0;
+  int _pictureBuildCount = 0;
 
   /// Number of currently retained tile pictures.
   int get tileCount => _pictures.length;
 
+  /// Committed revision currently represented by retained tile pictures.
+  int get revision => _revision;
+
+  /// Total tile pictures recorded during this cache's lifetime.
+  int get pictureBuildCount => _pictureBuildCount;
+
   /// Clears all retained pictures.
   void clear() {
+    _clearPictures();
+    strokePathCache.clear();
+  }
+
+  void _clearPictures() {
     for (final picture in _pictures.values) {
       picture.picture.dispose();
     }
     _pictures.clear();
-    strokePathCache.clear();
   }
 
   /// Releases native picture resources.
@@ -73,14 +85,40 @@ class ElementsTileCache {
   void _syncRevision({
     required List<CanvasElement> elements,
     required int? revision,
+    required CanvasElementDamage? damage,
   }) {
     final int nextRevision =
         revision ?? Object.hashAll(elements.map(_elementRevisionPart));
     if (nextRevision == _revision) {
       return;
     }
+    final bool canInvalidateLocally =
+        revision != null &&
+        damage != null &&
+        !damage.isFull &&
+        damage.fromRevision == _revision &&
+        damage.toRevision == nextRevision;
+    if (canInvalidateLocally) {
+      _invalidateBounds(damage.bounds ?? Rect.zero);
+    } else {
+      _clearPictures();
+    }
     _revision = nextRevision;
-    clear();
+  }
+
+  void _invalidateBounds(Rect bounds) {
+    if (bounds.isEmpty) {
+      return;
+    }
+    final int minX = (bounds.left / tileSize).floor();
+    final int maxX = (bounds.right / tileSize).floor();
+    final int minY = (bounds.top / tileSize).floor();
+    final int maxY = (bounds.bottom / tileSize).floor();
+    for (var y = minY; y <= maxY; y += 1) {
+      for (var x = minX; x <= maxX; x += 1) {
+        _pictures.remove(_TileKey(x, y))?.picture.dispose();
+      }
+    }
   }
 
   ui.Picture _pictureFor({
@@ -115,6 +153,7 @@ class ElementsTileCache {
 
     final picture = recorder.endRecording();
     _pictures[key] = _TilePicture(picture, ++_tick);
+    _pictureBuildCount += 1;
     _evictIfNeeded();
     return picture;
   }
@@ -303,6 +342,7 @@ class ElementsPainter extends CustomPainter {
     this.allElementsById,
     this.paintOrderById,
     this.elementsRevision,
+    this.elementDamage,
     this.selectionRevision,
     this.selectionPreviewRevision,
     this.tileCache,
@@ -325,6 +365,9 @@ class ElementsPainter extends CustomPainter {
 
   /// Monotonic token bumped when committed element content changes.
   final int? elementsRevision;
+
+  /// Bounds changed since the tile cache's current committed revision.
+  final CanvasElementDamage? elementDamage;
 
   /// Viewport-culling index over [elements], keyed by element id.
   final SpatialIndex spatialIndex;
@@ -399,7 +442,11 @@ class ElementsPainter extends CustomPainter {
 
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
-    tileCache?._syncRevision(elements: elements, revision: elementsRevision);
+    tileCache?._syncRevision(
+      elements: elements,
+      revision: elementsRevision,
+      damage: elementDamage,
+    );
 
     if (_canUseTileCache(visibleWorldRect)) {
       final ElementsTileCache cache = tileCache!;

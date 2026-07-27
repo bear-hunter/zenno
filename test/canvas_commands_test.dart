@@ -357,6 +357,57 @@ void main() {
     });
   });
 
+  group('committed element damage', () {
+    test('remove then add includes both old and new bounds', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      const TextElement original = TextElement(
+        id: 'moving-note',
+        zIndex: 0,
+        worldBounds: Rect.fromLTWH(10, 20, 100, 60),
+        text: 'Move me',
+        color: 0xFFFFFFFF,
+        fontSize: 18,
+      );
+      final TextElement moved = original.translated(const Offset(3000, 40));
+
+      controller.addElementToStore(original);
+      final int beforeMove = controller.elementsRevision;
+      controller.removeElementFromStore(original.id);
+      controller.addElementToStore(moved);
+
+      final CanvasElementDamage damage = controller.elementDamageSince(
+        beforeMove,
+      );
+      expect(damage.isFull, isFalse);
+      expect(
+        damage.bounds,
+        original.worldBounds.expandToInclude(moved.worldBounds),
+      );
+    });
+
+    test('falls back to a full clear when bounded history is exhausted', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      final int oldRevision = controller.elementsRevision;
+
+      for (var i = 0; i < 65; i += 1) {
+        controller.addElementToStore(
+          TextElement(
+            id: 'note-$i',
+            zIndex: i,
+            worldBounds: Rect.fromLTWH(i * 10, 0, 8, 8),
+            text: '$i',
+            color: 0xFFFFFFFF,
+            fontSize: 12,
+          ),
+        );
+      }
+
+      expect(controller.elementDamageSince(oldRevision).isFull, isTrue);
+    });
+  });
+
   group('live stroke repaint', () {
     test('appendToStroke replaces liveStroke identity before commit', () {
       final CanvasController controller = CanvasController();

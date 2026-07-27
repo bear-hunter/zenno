@@ -71,6 +71,22 @@ enum EraserMode {
 /// How a lasso or item-pick gesture changes the current selection.
 enum SelectionMode { replace, add, subtract }
 
+/// Committed-element damage accumulated between two render revisions.
+@immutable
+class CanvasElementDamage {
+  const CanvasElementDamage({
+    required this.fromRevision,
+    required this.toRevision,
+    required this.isFull,
+    this.bounds,
+  });
+
+  final int fromRevision;
+  final int toRevision;
+  final bool isFull;
+  final Rect? bounds;
+}
+
 /// The geometric primitive produced by [CanvasTool.shape].
 ///
 /// Each kind is generated as a normal [InkElement] whose centerline is computed
@@ -329,6 +345,10 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   int _viewportRevision = 0;
   int _liveStrokeRevision = 0;
   bool _liveStrokeNotifyScheduled = false;
+  final List<({int revision, Rect? bounds})> _elementDamageHistory =
+      <({int revision, Rect? bounds})>[];
+
+  static const int _maxElementDamageHistory = 64;
 
   /// Applied commands available to be reversed by [undo], oldest at the front.
   final List<CanvasCommand> _undoStack = <CanvasCommand>[];
@@ -363,6 +383,64 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   int get elementsRevision => _elementsRevision;
+
+  /// Returns all committed-element damage after [revision].
+  ///
+  /// A full invalidation is returned when the caller is ahead of this
+  /// controller or when the bounded history no longer reaches the requested
+  /// revision. This defensive fallback prevents stale tile pictures.
+  CanvasElementDamage elementDamageSince(int revision) {
+    if (revision == _elementsRevision) {
+      return CanvasElementDamage(
+        fromRevision: revision,
+        toRevision: _elementsRevision,
+        isFull: false,
+        bounds: Rect.zero,
+      );
+    }
+    if (revision < 0 ||
+        revision > _elementsRevision ||
+        _elementDamageHistory.isEmpty ||
+        _elementDamageHistory.first.revision > revision + 1) {
+      return CanvasElementDamage(
+        fromRevision: revision,
+        toRevision: _elementsRevision,
+        isFull: true,
+      );
+    }
+
+    Rect? damageBounds;
+    var expectedRevision = revision + 1;
+    for (final damage in _elementDamageHistory) {
+      if (damage.revision < expectedRevision) {
+        continue;
+      }
+      if (damage.revision != expectedRevision || damage.bounds == null) {
+        return CanvasElementDamage(
+          fromRevision: revision,
+          toRevision: _elementsRevision,
+          isFull: true,
+        );
+      }
+      damageBounds = damageBounds == null
+          ? damage.bounds
+          : damageBounds.expandToInclude(damage.bounds!);
+      expectedRevision += 1;
+    }
+    if (expectedRevision != _elementsRevision + 1) {
+      return CanvasElementDamage(
+        fromRevision: revision,
+        toRevision: _elementsRevision,
+        isFull: true,
+      );
+    }
+    return CanvasElementDamage(
+      fromRevision: revision,
+      toRevision: _elementsRevision,
+      isFull: false,
+      bounds: damageBounds ?? Rect.zero,
+    );
+  }
 
   int get selectionRevision => _selectionRevision;
 
@@ -757,6 +835,19 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     return _isLayerVisible(layerId) && !_isLayerLocked(layerId);
   }
 
+  Rect _damageBoundsForElements(bool Function(CanvasElement element) matches) {
+    Rect? bounds;
+    for (final CanvasElement element in _elements) {
+      if (!matches(element)) {
+        continue;
+      }
+      bounds = bounds == null
+          ? element.worldBounds
+          : bounds.expandToInclude(element.worldBounds);
+    }
+    return bounds ?? Rect.zero;
+  }
+
   CanvasElement _normalizeElementLayer(CanvasElement element) {
     final String layerId =
         element.layerId ?? _editableActiveLayerId() ?? _defaultLayerId;
@@ -766,8 +857,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     return _copyElementWithLayer(element, layerId);
   }
 
-  void _markElementsChanged() {
+  void _markElementsChanged({Rect? damageBounds}) {
     _elementsRevision += 1;
+    _elementDamageHistory.add((
+      revision: _elementsRevision,
+      bounds: damageBounds,
+    ));
+    if (_elementDamageHistory.length > _maxElementDamageHistory) {
+      _elementDamageHistory.removeAt(0);
+    }
     _elementsView = null;
     _visibleElementsView = null;
     _viewportElementsView = null;
@@ -987,7 +1085,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (raster != null) {
       _trackRaster(raster);
     }
-    _markElementsChanged();
+    _markElementsChanged(damageBounds: stored.worldBounds);
 
     // Keep the z-index allocator ahead of every committed element.
     if (stored.zIndex >= _nextZIndex) {
@@ -1010,7 +1108,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _rebuildPaintOrder();
     _disposeElementRaster(removed);
     _spatialIndex.remove(id);
-    _markElementsChanged();
+    _markElementsChanged(damageBounds: removed.worldBounds);
     // Keep the selection consistent: a removed element can no longer be
     // selected. (A MoveElementsCommand removes-then-re-adds with the same id,
     // so it re-selects itself below via _reconcileSelection.)
@@ -1928,7 +2026,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       (CanvasLayer a, CanvasLayer b) => a.position.compareTo(b.position),
     );
     _activeLayerId = layer.id;
-    _markElementsChanged();
+    _markElementsChanged(damageBounds: Rect.zero);
     _persistLayer(layer);
     _notifyElements();
     return layer;
@@ -1942,7 +2040,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     final CanvasLayer layer = _layers[index];
     final CanvasLayer next = layer.copyWith(visible: visible);
     _layers[index] = next;
-    _markElementsChanged();
+    _markElementsChanged(
+      damageBounds: _damageBoundsForElements(
+        (CanvasElement element) => _effectiveLayerId(element) == layerId,
+      ),
+    );
     if (!visible) {
       _removeSelectedIdsWhere(
         (String id) => _elements.any(
@@ -2005,7 +2107,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _persistLayers(List<CanvasLayer>.of(_layers));
     _elements.sort(_compareElements);
     _rebuildPaintOrder();
-    _markElementsChanged();
+    _markElementsChanged(
+      damageBounds: _damageBoundsForElements((CanvasElement element) => true),
+    );
     _notifyElements();
   }
 
@@ -4782,10 +4886,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (index == null) {
       return;
     }
-    final CanvasElement updated = update(_elements[index]);
+    final CanvasElement current = _elements[index];
+    final CanvasElement updated = update(current);
     _elements[index] = updated;
     _elementsById[id] = updated;
-    _markElementsChanged();
+    _markElementsChanged(
+      damageBounds: current.worldBounds.expandToInclude(updated.worldBounds),
+    );
   }
 
   /// Adds [image]'s estimated byte size to the in-use raster total.
@@ -4862,7 +4969,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
             final ImageElement cleared = element.copyWith(clearRaster: true);
             _elements[i] = cleared;
             _elementsById[element.id] = cleared;
-            _markElementsChanged();
+            _markElementsChanged(damageBounds: element.worldBounds);
           }
         case PdfElement():
           final ui.Image? raster = element.raster;
@@ -4872,7 +4979,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
             final PdfElement cleared = element.copyWith(clearRaster: true);
             _elements[i] = cleared;
             _elementsById[element.id] = cleared;
-            _markElementsChanged();
+            _markElementsChanged(damageBounds: element.worldBounds);
           }
       }
     }
