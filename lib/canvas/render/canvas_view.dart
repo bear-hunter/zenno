@@ -178,7 +178,9 @@ class _CanvasViewState extends State<CanvasView> {
   /// starts rendering; an element zoomed into is re-rasterised sharper).
   ViewportState? _lastRasterViewport;
   Size? _lastRasterSize;
+  double? _lastRasterDevicePixelRatio;
   Size? _pendingRasterSyncSize;
+  double? _pendingRasterDevicePixelRatio;
   bool _rasterSyncScheduled = false;
 
   /// Pointer id currently driving a tool gesture, or `null`.
@@ -1456,24 +1458,30 @@ class _CanvasViewState extends State<CanvasView> {
   /// elements into rasterisation, and a zoom-in re-rasterises PDF pages
   /// sharper. Image/PDF raster loads are the only viewport-driven async work;
   /// scheduling is cheap (a spatial-index query) and idempotent.
-  void _syncRasterScheduling(Size size) {
+  void _syncRasterScheduling(Size size, double devicePixelRatio) {
     final bool sizeChanged = _lastRasterSize != size;
+    final bool pixelRatioChanged =
+        _lastRasterDevicePixelRatio != devicePixelRatio;
     _lastRasterSize = size;
+    _lastRasterDevicePixelRatio = devicePixelRatio;
     _controller.setViewportSize(size);
+    _controller.setDevicePixelRatio(devicePixelRatio);
     final ViewportState viewport = _controller.viewport;
-    if (_lastRasterViewport != viewport || sizeChanged) {
+    if (_lastRasterViewport != viewport || sizeChanged || pixelRatioChanged) {
       _lastRasterViewport = viewport;
       _controller.scheduleRasterWork();
     }
   }
 
-  void _queueRasterScheduling(Size size) {
+  void _queueRasterScheduling(Size size, double devicePixelRatio) {
     if (_lastRasterSize == size &&
         _lastRasterViewport == _controller.viewport &&
+        _lastRasterDevicePixelRatio == devicePixelRatio &&
         !_rasterSyncScheduled) {
       return;
     }
     _pendingRasterSyncSize = size;
+    _pendingRasterDevicePixelRatio = devicePixelRatio;
     if (_rasterSyncScheduled) {
       return;
     }
@@ -1481,13 +1489,17 @@ class _CanvasViewState extends State<CanvasView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _rasterSyncScheduled = false;
       if (mounted) {
-        _syncRasterScheduling(_pendingRasterSyncSize ?? Size.zero);
+        _syncRasterScheduling(
+          _pendingRasterSyncSize ?? Size.zero,
+          _pendingRasterDevicePixelRatio ?? 1,
+        );
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final double devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     final Listenable backgroundListenable = Listenable.merge(<Listenable>[
       _controller.viewportListenable,
       _controller.canvasStyleListenable,
@@ -1530,7 +1542,7 @@ class _CanvasViewState extends State<CanvasView> {
                   size.width.isFinite && size.height.isFinite;
               final Size rasterSize = hasFiniteSize ? size : Size.zero;
               _controller.setViewportSize(rasterSize);
-              _queueRasterScheduling(rasterSize);
+              _queueRasterScheduling(rasterSize, devicePixelRatio);
               return Stack(
                 fit: StackFit.expand,
                 children: [
@@ -1632,7 +1644,7 @@ class _CanvasViewState extends State<CanvasView> {
                   ListenableBuilder(
                     listenable: rasterListenable,
                     builder: (context, _) {
-                      _queueRasterScheduling(rasterSize);
+                      _queueRasterScheduling(rasterSize, devicePixelRatio);
                       return const SizedBox.shrink();
                     },
                   ),

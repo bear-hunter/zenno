@@ -15,6 +15,7 @@ import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/pdf/pdf_raster_service.dart';
+import 'package:zenno/canvas/raster/image_raster_decoder.dart';
 import 'package:zenno/canvas/render/elements_painter.dart';
 import 'package:zenno/canvas/render/grid_painter.dart';
 import 'package:zenno/canvas/tools/arrow_geometry.dart';
@@ -322,26 +323,38 @@ abstract final class CanvasExportService {
   }) async {
     final List<CanvasElement> prepared = <CanvasElement>[];
     final List<ui.Image> owned = <ui.Image>[];
-    final int pdfBucket = PdfRasterService.bucketForScale(scale);
     PdfRasterService? pdfService;
     try {
       for (final CanvasElement element in elements) {
+        final int rasterBucket = RasterScalePolicy.bucketForElement(
+          worldBounds: element.worldBounds,
+          viewportScale: scale,
+          devicePixelRatio: 1,
+        );
         switch (element) {
-          case ImageElement(raster: ui.Image()):
+          case ImageElement(raster: ui.Image(), :final rasterScaleBucket)
+              when rasterScaleBucket >= rasterBucket:
             prepared.add(element);
           case ImageElement():
-            final ui.Image? decoded = await _decodeImageFileForExport(
-              element.sourceFilePath,
-            );
+            final DecodedImageRaster? decoded =
+                await ImageRasterDecoder.decodeFile(
+                  element.sourceFilePath,
+                  scaleBucket: rasterBucket,
+                );
             if (decoded == null) {
               throw CanvasExportException(
                 'Could not load image "${element.sourceFilePath}" for export.',
               );
             }
-            owned.add(decoded);
-            prepared.add(element.copyWith(raster: decoded));
+            owned.add(decoded.image);
+            prepared.add(
+              element.copyWith(
+                raster: decoded.image,
+                rasterScaleBucket: decoded.scaleBucket,
+              ),
+            );
           case PdfElement(raster: ui.Image(), :final rasterScaleBucket)
-              when rasterScaleBucket >= pdfBucket:
+              when rasterScaleBucket >= rasterBucket:
             prepared.add(element);
           case PdfElement():
             if (!await File(element.sourceFilePath).exists()) {
@@ -355,7 +368,7 @@ abstract final class CanvasExportService {
               rendered = await pdfService.rasterizePage(
                 filePath: element.sourceFilePath,
                 pageNumber: element.pageNumber,
-                scaleBucket: pdfBucket,
+                scaleBucket: rasterBucket,
               );
             } on Object catch (error) {
               throw CanvasExportException(
@@ -391,25 +404,6 @@ abstract final class CanvasExportService {
       if (pdfService != null) {
         await pdfService.dispose();
       }
-    }
-  }
-
-  static Future<ui.Image?> _decodeImageFileForExport(String path) async {
-    try {
-      final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromFilePath(
-        path,
-      );
-      final ui.ImageDescriptor descriptor = await ui.ImageDescriptor.encoded(
-        buffer,
-      );
-      final ui.Codec codec = await descriptor.instantiateCodec();
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      codec.dispose();
-      descriptor.dispose();
-      buffer.dispose();
-      return frame.image;
-    } on Object {
-      return null;
     }
   }
 
