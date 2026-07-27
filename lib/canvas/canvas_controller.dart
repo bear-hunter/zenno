@@ -585,8 +585,30 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// World-space points of the in-progress eraser drag, or `null`. Read-only
   /// view for the overlay painter.
-  List<Offset>? get eraserPath =>
-      _eraserPath == null ? null : List<Offset>.unmodifiable(_eraserPath!);
+  /// The in-progress eraser drag path, or `null` when none is active.
+  ///
+  /// Memoised: this is read on every overlay repaint, and rebuilding an
+  /// unmodifiable copy per frame both allocated and defeated the painter's
+  /// identity-based `shouldRepaint` check.
+  List<Offset>? get eraserPath {
+    final List<Offset>? path = _eraserPath;
+    if (path == null) {
+      return null;
+    }
+    return _eraserPathView ??= UnmodifiableListView<Offset>(path);
+  }
+
+  List<Offset>? _eraserPathView;
+
+  /// Elements the in-progress eraser drag has already crossed.
+  ///
+  /// Drawn dimmed while the drag is live, so the user sees what will go before
+  /// lifting rather than after.
+  Set<String> get pendingEraseIds => _pendingEraseIdsView;
+  final Set<String> _pendingEraseIds = <String>{};
+  late final Set<String> _pendingEraseIdsView = UnmodifiableSetView<String>(
+    _pendingEraseIds,
+  );
 
   /// World-space vertices of the in-progress lasso loop, or `null`. Read-only
   /// view for the overlay painter.
@@ -2164,19 +2186,68 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// [endErase] commits the gesture, so an entire drag is one undoable unit.
   void beginErase(Offset world) {
     _eraserPath = <Offset>[world];
+    _eraserPathView = null;
+    _pendingEraseIds.clear();
+    _accumulateEraseHits(world, world);
     notifyListeners();
   }
 
   /// Extends the in-progress eraser drag to the [world] point.
   ///
   /// A no-op when no eraser drag is active.
+  ///
+  /// Samples closer together than the eraser's own footprint are dropped: a
+  /// scrub used to accumulate a point per move event and notify unbatched,
+  /// which meant thousands of full rebuilds and left every hit test to
+  /// pointer-up. Each accepted segment is tested against the spatial index as
+  /// it arrives, so the commit is a lookup rather than a scan.
   void appendErase(Offset world) {
     final List<Offset>? path = _eraserPath;
     if (path == null) {
       return;
     }
+    final Offset previous = path.last;
+    if ((world - previous).distance < _eraseSampleMinDistanceWorld()) {
+      return;
+    }
     path.add(world);
-    notifyListeners();
+    _eraserPathView = null;
+    _accumulateEraseHits(previous, world);
+    _notifyLiveStrokeSoon();
+  }
+
+  /// Minimum world-space spacing between retained eraser samples.
+  double _eraseSampleMinDistanceWorld() {
+    final double worldRadius = eraserRadius / viewport.scale;
+    return math.max(worldRadius * 0.25, 0.5);
+  }
+
+  /// Records which elements the newest eraser segment crosses.
+  ///
+  /// Only the segment is broad-phased, so the cost is bounded by what the
+  /// eraser just passed over rather than by the whole path times every
+  /// candidate's every point.
+  void _accumulateEraseHits(Offset from, Offset to) {
+    final double worldRadius = eraserRadius / viewport.scale;
+    final Rect area = CanvasGeometry.boundsOfPoints(<Offset>[
+      from,
+      to,
+    ]).inflate(worldRadius);
+    final List<Offset> segment = from == to
+        ? <Offset>[from]
+        : <Offset>[from, to];
+    for (final String id in _spatialIndex.query(area)) {
+      if (_pendingEraseIds.contains(id)) {
+        continue;
+      }
+      final CanvasElement? element = _elementById(id);
+      if (element == null || !_isElementEditable(element)) {
+        continue;
+      }
+      if (_eraserPathHitsElement(element, segment, worldRadius)) {
+        _pendingEraseIds.add(id);
+      }
+    }
   }
 
   /// Finishes the eraser drag, applying the erase as one undoable command.
@@ -2188,7 +2259,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void endErase() {
     final List<Offset>? path = _eraserPath;
     _eraserPath = null;
+    _eraserPathView = null;
     if (path == null || path.isEmpty) {
+      _pendingEraseIds.clear();
       notifyListeners();
       return;
     }
@@ -2198,11 +2271,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       case EraserMode.partial:
         _erasePartial(path);
     }
+    _pendingEraseIds.clear();
   }
 
   /// Cancels an in-progress eraser drag without erasing anything.
   void cancelErase() {
     _eraserPath = null;
+    _eraserPathView = null;
+    _pendingEraseIds.clear();
     notifyListeners();
   }
 
@@ -2287,29 +2363,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// converted from screen pixels to world units via the viewport scale so the
   /// footprint stays visually constant at any zoom.
   List<CanvasElement> _elementsHitByEraser(List<Offset> path) {
-    if (path.isEmpty) {
+    if (path.isEmpty || _pendingEraseIds.isEmpty) {
       return const <CanvasElement>[];
     }
-    final double worldRadius = eraserRadius / viewport.scale;
-    final Rect area = CanvasGeometry.boundsOfPoints(path).inflate(worldRadius);
-    final Set<String> candidateIds = _spatialIndex.query(area).toSet();
-    if (candidateIds.isEmpty) {
-      return const <CanvasElement>[];
-    }
-
-    final List<CanvasElement> hits = <CanvasElement>[];
-    for (final CanvasElement element in _elements) {
-      if (!_isElementEditable(element)) {
-        continue;
-      }
-      if (!candidateIds.contains(element.id)) {
-        continue;
-      }
-      if (_eraserPathHitsElement(element, path, worldRadius)) {
-        hits.add(element);
-      }
-    }
-    return hits;
+    // Hits were already resolved segment by segment as the drag happened, in
+    // paint order so the command reads naturally in the undo stack.
+    return <CanvasElement>[
+      for (final CanvasElement element in _elements)
+        if (_pendingEraseIds.contains(element.id) &&
+            _isElementEditable(element))
+          element,
+    ];
   }
 
   /// Whether the eraser [path] (circle of [worldRadius]) crosses [element].

@@ -240,6 +240,7 @@ class ElementsPainter extends CustomPainter {
     this.selectionPreviewRevision,
     this.tileCache,
     this.selectedIds = const <String>{},
+    this.pendingEraseIds = const <String>{},
     this.selectionDragDelta = Offset.zero,
     this.selectionTransformPreview,
   });
@@ -268,6 +269,12 @@ class ElementsPainter extends CustomPainter {
 
   /// Monotonic token bumped when [selectedIds] changes.
   final int? selectionRevision;
+
+  /// Ids the in-progress eraser drag has already crossed.
+  ///
+  /// Painted faded so the user can see what the drag will remove before
+  /// lifting, rather than discovering it afterwards.
+  final Set<String> pendingEraseIds;
 
   /// Live world-space offset applied to selected elements during a drag.
   ///
@@ -352,6 +359,9 @@ class ElementsPainter extends CustomPainter {
     if (_dragging ||
         _transforming ||
         selectedIds.isNotEmpty ||
+        // Pending-erase elements are faded individually, which a shared tile
+        // picture cannot express.
+        pendingEraseIds.isNotEmpty ||
         tileCache == null) {
       return false;
     }
@@ -389,7 +399,30 @@ class ElementsPainter extends CustomPainter {
     }
   }
 
+  /// Opacity applied to an element the live eraser drag has crossed.
+  static const double _pendingEraseOpacity = 0.3;
+
   void _paintElement(
+    Canvas canvas,
+    CanvasElement element, {
+    required bool selected,
+  }) {
+    if (pendingEraseIds.contains(element.id)) {
+      canvas.saveLayer(
+        null,
+        Paint()
+          ..color = const Color(
+            0xFF000000,
+          ).withValues(alpha: _pendingEraseOpacity),
+      );
+      _paintElementBody(canvas, element, selected: selected);
+      canvas.restore();
+      return;
+    }
+    _paintElementBody(canvas, element, selected: selected);
+  }
+
+  void _paintElementBody(
     Canvas canvas,
     CanvasElement element, {
     required bool selected,
@@ -888,6 +921,7 @@ class ElementsPainter extends CustomPainter {
         oldDelegate.viewport != viewport ||
         selectionChanged ||
         oldDelegate.selectionDragDelta != selectionDragDelta ||
+        !setEquals(oldDelegate.pendingEraseIds, pendingEraseIds) ||
         previewChanged;
   }
 }

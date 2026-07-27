@@ -1567,6 +1567,7 @@ class _CanvasViewState extends State<CanvasView> {
                                   _controller.selectionPreviewRevision,
                               tileCache: _elementsTileCache,
                               selectedIds: _controller.selectedIds,
+                              pendingEraseIds: _controller.pendingEraseIds,
                               selectionDragDelta:
                                   _controller.selectionDragDelta,
                               selectionTransformPreview:
