@@ -54,6 +54,27 @@ class _NoopPdfRasterService extends PdfRasterService {
   Future<void> dispose() async {}
 }
 
+class _RecordingPdfRasterService extends PdfRasterService {
+  final List<int> requestedBuckets = <int>[];
+  final List<Completer<PdfRasterResult?>> pending =
+      <Completer<PdfRasterResult?>>[];
+
+  @override
+  Future<PdfRasterResult?> rasterizePage({
+    required String filePath,
+    required int pageNumber,
+    required int scaleBucket,
+  }) {
+    requestedBuckets.add(scaleBucket);
+    final Completer<PdfRasterResult?> completer = Completer<PdfRasterResult?>();
+    pending.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<void> dispose() async {}
+}
+
 class _ControlledCanvasImporter extends CanvasImporter {
   _ControlledCanvasImporter(PdfRasterService pdfRasterService)
     : super(pdfRasterService: pdfRasterService);
@@ -716,6 +737,141 @@ void main() {
         },
       );
     }
+
+    test(
+      'raster budget evicts the least-recently-used off-screen item',
+      () async {
+        final Image bRaster = await tinyRaster();
+        final Image aRaster = await tinyRaster();
+        final Image cRaster = await tinyRaster();
+        final CanvasController controller = CanvasController(
+          pdfRasterService: _NoopPdfRasterService(),
+          rasterBudgetBytes: 8,
+        )..setViewportSize(const Size(100, 100));
+        addTearDown(() {
+          controller.dispose();
+          for (final Image image in <Image>[bRaster, aRaster, cRaster]) {
+            if (!image.debugDisposed) {
+              image.dispose();
+            }
+          }
+        });
+
+        controller
+          ..addElementToStore(
+            ImageElement(
+              id: 'b',
+              zIndex: 0,
+              worldBounds: const Rect.fromLTWH(10, 10, 20, 20),
+              sourceFilePath: '/durable/b.png',
+              intrinsicSize: const Size(20, 20),
+              raster: bRaster,
+              rasterScaleBucket: 3,
+            ),
+          )
+          ..addElementToStore(
+            ImageElement(
+              id: 'a',
+              zIndex: 1,
+              worldBounds: const Rect.fromLTWH(1000, 0, 20, 20),
+              sourceFilePath: '/durable/a.png',
+              intrinsicSize: const Size(20, 20),
+              raster: aRaster,
+              rasterScaleBucket: 3,
+            ),
+          )
+          ..addElementToStore(
+            ImageElement(
+              id: 'c',
+              zIndex: 2,
+              worldBounds: const Rect.fromLTWH(2000, 0, 20, 20),
+              sourceFilePath: '/durable/c.png',
+              intrinsicSize: const Size(20, 20),
+              raster: cRaster,
+              rasterScaleBucket: 3,
+            ),
+          )
+          ..scheduleRasterWork()
+          ..setViewport(const ViewportState(translation: Offset(-3000, 0)))
+          ..debugEnforceRasterBudget();
+
+        final Map<String, ImageElement> byId = <String, ImageElement>{
+          for (final CanvasElement element in controller.elements)
+            element.id: element as ImageElement,
+        };
+        expect(byId['a']!.raster, isNull);
+        expect(byId['a']!.sourceFilePath, '/durable/a.png');
+        expect(byId['b']!.raster, same(bRaster));
+        expect(byId['c']!.raster, same(cRaster));
+        expect(aRaster.debugDisposed, isTrue);
+        expect(controller.debugRasterBytesInUse, 8);
+      },
+    );
+
+    test(
+      'zoom buckets sharpen once without decode churn inside a bucket',
+      () async {
+        final _RecordingPdfRasterService rasterService =
+            _RecordingPdfRasterService();
+        final Image initial = await tinyRaster();
+        final CanvasController controller = CanvasController(
+          pdfRasterService: rasterService,
+        )..setViewportSize(const Size(100, 100));
+        addTearDown(() {
+          controller.dispose();
+          if (!initial.debugDisposed) {
+            initial.dispose();
+          }
+        });
+        controller.addElementToStore(
+          PdfElement(
+            id: 'page',
+            zIndex: 0,
+            worldBounds: const Rect.fromLTWH(0, 0, 100, 100),
+            sourceFilePath: '/durable/document.pdf',
+            pageNumber: 1,
+            pageSize: const Size(100, 100),
+            raster: initial,
+            rasterScaleBucket: 0,
+          ),
+        );
+
+        controller
+          ..setViewport(const ViewportState(scale: 6))
+          ..scheduleRasterWork()
+          ..scheduleRasterWork();
+        await pumpEventQueue();
+
+        expect(rasterService.requestedBuckets, <int>[1]);
+
+        controller
+          ..setViewport(const ViewportState(scale: 25))
+          ..scheduleRasterWork();
+        await pumpEventQueue();
+        expect(rasterService.requestedBuckets, <int>[1]);
+
+        final Image sharper = await tinyRaster();
+        rasterService.pending.single.complete(
+          PdfRasterResult(image: sharper, scaleBucket: 1),
+        );
+        await pumpEventQueue();
+        expect(rasterService.requestedBuckets, <int>[1, 3]);
+        expect((controller.elements.single as PdfElement).rasterScaleBucket, 1);
+
+        final Image sharpest = await tinyRaster();
+        rasterService.pending.last.complete(
+          PdfRasterResult(image: sharpest, scaleBucket: 3),
+        );
+        await pumpEventQueue();
+        expect((controller.elements.single as PdfElement).rasterScaleBucket, 3);
+
+        controller
+          ..setViewport(const ViewportState(scale: 30))
+          ..scheduleRasterWork();
+        await pumpEventQueue();
+        expect(rasterService.requestedBuckets, <int>[1, 3]);
+      },
+    );
 
     test(
       'a completed image import is discarded after controller disposal',

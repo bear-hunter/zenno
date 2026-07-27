@@ -22,6 +22,7 @@ import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/pdf/pdf_raster_service.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
+import 'package:zenno/canvas/raster/image_raster_decoder.dart';
 import 'package:zenno/canvas/tools/arrow_geometry.dart';
 import 'package:zenno/canvas/tools/canvas_geometry.dart';
 import 'package:zenno/core/util/id.dart';
@@ -209,12 +210,15 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     String? canvasId,
     PdfRasterService? pdfRasterService,
     CanvasImporter? importer,
+    int rasterBudgetBytes = _defaultRasterBudgetBytes,
   }) : assert(
          (repository == null) == (canvasId == null),
          'repository and canvasId must be supplied together, or neither.',
        ),
+       assert(rasterBudgetBytes > 0),
        _repository = repository,
        _canvasId = canvasId,
+       _rasterBudgetBytes = rasterBudgetBytes,
        _pdfRasterService = pdfRasterService ?? PdfRasterService() {
     _importer = importer ?? CanvasImporter(pdfRasterService: _pdfRasterService);
     _layers.add(CanvasLayer.defaultContent(_layerCanvasId));
@@ -604,6 +608,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// currently looking at, and to size PDF page rasters to the on-screen zoom.
   /// [Size.zero] until the view first reports its size.
   Size _viewportSize = Size.zero;
+  double _devicePixelRatio = 1;
 
   /// Monotonic token bumped whenever the element list is structurally cleared
   /// or reset, so a raster load that finishes late can tell its element is
@@ -619,6 +624,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Bookkeeping for [_rasterBudgetBytes]: when this exceeds the budget the
   /// controller evicts rasters from off-screen image/PDF elements.
   int _rasterBytesInUse = 0;
+  final int _rasterBudgetBytes;
+  final Map<String, int> _rasterLastAccess = <String, int>{};
+  int _rasterAccessTick = 0;
 
   @visibleForTesting
   int get debugRasterBytesInUse => _rasterBytesInUse;
@@ -629,7 +637,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// dropped (and their `ui.Image`s disposed) oldest-first; they re-rasterise
   /// from the source file when scrolled back into view. Keeps the canvas
   /// inside a sane memory envelope on a mid-range tablet.
-  static const int _rasterBudgetBytes = 96 * 1024 * 1024;
+  static const int _defaultRasterBudgetBytes = 96 * 1024 * 1024;
 
   final List<_RasterJob> _rasterJobQueue = <_RasterJob>[];
   int _activeImageRasterJobs = 0;
@@ -1083,7 +1091,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _spatialIndex.insert(stored.id, stored.worldBounds);
     final ui.Image? raster = _elementRaster(stored);
     if (raster != null) {
-      _trackRaster(raster);
+      _trackRaster(stored.id, raster);
     }
     _markElementsChanged(damageBounds: stored.worldBounds);
 
@@ -1152,7 +1160,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     for (final CanvasElement element in _elements) {
       final ui.Image? raster = _elementRaster(element);
       if (raster != null) {
-        _trackRaster(raster);
+        _trackRaster(element.id, raster);
       }
     }
     _selectedIds.clear();
@@ -1805,6 +1813,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
     _viewportSize = size;
     _viewportElementsView = null;
+  }
+
+  void setDevicePixelRatio(double ratio) {
+    if (!ratio.isFinite || ratio <= 0 || ratio == _devicePixelRatio) {
+      return;
+    }
+    _devicePixelRatio = ratio;
   }
 
   /// World-space rectangle currently visible in the viewport.
@@ -4419,12 +4434,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           kept = false;
           return current;
         }
-        return current.copyWith(raster: ready.raster);
+        return current.copyWith(
+          raster: ready.raster,
+          rasterScaleBucket: ready.rasterScaleBucket,
+        );
       });
       if (kept) {
         rasterTransferred = true;
-        _trackRaster(ready.raster);
+        _trackRaster(element.id, ready.raster);
         _enforceRasterBudget();
+        _scheduleVisibleRasters();
+        _notifyElements(selectionMayChange: false, toolMayChange: false);
       }
     } catch (error) {
       if (!_disposed) {
@@ -4580,7 +4600,6 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     final Set<String> visibleIds = _spatialIndex
         .query(visibleWorldRect)
         .toSet();
-    final int wantBucket = PdfRasterService.bucketForScale(viewport.scale);
     final Offset viewportCenter = visibleWorldRect.center;
     final List<_RasterJob> jobs = <_RasterJob>[];
     for (final CanvasElement element in _elements) {
@@ -4594,6 +4613,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         element.worldBounds.center,
         viewportCenter,
       );
+      final int wantBucket = RasterScalePolicy.bucketForElement(
+        worldBounds: element.worldBounds,
+        viewportScale: viewport.scale,
+        devicePixelRatio: _devicePixelRatio,
+      );
+      if (_elementRaster(element) != null) {
+        _touchRaster(element.id);
+      }
       switch (element) {
         case InkElement():
         case LinkElement():
@@ -4602,12 +4629,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           // Vector ink and link chips have no raster — nothing to schedule.
           break;
         case ImageElement():
-          if (element.raster == null) {
+          if (element.raster == null ||
+              element.rasterScaleBucket < wantBucket) {
             jobs.add(
               _RasterJob(
                 elementId: element.id,
                 kind: _RasterJobKind.image,
-                bucket: 0,
+                bucket: wantBucket,
                 priority: priority,
               ),
             );
@@ -4633,13 +4661,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     jobs.sort((_RasterJob a, _RasterJob b) => a.priority.compareTo(b.priority));
     _rasterJobQueue
       ..clear()
-      ..addAll(jobs.where((job) => !_rasterJobIsInFlight(job)));
+      ..addAll(jobs);
     _drainRasterJobQueue();
   }
 
   /// Element ids with an image-raster decode in flight, so the same picture is
   /// not decoded twice concurrently.
-  final Set<String> _imageRasterInFlight = <String>{};
+  final Map<String, int> _imageRasterInFlight = <String, int>{};
 
   /// Element ids with a PDF page render in flight, mapped to the bucket being
   /// rendered, so stale queued work can wait for the current render to finish.
@@ -4679,7 +4707,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   bool _rasterJobIsInFlight(_RasterJob job) {
     return switch (job.kind) {
-      _RasterJobKind.image => _imageRasterInFlight.contains(job.elementId),
+      _RasterJobKind.image => _imageRasterInFlight.containsKey(job.elementId),
       _RasterJobKind.pdf => _pdfRasterInFlight.containsKey(job.elementId),
     };
   }
@@ -4694,7 +4722,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return false;
     }
     return switch (job.kind) {
-      _RasterJobKind.image => element is ImageElement && element.raster == null,
+      _RasterJobKind.image =>
+        element is ImageElement &&
+            (element.raster == null || element.rasterScaleBucket < job.bucket),
       _RasterJobKind.pdf =>
         element is PdfElement &&
             (element.raster == null || element.rasterScaleBucket < job.bucket),
@@ -4708,14 +4738,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           return;
         }
         _activeImageRasterJobs += 1;
-        _imageRasterInFlight.add(job.elementId);
+        _imageRasterInFlight[job.elementId] = job.bucket;
         unawaited(
-          _loadImageRaster(element).whenComplete(() {
+          _loadImageRaster(element, job.bucket).whenComplete(() {
             if (_disposed) {
               return;
             }
             _activeImageRasterJobs = math.max(0, _activeImageRasterJobs - 1);
-            _imageRasterInFlight.remove(job.elementId);
+            if (_imageRasterInFlight[job.elementId] == job.bucket) {
+              _imageRasterInFlight.remove(job.elementId);
+            }
             _drainRasterJobQueue();
           }),
         );
@@ -4755,12 +4787,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// its id and bounds (and therefore its spatial-index entry, selection
   /// membership and undo history). A load that finishes after the element was
   /// removed or the canvas cleared is discarded.
-  Future<void> _loadImageRaster(ImageElement element) async {
+  Future<void> _loadImageRaster(ImageElement element, int bucket) async {
     final int epoch = _rasterEpoch;
-    final ui.Image? image = await _decodeImageFile(element.sourceFilePath);
-    if (image == null) {
+    final DecodedImageRaster? decoded = await ImageRasterDecoder.decodeFile(
+      element.sourceFilePath,
+      scaleBucket: bucket,
+    );
+    if (decoded == null) {
       return;
     }
+    final ui.Image image = decoded.image;
     if (epoch != _rasterEpoch || !_containsVisibleRasterElement(element.id)) {
       // The element was removed, cleared, or scrolled away while decoding. The
       // freshly-decoded image is referenced by nothing else, so disposing it
@@ -4770,39 +4806,28 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
     var kept = true;
     _swapElement(element.id, (CanvasElement current) {
-      if (current is! ImageElement || current.raster != null) {
+      if (current is! ImageElement ||
+          (current.raster != null &&
+              current.rasterScaleBucket >= decoded.scaleBucket)) {
         kept = false;
         return current;
       }
-      return current.copyWith(raster: image);
+      final ui.Image? old = current.raster;
+      if (old != null) {
+        _untrackRaster(old);
+        old.dispose();
+      }
+      return current.copyWith(
+        raster: image,
+        rasterScaleBucket: decoded.scaleBucket,
+      );
     });
     if (kept) {
-      _trackRaster(image);
+      _trackRaster(element.id, image);
       _enforceRasterBudget();
       _notifyElements(selectionMayChange: false, toolMayChange: false);
     } else {
       image.dispose();
-    }
-  }
-
-  /// Decodes the image file at [path] into a `ui.Image`, or `null` on failure.
-  static Future<ui.Image?> _decodeImageFile(String path) async {
-    try {
-      final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromFilePath(
-        path,
-      );
-      final ui.ImageDescriptor descriptor = await ui.ImageDescriptor.encoded(
-        buffer,
-      );
-      final ui.Codec codec = await descriptor.instantiateCodec();
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      codec.dispose();
-      descriptor.dispose();
-      buffer.dispose();
-      return frame.image;
-    } on Object {
-      // A missing or corrupt file just leaves the placeholder in place.
-      return null;
     }
   }
 
@@ -4858,7 +4883,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       );
     });
     if (kept) {
-      _trackRaster(rendered.image);
+      _trackRaster(element.id, rendered.image);
       _enforceRasterBudget();
       _notifyElements(selectionMayChange: false, toolMayChange: false);
     } else {
@@ -4896,8 +4921,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   /// Adds [image]'s estimated byte size to the in-use raster total.
-  void _trackRaster(ui.Image image) {
+  void _trackRaster(String elementId, ui.Image image) {
     _rasterBytesInUse += _rasterBytes(image);
+    _touchRaster(elementId);
+  }
+
+  void _touchRaster(String elementId) {
+    _rasterLastAccess[elementId] = ++_rasterAccessTick;
   }
 
   static ui.Image? _elementRaster(CanvasElement element) {
@@ -4909,6 +4939,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   void _disposeElementRaster(CanvasElement element) {
+    _rasterLastAccess.remove(element.id);
     final ui.Image? raster = _elementRaster(element);
     if (raster == null) {
       return;
@@ -4942,48 +4973,56 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_rasterBytesInUse <= _rasterBudgetBytes) {
       return;
     }
-    final Set<String> visibleIds = _spatialIndex
-        .query(_visibleWorldRect)
-        .toSet();
-    for (
-      var i = 0;
-      i < _elements.length && _rasterBytesInUse > _rasterBudgetBytes;
-      i++
-    ) {
-      final CanvasElement element = _elements[i];
-      if (visibleIds.contains(element.id)) {
+    final Rect visibleWorldRect = _visibleWorldRect;
+    final Set<String> protectedIds = <String>{
+      for (final String id in _spatialIndex.query(visibleWorldRect))
+        if (_elementsById[id] case final CanvasElement element)
+          if (_isElementVisible(element) &&
+              visibleWorldRect.overlaps(element.worldBounds))
+            id,
+    };
+    final List<CanvasElement> candidates =
+        <CanvasElement>[
+          for (final CanvasElement element in _elements)
+            if (_elementRaster(element) != null &&
+                !protectedIds.contains(element.id))
+              element,
+        ]..sort(
+          (CanvasElement a, CanvasElement b) => (_rasterLastAccess[a.id] ?? 0)
+              .compareTo(_rasterLastAccess[b.id] ?? 0),
+        );
+    for (final CanvasElement element in candidates) {
+      if (_rasterBytesInUse <= _rasterBudgetBytes) {
+        break;
+      }
+      final int? index = _paintOrderById[element.id];
+      if (index == null) {
         continue;
       }
-      switch (element) {
-        case InkElement():
-        case LinkElement():
-        case TextElement():
-        case ShapeElement():
-          // No raster to evict.
-          break;
-        case ImageElement():
-          final ui.Image? raster = element.raster;
-          if (raster != null) {
-            _untrackRaster(raster);
-            raster.dispose();
-            final ImageElement cleared = element.copyWith(clearRaster: true);
-            _elements[i] = cleared;
-            _elementsById[element.id] = cleared;
-            _markElementsChanged(damageBounds: element.worldBounds);
-          }
-        case PdfElement():
-          final ui.Image? raster = element.raster;
-          if (raster != null) {
-            _untrackRaster(raster);
-            raster.dispose();
-            final PdfElement cleared = element.copyWith(clearRaster: true);
-            _elements[i] = cleared;
-            _elementsById[element.id] = cleared;
-            _markElementsChanged(damageBounds: element.worldBounds);
-          }
+      final ui.Image? raster = _elementRaster(_elements[index]);
+      if (raster == null) {
+        continue;
       }
+      _untrackRaster(raster);
+      raster.dispose();
+      _rasterLastAccess.remove(element.id);
+      final CanvasElement cleared = switch (_elements[index]) {
+        ImageElement() => (_elements[index] as ImageElement).copyWith(
+          clearRaster: true,
+        ),
+        PdfElement() => (_elements[index] as PdfElement).copyWith(
+          clearRaster: true,
+        ),
+        _ => _elements[index],
+      };
+      _elements[index] = cleared;
+      _elementsById[element.id] = cleared;
+      _markElementsChanged(damageBounds: element.worldBounds);
     }
   }
+
+  @visibleForTesting
+  void debugEnforceRasterBudget() => _enforceRasterBudget();
 
   /// Disposes every decoded raster currently held by an element.
   ///
@@ -5000,6 +5039,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       _disposeElementRaster(element);
     }
     _rasterBytesInUse = 0;
+    _rasterLastAccess.clear();
   }
 
   /// Releases the PDF service and every decoded raster, then tears down the

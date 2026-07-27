@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:zenno/canvas/raster/image_raster_decoder.dart';
 
 /// Lightweight description of one page inside a PDF, gathered at import time.
 @immutable
@@ -60,20 +61,6 @@ class PdfRasterResult {
 class PdfRasterService {
   /// Creates a raster service. `pdfrx` is initialised lazily on first use.
   PdfRasterService();
-
-  /// Discrete render-resolution ladder, as world-pixels-per-point multipliers.
-  ///
-  /// A PDF page is rendered at `pageSizePoints * _scaleLadder[bucket]` pixels.
-  /// Bucket 0 is a low-DPI raster good enough at fit-to-screen zoom; higher
-  /// buckets are used as the user zooms in so the page stays crisp. The ladder
-  /// is coarse on purpose — re-rasterising on every zoom delta would thrash.
-  static const List<double> _scaleLadder = <double>[1.0, 2.0, 3.5, 5.0];
-
-  /// Hard ceiling on a rendered page's longest pixel side.
-  ///
-  /// Bounds the worst-case raster (a huge page at the top zoom bucket) so a
-  /// single PDF page can never blow the in-memory raster budget on its own.
-  static const int _maxRasterPixelSide = 4096;
 
   /// Whether [pdfrxFlutterInitialize] has completed.
   bool _initialized = false;
@@ -134,26 +121,24 @@ class PdfRasterService {
 
   /// Maps a viewport [scale] to a discrete render-resolution bucket.
   ///
-  /// The result indexes [_scaleLadder]; a higher bucket means a sharper (and
-  /// larger) raster. Bucketing means a PDF page is only re-rendered when zoom
-  /// crosses a ladder threshold, not on every pinch frame.
+  /// A higher bucket means a sharper (and larger) raster. Bucketing means a
+  /// PDF page is only re-rendered when zoom crosses a ladder threshold, not on
+  /// every pinch frame.
   static int bucketForScale(double scale) {
-    // Pick the smallest ladder entry that still covers the current scale.
-    for (var i = 0; i < _scaleLadder.length; i++) {
-      if (scale <= _scaleLadder[i]) {
-        return i;
-      }
-    }
-    return _scaleLadder.length - 1;
+    return RasterScalePolicy.bucketForElement(
+      worldBounds: const ui.Rect.fromLTWH(0, 0, 612, 792),
+      viewportScale: scale,
+      devicePixelRatio: 1,
+    );
   }
 
   /// Rasterises [pageNumber] of the PDF at [filePath] for the given zoom
   /// [scaleBucket].
   ///
-  /// The page is rendered at `pageSizePoints * ladder[scaleBucket]` pixels
-  /// (clamped to [_maxRasterPixelSide]) and decoded into a `ui.Image`. The
-  /// native render runs on `pdfrx`'s background isolate; this method only
-  /// allocates and decodes on the caller's isolate, both asynchronously.
+  /// The page is rendered at the shared capped pixel-side ladder and decoded
+  /// into a `ui.Image`. The native render runs on `pdfrx`'s background isolate;
+  /// this method only allocates and decodes on the caller's isolate, both
+  /// asynchronously.
   ///
   /// Returns `null` if the page cannot be rendered (e.g. the file went away).
   Future<PdfRasterResult?> rasterizePage({
@@ -164,24 +149,23 @@ class PdfRasterService {
     if (_disposed) {
       return null;
     }
-    final int bucket = scaleBucket.clamp(0, _scaleLadder.length - 1);
+    final int bucket = scaleBucket.clamp(
+      0,
+      RasterScalePolicy.pixelSideLadder.length - 1,
+    );
     final PdfDocument document = await _document(filePath);
     if (pageNumber < 1 || pageNumber > document.pages.length) {
       return null;
     }
     final PdfPage page = document.pages[pageNumber - 1];
 
-    // Target pixel size for this zoom bucket, capped so one page can't blow
-    // the memory budget.
-    final double ladder = _scaleLadder[bucket];
-    int targetWidth = (page.width * ladder).round().clamp(1, 1 << 20);
-    int targetHeight = (page.height * ladder).round().clamp(1, 1 << 20);
-    final int longest = targetWidth > targetHeight ? targetWidth : targetHeight;
-    if (longest > _maxRasterPixelSide) {
-      final double shrink = _maxRasterPixelSide / longest;
-      targetWidth = (targetWidth * shrink).round().clamp(1, 1 << 20);
-      targetHeight = (targetHeight * shrink).round().clamp(1, 1 << 20);
-    }
+    final ui.Size target = RasterScalePolicy.targetSize(
+      intrinsicSize: ui.Size(page.width, page.height),
+      bucket: bucket,
+      allowUpscaling: true,
+    );
+    final int targetWidth = target.width.round();
+    final int targetHeight = target.height.round();
 
     // Native PDFium rasterisation — runs on pdfrx's own background isolate.
     final PdfImage? rendered = await page.render(
