@@ -725,7 +725,17 @@ class CanvasRepository {
         );
   }
 
+  /// Canvases whose default content layer this instance has already ensured.
+  ///
+  /// The insert-or-ignore below is idempotent, but it was issued on every
+  /// element load *and* every element save — a write statement on the read
+  /// path, and one per save batch, for a row that can only be created once.
+  final Set<String> _ensuredDefaultLayers = <String>{};
+
   Future<void> _ensureDefaultContentLayer(String canvasId) async {
+    if (_ensuredDefaultLayers.contains(canvasId)) {
+      return;
+    }
     final CanvasLayer layer = CanvasLayer.defaultContent(canvasId);
     final DateTime now = DateTime.now();
     await _db
@@ -746,6 +756,7 @@ class CanvasRepository {
           ),
           mode: InsertMode.insertOrIgnore,
         );
+    _ensuredDefaultLayers.add(canvasId);
   }
 
   // ---------------------------------------------------------------------------

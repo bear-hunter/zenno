@@ -1623,6 +1623,16 @@ class _CanvasViewState extends State<CanvasView> {
                                   eraserRadius: _controller.eraserRadius,
                                   lassoPath: _controller.lassoPath,
                                   selectionBounds: _controller.selectionBounds,
+                                  accentColor: Theme.of(
+                                    context,
+                                  ).colorScheme.primary,
+                                  paperIsLight:
+                                      Color(
+                                        _controller
+                                            .paperStyle
+                                            .backgroundColor,
+                                      ).computeLuminance() >
+                                      0.5,
                                 ),
                               );
                             },

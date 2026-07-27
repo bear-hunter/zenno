@@ -55,6 +55,35 @@ class ElementsTileCache {
   int _revision = 0;
   int _tick = 0;
 
+  Map<String, CanvasElement>? _elementsById;
+  Map<String, int>? _paintOrderById;
+  int? _indexRevision;
+
+  /// Id-keyed lookups over [elements], rebuilt only when the content changes.
+  ///
+  /// Both maps were previously rebuilt from scratch on every paint, on the
+  /// cached fast path, which made a supposedly free frame O(n) in the total
+  /// element count.
+  ({Map<String, CanvasElement> byId, Map<String, int> order}) indexFor(
+    List<CanvasElement> elements,
+  ) {
+    if (_indexRevision != _revision ||
+        _elementsById == null ||
+        _paintOrderById == null) {
+      final byId = <String, CanvasElement>{};
+      final order = <String, int>{};
+      for (var i = 0; i < elements.length; i += 1) {
+        final CanvasElement element = elements[i];
+        byId[element.id] = element;
+        order[element.id] = i;
+      }
+      _elementsById = byId;
+      _paintOrderById = order;
+      _indexRevision = _revision;
+    }
+    return (byId: _elementsById!, order: _paintOrderById!);
+  }
+
   /// Number of currently retained tile pictures.
   int get tileCount => _pictures.length;
 
@@ -79,6 +108,9 @@ class ElementsTileCache {
       return;
     }
     _revision = nextRevision;
+    _elementsById = null;
+    _paintOrderById = null;
+    _indexRevision = null;
     clear();
   }
 
@@ -370,16 +402,12 @@ class ElementsPainter extends CustomPainter {
   }
 
   void _paintVisibleElements(Canvas canvas, Set<String> visibleIds) {
-    // Iterate `elements` (already z-ordered) and skip the culled ones, so the
-    // surviving elements are still painted back-to-front. A selected element
-    // mid-preview is never culled — its preview copy can leave the original
-    // culled bounds.
-    for (final CanvasElement element in elements) {
+    // Build the paint list from what is actually visible, then restore
+    // z-order — rather than walking every element on the canvas to discard
+    // most of them. Dragging one stroke on a large canvas used to cost a full
+    // scan per frame, because a live selection disables the tile cache.
+    for (final CanvasElement element in _paintList(visibleIds)) {
       final bool selected = selectedIds.contains(element.id);
-      if (!visibleIds.contains(element.id) &&
-          !(selected && (_dragging || _transforming))) {
-        continue;
-      }
       final SelectionTransformPreview? transform = selectionTransformPreview;
       if (selected && transform != null) {
         canvas.save();
@@ -397,6 +425,34 @@ class ElementsPainter extends CustomPainter {
       }
       _paintElement(canvas, element, selected: selected);
     }
+  }
+
+  /// The visible elements, plus any selected element whose live preview can
+  /// leave its culled bounds, in ascending paint order.
+  List<CanvasElement> _paintList(Set<String> visibleIds) {
+    final bool previewing = _dragging || _transforming;
+    final ElementsTileCache? cache = tileCache;
+    if (cache == null) {
+      return <CanvasElement>[
+        for (final CanvasElement element in elements)
+          if (visibleIds.contains(element.id) ||
+              (previewing && selectedIds.contains(element.id)))
+            element,
+      ];
+    }
+
+    final index = cache.indexFor(elements);
+    final Set<String> ids = previewing
+        ? <String>{...visibleIds, ...selectedIds}
+        : visibleIds;
+    final List<CanvasElement> visible = <CanvasElement>[
+      for (final String id in ids)
+        if (index.byId[id] case final CanvasElement element) element,
+    ];
+    visible.sort(
+      (a, b) => index.order[a.id]!.compareTo(index.order[b.id]!),
+    );
+    return visible;
   }
 
   /// Opacity applied to an element the live eraser drag has crossed.
@@ -456,13 +512,9 @@ class ElementsPainter extends CustomPainter {
 
   void _paintCachedTiles(Canvas canvas, Rect visibleRect) {
     final ElementsTileCache cache = tileCache!;
-    final Map<String, CanvasElement> elementsById = <String, CanvasElement>{};
-    final Map<String, int> paintOrderById = <String, int>{};
-    for (var i = 0; i < elements.length; i += 1) {
-      final CanvasElement element = elements[i];
-      elementsById[element.id] = element;
-      paintOrderById[element.id] = i;
-    }
+    final index = cache.indexFor(elements);
+    final Map<String, CanvasElement> elementsById = index.byId;
+    final Map<String, int> paintOrderById = index.order;
 
     final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
     final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();

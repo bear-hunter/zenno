@@ -649,6 +649,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_selectionTransformOriginals != null) {
       return _transformedSelectionBounds();
     }
+    // Read on every overlay repaint. Without the early return this scanned
+    // every element on the canvas per frame even with nothing selected.
+    if (_selectedIds.isEmpty) {
+      return null;
+    }
     final Rect? bounds = _boundsForSelectedElements(_elements);
     if (bounds == null) {
       return null;
@@ -859,6 +864,20 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     return null;
   }
 
+  /// Position of each element id within [_elements].
+  ///
+  /// Maintained alongside the list so id lookups, duplicate checks and raster
+  /// swaps are constant time. These were linear scans on paths that run per
+  /// frame and per raster job.
+  final Map<String, int> _elementIndex = <String, int>{};
+
+  /// Rebuilds [_elementIndex] for positions from [start] onward.
+  void _reindexFrom(int start) {
+    for (var i = start; i < _elements.length; i++) {
+      _elementIndex[_elements[i].id] = i;
+    }
+  }
+
   int _compareElements(CanvasElement a, CanvasElement b) {
     final double layerA = _layerById(_effectiveLayerId(a))?.position ?? 0;
     final double layerB = _layerById(_effectiveLayerId(b))?.position ?? 0;
@@ -891,20 +910,18 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void addElementToStore(CanvasElement element) {
     final CanvasElement stored = _normalizeElementLayer(element);
     // Idempotent: a command replay must not duplicate an element.
-    for (final CanvasElement existing in _elements) {
-      if (existing.id == stored.id) {
-        return;
-      }
+    if (_elementIndex.containsKey(stored.id)) {
+      return;
     }
-    // Insert keeping the list sorted ascending by zIndex.
+    // Insert keeping the list sorted ascending by zIndex. Elements are almost
+    // always appended in order, so scan back from the end: hydrating a canvas
+    // whose rows already arrive z-sorted is then linear rather than quadratic.
     var insertAt = _elements.length;
-    for (var i = 0; i < _elements.length; i++) {
-      if (_compareElements(_elements[i], stored) > 0) {
-        insertAt = i;
-        break;
-      }
+    while (insertAt > 0 && _compareElements(_elements[insertAt - 1], stored) > 0) {
+      insertAt -= 1;
     }
     _elements.insert(insertAt, stored);
+    _reindexFrom(insertAt);
     _spatialIndex.insert(stored.id, stored.worldBounds);
     final ui.Image? raster = _elementRaster(stored);
     if (raster != null) {
@@ -924,11 +941,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   @override
   void removeElementFromStore(String id) {
-    final int index = _elements.indexWhere((CanvasElement e) => e.id == id);
-    if (index < 0) {
+    final int? index = _elementIndex[id];
+    if (index == null) {
       return;
     }
     final CanvasElement removed = _elements.removeAt(index);
+    _elementIndex.remove(id);
+    _reindexFrom(index);
     _disposeElementRaster(removed);
     _spatialIndex.remove(id);
     _markElementsChanged();
@@ -1865,6 +1884,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }
     _persistLayers(List<CanvasLayer>.of(_layers));
     _elements.sort(_compareElements);
+    _reindexFrom(0);
     _markElementsChanged();
     notifyListeners();
   }
@@ -4451,12 +4471,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   CanvasElement? _elementById(String id) {
-    for (final CanvasElement element in _elements) {
-      if (element.id == id) {
-        return element;
-      }
-    }
-    return null;
+    final int? index = _elementIndex[id];
+    return index == null ? null : _elements[index];
   }
 
   static double _distanceSquared(Offset a, Offset b) {
@@ -4599,8 +4615,8 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     String id,
     CanvasElement Function(CanvasElement current) update,
   ) {
-    final int index = _elements.indexWhere((CanvasElement e) => e.id == id);
-    if (index < 0) {
+    final int? index = _elementIndex[id];
+    if (index == null) {
       return;
     }
     _elements[index] = update(_elements[index]);
