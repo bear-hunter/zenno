@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:perfect_freehand/perfect_freehand.dart' hide StrokePoint;
+import 'package:zenno/canvas/engine/stroke_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 
 /// Rendering strategy for converting a stroke centerline into a filled path.
@@ -38,12 +39,12 @@ int strokeScaleBucket(double scale) {
 ///
 /// [points] are world-space (or whatever coordinate space the caller wants the
 /// path produced in — see [size]). [size] is the base stroke diameter in that
-/// same coordinate space. [thinning] controls how strongly pressure modulates
-/// width, [smoothing] softens the outline edges, and [streamline] removes
-/// jitter from the input samples. Set [isComplete] once the stroke is finished
-/// so the tail is drawn fully rather than slightly behind the last sample. When
-/// [simulatePressure] is true the per-point pressure values are ignored and
-/// pressure is inferred from velocity instead.
+/// same coordinate space. [tool] selects the thinning, smoothing, cap and
+/// taper appropriate to that instrument — see [strokeStyleFor]. Set
+/// [isComplete] once the stroke is finished so the tail is drawn fully rather
+/// than slightly behind the last sample. When [simulatePressure] is true the
+/// per-point pressure values are ignored and pressure is inferred from
+/// velocity instead, which is what a device with no pressure sensor wants.
 ///
 /// The outline is emitted as quadratic curves, which Skia tessellates against
 /// the device transform — so one path renders smoothly at every zoom level and
@@ -54,9 +55,7 @@ int strokeScaleBucket(double scale) {
 Path buildStrokeOutline(
   List<StrokePoint> points, {
   required double size,
-  double thinning = 0.6,
-  double smoothing = 0.5,
-  double streamline = 0.4,
+  StrokeToolKind tool = StrokeToolKind.pen,
   bool isComplete = false,
   bool simulatePressure = false,
 }) {
@@ -72,15 +71,31 @@ Path buildStrokeOutline(
     for (final point in points) PointVector(point.x, point.y, point.pressure),
   ];
 
+  final StrokeToolStyle style = strokeStyleFor(tool);
+  final double taper = style.taperLengthFactor * size;
+
   final outline = getStroke(
     inputPoints,
     options: StrokeOptions(
       size: size,
-      thinning: thinning,
-      smoothing: smoothing,
-      streamline: streamline,
+      thinning: style.thinning,
+      smoothing: style.smoothing,
+      // PenInputProcessor already runs a time-constant filter over the
+      // samples; streamlining here would low-pass them a second time, with the
+      // two lags compounding.
+      streamline: 0,
       simulatePressure: simulatePressure,
       isComplete: isComplete,
+      start: StrokeEndOptions.start(
+        cap: style.cap,
+        taperEnabled: style.tapers,
+        customTaper: style.tapers ? taper : null,
+      ),
+      end: StrokeEndOptions.end(
+        cap: style.cap,
+        taperEnabled: style.tapers,
+        customTaper: style.tapers ? taper : null,
+      ),
     ),
   );
 

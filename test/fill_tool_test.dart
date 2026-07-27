@@ -99,8 +99,7 @@ void main() {
   group('fill controller lifecycle', () {
     test('commits one undoable fill and hit-tests its interior', () {
       final CanvasController controller = CanvasController()
-        ..setPenKind(StrokeToolKind.fill)
-        ..setPenProfile(const PenProfile(startTaper: 0.1, endTaper: 0.1));
+        ..setPenKind(StrokeToolKind.fill);
       addTearDown(controller.dispose);
 
       controller.beginStroke(const Offset(20, 20), 0.8);

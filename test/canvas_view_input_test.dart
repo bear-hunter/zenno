@@ -1649,4 +1649,53 @@ void main() {
     // collapse the stroke's final point to zero width.
     expect(ink.stroke.points.last.pressure, greaterThan(0));
   });
+
+  testWidgets('a palm landing just before the pen does not pan', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    final ViewportState before = controller.viewport;
+
+    // The S Pen hovers for a few centimetres before contact, and the writing
+    // hand usually lands first.
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.addPointer(
+      location: _canvasGlobal(tester, const Offset(200, 200)),
+    );
+    await stylus.moveTo(_canvasGlobal(tester, const Offset(204, 202)));
+    await tester.pump();
+
+    final TestGesture palm = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await palm.down(_canvasGlobal(tester, const Offset(120, 300)));
+    await palm.moveTo(_canvasGlobal(tester, const Offset(160, 340)));
+    await palm.up();
+    await tester.pump();
+
+    expect(controller.viewport, before);
+  });
+
+  testWidgets('a finger pans normally when no stylus is around', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+    final ViewportState before = controller.viewport;
+
+    final TestGesture touch = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await touch.down(_canvasGlobal(tester, const Offset(120, 300)));
+    await touch.moveTo(_canvasGlobal(tester, const Offset(180, 340)));
+    await touch.up();
+    await tester.pump();
+
+    expect(controller.viewport, isNot(before));
+  });
 }

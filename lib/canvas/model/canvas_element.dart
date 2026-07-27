@@ -253,6 +253,7 @@ final class InkElement extends CanvasElement {
         : buildStrokeOutline(
             stroke.points,
             size: stroke.width,
+            tool: stroke.tool,
             isComplete: true,
           );
   }

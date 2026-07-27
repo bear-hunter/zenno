@@ -295,6 +295,9 @@ class _CanvasViewState extends State<CanvasView> {
 
   void _onPointerDown(PointerDownEvent event) {
     final kind = classifyPointer(event);
+    if (kind == CanvasInputKind.stylus) {
+      _markStylusActivity(event);
+    }
     _pointers[event.pointer] = _ActivePointer(
       kind: kind,
       position: event.localPosition,
@@ -304,6 +307,12 @@ class _CanvasViewState extends State<CanvasView> {
     // it starts on a selected element, however, it manipulates that selection
     // directly.
     if (kind == CanvasInputKind.touch) {
+      // Reject the resting palm in the windows around pen-down and pen-up,
+      // where no tool pointer is active to suppress it.
+      if (_isLikelyPalm(event)) {
+        _pointers.remove(event.pointer);
+        return;
+      }
       if (_toolPointerId != null) {
         if (_toolGesture == _ToolGesture.moveSelection &&
             _pointers[_toolPointerId]?.kind == CanvasInputKind.touch) {
@@ -505,6 +514,9 @@ class _CanvasViewState extends State<CanvasView> {
     final pointer = _pointers[event.pointer];
     if (pointer == null) {
       return;
+    }
+    if (pointer.kind == CanvasInputKind.stylus) {
+      _markStylusActivity(event);
     }
     final Offset previous = pointer.position;
     pointer.position = event.localPosition;
@@ -740,6 +752,11 @@ class _CanvasViewState extends State<CanvasView> {
   }
 
   void _onPointerUp(PointerUpEvent event) {
+    if (_pointers[event.pointer]?.kind == CanvasInputKind.stylus) {
+      // Starts the palm-rejection window covering the lift-off, where the
+      // writing hand typically shifts before leaving the glass.
+      _markStylusActivity(event);
+    }
     if (event.pointer == _toolPointerId) {
       _toolPointerUpPosition = event.localPosition;
       _appendPenUpSample(event);
@@ -1316,10 +1333,39 @@ class _CanvasViewState extends State<CanvasView> {
 
   void _onPointerHover(PointerHoverEvent event) {
     final kind = classifyPointer(event);
+    if (kind == CanvasInputKind.stylus) {
+      _markStylusActivity(event);
+    }
     if (kind == CanvasInputKind.stylus || kind == CanvasInputKind.mouse) {
       _controller.setHoverPoint(_toWorld(event.localPosition));
     }
   }
+
+  /// Records that the stylus was seen, for palm rejection.
+  void _markStylusActivity(PointerEvent event) {
+    _lastStylusActivityMicros = event.timeStamp.inMicroseconds;
+  }
+
+  /// Whether a touch arriving now is most likely the writing hand resting.
+  ///
+  /// Suppressing touch only while a tool pointer is down leaves two gaps: the
+  /// palm usually lands *before* the nib does, and it shifts again right after
+  /// the pen lifts — the classic mid-sentence canvas jump. The S Pen hovers
+  /// for a few centimetres before contact, so any touch close in time to
+  /// stylus activity is treated as palm.
+  bool _isLikelyPalm(PointerDownEvent event) {
+    final int? lastStylus = _lastStylusActivityMicros;
+    if (lastStylus == null) {
+      return false;
+    }
+    final int elapsed = event.timeStamp.inMicroseconds - lastStylus;
+    return elapsed >= 0 && elapsed <= _stylusProximityWindowMicros;
+  }
+
+  /// How long after stylus activity a touch is still assumed to be palm.
+  static const int _stylusProximityWindowMicros = 400 * 1000;
+
+  int? _lastStylusActivityMicros;
 
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) {

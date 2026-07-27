@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -87,7 +88,7 @@ class LiveStrokePathCache {
       final int tailStart = _prefixEnd == 0
           ? 0
           : (_prefixEnd - _overlap).clamp(0, points.length);
-      _tail = _outlineFor(stroke, tailStart, points.length);
+      _tail = _outlineFor(stroke, tailStart, points.length, predictTail: true);
       _tailRevision = revision;
     }
 
@@ -122,12 +123,87 @@ class LiveStrokePathCache {
     _prefixEnd = newPrefixEnd;
   }
 
-  Path _outlineFor(Stroke stroke, int start, int end) {
+  Path _outlineFor(
+    Stroke stroke,
+    int start,
+    int end, {
+    bool predictTail = false,
+  }) {
     final List<StrokePoint> slice = start == 0 && end == stroke.points.length
         ? stroke.points
         : stroke.points.sublist(start, end);
-    return buildStrokeOutline(slice, size: stroke.width, isComplete: false);
+    return buildStrokeOutline(
+      predictTail ? _withPredictedTip(slice) : slice,
+      size: stroke.width,
+      tool: stroke.tool,
+      isComplete: false,
+    );
   }
+
+  /// Appends one extrapolated sample ahead of the newest one.
+  ///
+  /// A sample reaches the screen roughly a frame after the nib produced it, so
+  /// ink visibly trails the pen. Extending the drawn tail by about one frame of
+  /// travel closes most of that gap. It is deliberately applied to the painted
+  /// tail only and never to the stroke buffer, so nothing predicted is ever
+  /// committed or persisted.
+  ///
+  /// The step is capped, and dropped entirely when the stroke is turning
+  /// sharply, so a corner cannot overshoot into a visible spike.
+  static List<StrokePoint> _withPredictedTip(List<StrokePoint> points) {
+    if (points.length < 3) {
+      return points;
+    }
+    final StrokePoint last = points[points.length - 1];
+    final StrokePoint previous = points[points.length - 2];
+    final StrokePoint earlier = points[points.length - 3];
+
+    final Offset recent = last.offset - previous.offset;
+    final Offset prior = previous.offset - earlier.offset;
+    final double recentLength = recent.distance;
+    final double priorLength = prior.distance;
+    if (recentLength < 0.01 || priorLength < 0.01) {
+      return points;
+    }
+
+    // cos of the turn angle: 1 is straight ahead, 0 a right-angle corner.
+    final double alignment =
+        (recent.dx * prior.dx + recent.dy * prior.dy) /
+        (recentLength * priorLength);
+    if (alignment < _minPredictionAlignment) {
+      return points;
+    }
+
+    final double step = math.min(
+      recentLength * _predictionFraction,
+      _maxPredictionDistance,
+    );
+    final Offset direction = recent / recentLength;
+    final Offset tip = last.offset + direction * step;
+
+    return <StrokePoint>[
+      ...points,
+      StrokePoint(
+        tip.dx,
+        tip.dy,
+        last.pressure,
+        tiltX: last.tiltX,
+        tiltY: last.tiltY,
+        azimuth: last.azimuth,
+        timestampMicros: last.timestampMicros,
+        velocity: last.velocity,
+      ),
+    ];
+  }
+
+  /// Fraction of the last sample's travel to extrapolate forward.
+  static const double _predictionFraction = 0.8;
+
+  /// Hard cap on the predicted step, in world units.
+  static const double _maxPredictionDistance = 12.0;
+
+  /// Straightness required before predicting, as cos of the turn angle.
+  static const double _minPredictionAlignment = 0.7;
 }
 
 /// Paints the single in-progress [liveStroke] under the current [viewport].
@@ -220,6 +296,7 @@ class LiveStrokePainter extends CustomPainter {
               : buildStrokeOutline(
                   stroke.points,
                   size: stroke.width,
+                  tool: stroke.tool,
                   isComplete: false,
                 ),
         );

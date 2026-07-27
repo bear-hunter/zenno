@@ -10,7 +10,6 @@ import 'package:zenno/canvas/engine/canvas_commands.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
-import 'package:zenno/canvas/input/pen_input_processor.dart';
 import 'package:zenno/canvas/input/pen_profile.dart';
 import 'package:zenno/canvas/io/canvas_import.dart';
 import 'package:zenno/canvas/model/canvas_bookmark.dart';
@@ -1415,12 +1414,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
             ? isValidFillBoundary(stroke.points)
             : stroke.points.isNotEmpty)) {
       // The live snapshot's points are a view over the builder's buffer, so a
-      // committed element must take its own immutable copy.
-      final List<StrokePoint> owned = builder.committedPoints();
+      // committed element must take its own immutable copy. Stroke ends are
+      // shaped by the tool's own taper in buildStrokeOutline, so the points
+      // are committed exactly as sampled.
       final Stroke committed = stroke.copyWith(
-        points: stroke.tool == StrokeToolKind.fill
-            ? owned
-            : PenInputProcessor.applyTaper(owned, penProfile),
+        points: builder.committedPoints(),
       );
       final InkElement element = InkElement.fromStroke(
         committed,

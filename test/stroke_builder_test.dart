@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/engine/stroke_builder.dart';
+import 'package:zenno/canvas/engine/stroke_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/render/live_stroke_painter.dart';
 
@@ -206,11 +207,11 @@ void main() {
         blockPaint: Paint(),
       );
       final next = cache.geometryFor(
-        stroke: Stroke(
+        stroke: const Stroke(
           id: 'other',
           points: <StrokePoint>[
-            const StrokePoint(0, 0, 0.5),
-            const StrokePoint(10, 0, 0.5),
+            StrokePoint(0, 0, 0.5),
+            StrokePoint(10, 0, 0.5),
           ],
           color: 0xFFFFFFFF,
           width: 6,
@@ -219,6 +220,130 @@ void main() {
         blockPaint: Paint(),
       );
       expect(next.prefix, isNull);
+    });
+  });
+
+  group('live tail prediction', () {
+    Stroke straight(int count) => Stroke(
+      id: 'live',
+      points: <StrokePoint>[
+        for (int i = 0; i < count; i++) StrokePoint(i * 6.0, 0, 0.5),
+      ],
+      color: 0xFFFFFFFF,
+      width: 4,
+    );
+
+    test('a straight stroke is drawn slightly ahead of the last sample', () {
+      final cache = LiveStrokePathCache();
+      final Stroke stroke = straight(6);
+      final double lastSampleX = stroke.points.last.x;
+
+      final geometry = cache.geometryFor(
+        stroke: stroke,
+        revision: 1,
+        blockPaint: Paint(),
+      );
+
+      // The painted tail reaches past the newest sample, closing part of the
+      // frame of latency between the nib and the ink.
+      expect(geometry.tail.getBounds().right, greaterThan(lastSampleX));
+    });
+
+    test('a sharp corner is not extrapolated through', () {
+      final cache = LiveStrokePathCache();
+      // Travels right, then turns hard downward.
+      const corner = Stroke(
+        id: 'corner',
+        points: <StrokePoint>[
+          StrokePoint(0, 0, 0.5),
+          StrokePoint(20, 0, 0.5),
+          StrokePoint(40, 0, 0.5),
+          StrokePoint(40, 20, 0.5),
+        ],
+        color: 0xFFFFFFFF,
+        width: 4,
+      );
+
+      final geometry = cache.geometryFor(
+        stroke: corner,
+        revision: 1,
+        blockPaint: Paint(),
+      );
+
+      // Predicting through the turn would spike the stroke past the corner.
+      expect(geometry.tail.getBounds().bottom, lessThan(40));
+    });
+
+    test('the predicted step is capped', () {
+      final cache = LiveStrokePathCache();
+      // A huge jump between samples must not produce a huge prediction.
+      const jump = Stroke(
+        id: 'jump',
+        points: <StrokePoint>[
+          StrokePoint(0, 0, 0.5),
+          StrokePoint(400, 0, 0.5),
+          StrokePoint(800, 0, 0.5),
+        ],
+        color: 0xFFFFFFFF,
+        width: 4,
+      );
+
+      final geometry = cache.geometryFor(
+        stroke: jump,
+        revision: 1,
+        blockPaint: Paint(),
+      );
+
+      expect(geometry.tail.getBounds().right, lessThan(800 + 20));
+    });
+  });
+
+  group('per-tool stroke styles', () {
+    test('a highlighter ignores pressure and a pen does not', () {
+      List<StrokePoint> atPressure(double pressure) => <StrokePoint>[
+        for (int i = 0; i < 30; i++) StrokePoint(i * 6.0, 0, pressure),
+      ];
+
+      double widthOf(StrokeToolKind tool, double pressure) => buildStrokeOutline(
+        atPressure(pressure),
+        size: 12,
+        tool: tool,
+      ).getBounds().height;
+
+      // A chisel tip lays the same band however hard it is pressed; a nib
+      // responds to pressure. The tools used to share one thinning value.
+      expect(
+        widthOf(StrokeToolKind.highlighter, 0.15),
+        closeTo(widthOf(StrokeToolKind.highlighter, 1), 0.01),
+      );
+      expect(
+        widthOf(StrokeToolKind.pen, 1),
+        greaterThan(widthOf(StrokeToolKind.pen, 0.15) + 1),
+      );
+    });
+
+    test('only the tools that should taper do', () {
+      expect(strokeStyleFor(StrokeToolKind.pen).tapers, isTrue);
+      expect(strokeStyleFor(StrokeToolKind.highlighter).tapers, isFalse);
+      expect(strokeStyleFor(StrokeToolKind.marker).tapers, isFalse);
+    });
+
+    test('a tapered pen stroke narrows at its ends', () {
+      final List<StrokePoint> even = <StrokePoint>[
+        for (int i = 0; i < 40; i++) StrokePoint(i * 6.0, 0, 1),
+      ];
+      final Path path = buildStrokeOutline(
+        even,
+        size: 14,
+        tool: StrokeToolKind.pen,
+        isComplete: true,
+      );
+
+      // Sample the outline near an end and near the middle: at constant
+      // pressure any narrowing at the tip comes from the taper.
+      final Rect bounds = path.getBounds();
+      expect(path.contains(Offset(bounds.center.dx, 0)), isTrue);
+      expect(path.contains(Offset(bounds.left + 0.5, 6)), isFalse);
     });
   });
 }
