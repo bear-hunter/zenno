@@ -204,6 +204,35 @@ void main() {
     expect(_swatch(0), findsOneWidget);
   });
 
+  testWidgets('Adaptive pen can be toggled from contextual pen controls', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    final toolbarKey = GlobalKey<CanvasToolbarState>();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CanvasToolbar(
+            key: toolbarKey,
+            controller: controller,
+            onBack: () {},
+          ),
+        ),
+      ),
+    );
+
+    toolbarKey.currentState!.showFullControls();
+    await tester.pump();
+    expect(find.text('Adaptive pen'), findsOneWidget);
+    expect(controller.adaptivePenEnabled, isTrue);
+
+    await tester.tap(find.text('Adaptive pen'));
+    await tester.pump();
+
+    expect(controller.adaptivePenEnabled, isFalse);
+  });
+
   testWidgets('utility favorites open context settings and can be replaced', (
     tester,
   ) async {

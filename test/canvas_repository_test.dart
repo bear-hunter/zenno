@@ -565,6 +565,29 @@ void main() {
         expect(settings.toolWheelPresets[7].kind, ToolWheelSlotKind.pan);
       },
     );
+
+    test(
+      'continuous brush changes collapse to one final settings write',
+      () async {
+        final countingRepo = _CountingCanvasRepository(db);
+        final controller = CanvasController(
+          repository: countingRepo,
+          canvasId: canvasId,
+        );
+        addTearDown(controller.dispose);
+        await controller.load();
+
+        controller
+          ..setPenWidth(8)
+          ..setPenWidth(12)
+          ..setPenWidth(16)
+          ..commitToolSettings();
+        await controller.flush();
+
+        expect(countingRepo.toolSettingsWriteCount, 1);
+        expect((await repo.loadToolSettings(canvasId)).penWidth, 16);
+      },
+    );
   });
 
   group('mixed canvas', () {
@@ -995,5 +1018,17 @@ class _FailOnceCanvasRepository extends CanvasRepository {
       return Future<void>.error(StateError('simulated write failure'));
     }
     return super.upsertElement(canvasId, element);
+  }
+}
+
+class _CountingCanvasRepository extends CanvasRepository {
+  _CountingCanvasRepository(super.db);
+
+  int toolSettingsWriteCount = 0;
+
+  @override
+  Future<void> saveToolSettings(String canvasId, CanvasToolSettings settings) {
+    toolSettingsWriteCount += 1;
+    return super.saveToolSettings(canvasId, settings);
   }
 }

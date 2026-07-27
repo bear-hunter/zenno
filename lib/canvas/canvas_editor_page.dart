@@ -487,7 +487,7 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage> {
         // Watch the controller so the body swaps from the loading spinner to the
         // canvas the moment `load` finishes hydrating it.
         body: ListenableBuilder(
-          listenable: _controller,
+          listenable: _controller.editorStateListenable,
           builder: (context, _) {
             final importError = _controller.importErrorMessage;
             if (importError != null) {

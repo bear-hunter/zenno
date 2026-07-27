@@ -106,6 +106,9 @@ class CanvasToolbar extends StatefulWidget {
   static const String toolButtonKeyPrefix = 'canvas-tool';
   static const String widthButtonKeyPrefix = 'canvas-width';
   static const String penWidthModeButtonKeyPrefix = 'canvas-pen-width-mode';
+  static const Key adaptivePenToggleKey = ValueKey<String>(
+    'canvas-adaptive-pen-toggle',
+  );
   static const String swatchButtonKeyPrefix = 'canvas-swatch';
   static const String palettePresetButtonKeyPrefix = 'canvas-palette-preset';
   static const String paperKindButtonKeyPrefix = 'canvas-paper-kind';
@@ -300,8 +303,6 @@ class _CanvasToolbarContent extends StatelessWidget {
 
   static const String toolButtonKeyPrefix = CanvasToolbar.toolButtonKeyPrefix;
   static const String widthButtonKeyPrefix = CanvasToolbar.widthButtonKeyPrefix;
-  static const String penWidthModeButtonKeyPrefix =
-      CanvasToolbar.penWidthModeButtonKeyPrefix;
   static const String swatchButtonKeyPrefix =
       CanvasToolbar.swatchButtonKeyPrefix;
   static const Key importImageKey = CanvasToolbar.importImageKey;
@@ -326,7 +327,7 @@ class _CanvasToolbarContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: controller.toolStateListenable,
       builder: (context, _) {
         return SafeArea(
           child: LayoutBuilder(
@@ -922,6 +923,7 @@ class _CanvasToolbarContent extends StatelessWidget {
           onDragDelta: (delta) => controller.setPenWidth(
             (controller.penWidth + delta / 8).clamp(0.5, 96).toDouble(),
           ),
+          onDragEnd: controller.commitToolSettings,
         ),
       _WheelPropertyAction(
         icon: Icons.opacity_outlined,
@@ -932,6 +934,7 @@ class _CanvasToolbarContent extends StatelessWidget {
         onDragDelta: (delta) => controller.setPenOpacity(
           (controller.penOpacity + delta / 140).clamp(0, 1).toDouble(),
         ),
+        onDragEnd: controller.commitToolSettings,
       ),
       _WheelPropertyAction(
         icon: Icons.gesture,
@@ -944,6 +947,7 @@ class _CanvasToolbarContent extends StatelessWidget {
               .clamp(0, 1)
               .toDouble(),
         ),
+        onDragEnd: controller.commitToolSettings,
       ),
     ];
   }
@@ -1284,15 +1288,12 @@ class _CanvasToolbarContent extends StatelessWidget {
           onTap: () => _stepPenWidth(1),
         ),
         _WheelAction(
-          icon: Icons.aspect_ratio,
-          label: controller.penWidthMode == PenWidthMode.screen
-              ? 'Screen width'
-              : 'Canvas width',
-          selected: controller.penWidthMode == PenWidthMode.screen,
-          onTap: () => controller.setPenWidthMode(
-            controller.penWidthMode == PenWidthMode.screen
-                ? PenWidthMode.canvas
-                : PenWidthMode.screen,
+          icon: Icons.line_weight,
+          label: 'Adaptive pen',
+          valueLabel: controller.adaptivePenEnabled ? 'On' : 'Off',
+          selected: controller.adaptivePenEnabled,
+          onTap: () => controller.setAdaptivePenEnabled(
+            enabled: !controller.adaptivePenEnabled,
           ),
         ),
       ],
@@ -1314,7 +1315,10 @@ class _CanvasToolbarContent extends StatelessWidget {
             icon: Icons.circle_outlined,
             label: 'Eraser ${radius.round()}',
             selected: controller.eraserRadius.round() == radius.round(),
-            onTap: () => controller.setEraserRadius(radius),
+            onTap: () {
+              controller.setEraserRadius(radius);
+              controller.commitToolSettings();
+            },
           ),
       ],
       CanvasTool.lasso => <_WheelAction>[
@@ -1477,6 +1481,7 @@ class _CanvasToolbarContent extends StatelessWidget {
     }
     final next = (closest + direction).clamp(0, _widths.length - 1);
     controller.setPenWidth(_widths[next]);
+    controller.commitToolSettings();
   }
 
   Future<void> _showToolSettings(BuildContext context) {
@@ -1507,7 +1512,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(12),
                         child: ListenableBuilder(
-                          listenable: controller,
+                          listenable: controller.toolStateListenable,
                           builder: (context, _) => Wrap(
                             key: controller.activeTool == CanvasTool.pen
                                 ? penDockKey
@@ -1568,7 +1573,7 @@ class _CanvasToolbarContent extends StatelessWidget {
             enabled: !controller.pressureEnabled,
           ),
         ),
-        _widthModePicker(),
+        _adaptivePenToggle(),
       ],
       CanvasTool.eraser => <Widget>[
         const _ContextLabel(
@@ -1599,6 +1604,7 @@ class _CanvasToolbarContent extends StatelessWidget {
             divisions: 15,
             label: controller.eraserRadius.round().toString(),
             onChanged: controller.setEraserRadius,
+            onChangeEnd: (_) => controller.commitToolSettings(),
           ),
         ),
         _HudLabel(controller.eraserRadius.round().toString()),
@@ -1785,7 +1791,10 @@ class _CanvasToolbarContent extends StatelessWidget {
     return PopupMenuButton<double>(
       tooltip: 'Width ${controller.penWidth.toStringAsFixed(0)}',
       initialValue: controller.penWidth,
-      onSelected: controller.setPenWidth,
+      onSelected: (width) {
+        controller.setPenWidth(width);
+        controller.commitToolSettings();
+      },
       itemBuilder: (context) => <PopupMenuEntry<double>>[
         for (final double width in _widths)
           PopupMenuItem<double>(
@@ -1819,41 +1828,19 @@ class _CanvasToolbarContent extends StatelessWidget {
     );
   }
 
-  Widget _widthModePicker() {
-    final String label = controller.penWidthMode == PenWidthMode.screen
-        ? 'Screen'
-        : 'Canvas';
-    return PopupMenuButton<PenWidthMode>(
-      tooltip: 'Width behavior: $label',
-      initialValue: controller.penWidthMode,
-      onSelected: controller.setPenWidthMode,
-      itemBuilder: (context) => <PopupMenuEntry<PenWidthMode>>[
-        PopupMenuItem<PenWidthMode>(
-          key: ValueKey<String>(
-            '$penWidthModeButtonKeyPrefix-${PenWidthMode.screen}',
-          ),
-          value: PenWidthMode.screen,
-          child: const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.aspect_ratio),
-            title: Text('Screen width'),
-            subtitle: Text('Looks the same size while zooming'),
-          ),
-        ),
-        PopupMenuItem<PenWidthMode>(
-          key: ValueKey<String>(
-            '$penWidthModeButtonKeyPrefix-${PenWidthMode.canvas}',
-          ),
-          value: PenWidthMode.canvas,
-          child: const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.draw_outlined),
-            title: Text('Canvas width'),
-            subtitle: Text('Scales with the canvas'),
-          ),
-        ),
-      ],
-      child: _ToolbarValueButton(icon: Icons.straighten, label: label),
+  Widget _adaptivePenToggle() {
+    final bool enabled = controller.adaptivePenEnabled;
+    return Tooltip(
+      message: enabled
+          ? 'Adaptive pen is on: brush size stays visually constant while zooming'
+          : 'Adaptive pen is off: brush size scales with the canvas',
+      child: FilterChip(
+        key: CanvasToolbar.adaptivePenToggleKey,
+        avatar: const Icon(Icons.line_weight, size: 16),
+        label: const Text('Adaptive pen'),
+        selected: enabled,
+        onSelected: (value) => controller.setAdaptivePenEnabled(enabled: value),
+      ),
     );
   }
 
@@ -2342,7 +2329,7 @@ class _LayerDialog extends StatelessWidget {
       content: SizedBox(
         width: 420,
         child: ListenableBuilder(
-          listenable: controller,
+          listenable: controller.toolStateListenable,
           builder: (context, _) {
             final layers = controller.layers;
             return Column(
@@ -2682,6 +2669,7 @@ class _WheelPropertyAction {
     required this.angle,
     required this.onTap,
     required this.onDragDelta,
+    required this.onDragEnd,
   });
 
   final IconData icon;
@@ -2690,6 +2678,7 @@ class _WheelPropertyAction {
   final double angle;
   final VoidCallback onTap;
   final ValueChanged<double> onDragDelta;
+  final VoidCallback onDragEnd;
 }
 
 class _RadialWheel extends StatelessWidget {
@@ -2912,8 +2901,10 @@ class _RadialWheel extends StatelessWidget {
                         onTap: property.onTap,
                         onHorizontalDragUpdate: (details) =>
                             property.onDragDelta(details.delta.dx),
+                        onHorizontalDragEnd: (_) => property.onDragEnd(),
                         onVerticalDragUpdate: (details) =>
                             property.onDragDelta(-details.delta.dy),
+                        onVerticalDragEnd: (_) => property.onDragEnd(),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
@@ -3570,7 +3561,7 @@ class _PresetPropertySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: ListenableBuilder(
-        listenable: controller,
+        listenable: controller.toolStateListenable,
         builder: (context, _) {
           final double value = switch (property) {
             _PresetProperty.size => controller.penWidth,
@@ -3628,6 +3619,7 @@ class _PresetPropertySheet extends StatelessWidget {
                   divisions: divisions,
                   label: _propertyValueLabel(property, value),
                   onChanged: setValue,
+                  onChangeEnd: (_) => controller.commitToolSettings(),
                 ),
                 Wrap(
                   spacing: 8,
@@ -3637,7 +3629,10 @@ class _PresetPropertySheet extends StatelessWidget {
                       ChoiceChip(
                         label: Text(_propertyValueLabel(property, preset)),
                         selected: (value - preset).abs() < 0.01,
-                        onSelected: (_) => setValue(preset),
+                        onSelected: (_) {
+                          setValue(preset);
+                          controller.commitToolSettings();
+                        },
                       ),
                   ],
                 ),

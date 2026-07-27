@@ -1488,107 +1488,151 @@ class _CanvasViewState extends State<CanvasView> {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Color(_controller.paperStyle.backgroundColor),
-      child: ClipRect(
-        child: Listener(
-          onPointerDown: _onPointerDown,
-          onPointerMove: _onPointerMove,
-          onPointerUp: _onPointerUp,
-          onPointerCancel: _onPointerCancel,
-          onPointerHover: _onPointerHover,
-          onPointerSignal: _onPointerSignal,
-          child: MouseRegion(
-            onExit: (_) => _controller.setHoverPoint(null),
-            child: ListenableBuilder(
-              listenable: _controller,
-              builder: (context, _) {
-                final ViewportState viewport = _controller.viewport;
-                final bool eraserActive =
-                    _controller.activeTool == CanvasTool.eraser;
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final Size size = constraints.biggest;
-                    final bool hasFiniteSize =
-                        size.width.isFinite && size.height.isFinite;
-                    _queueRasterScheduling(hasFiniteSize ? size : Size.zero);
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: PaperTexturePainter(
-                              viewport: viewport,
-                              style: _controller.paperStyle,
+    final Listenable backgroundListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.canvasStyleListenable,
+    ]);
+    final Listenable elementsListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.elementsListenable,
+      _controller.selectionListenable,
+    ]);
+    final Listenable liveListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.liveStrokeListenable,
+      _controller.overlayListenable,
+    ]);
+    final Listenable overlayListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.overlayListenable,
+      _controller.selectionListenable,
+      _controller.toolStateListenable,
+    ]);
+    final Listenable rasterListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.elementsListenable,
+    ]);
+
+    return ClipRect(
+      child: Listener(
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerCancel,
+        onPointerHover: _onPointerHover,
+        onPointerSignal: _onPointerSignal,
+        child: MouseRegion(
+          onExit: (_) => _controller.setHoverPoint(null),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final Size size = constraints.biggest;
+              final bool hasFiniteSize =
+                  size.width.isFinite && size.height.isFinite;
+              final Size rasterSize = hasFiniteSize ? size : Size.zero;
+              _queueRasterScheduling(rasterSize);
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  ListenableBuilder(
+                    listenable: backgroundListenable,
+                    builder: (context, _) {
+                      final ViewportState viewport = _controller.viewport;
+                      return ColoredBox(
+                        color: Color(_controller.paperStyle.backgroundColor),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                painter: PaperTexturePainter(
+                                  viewport: viewport,
+                                  style: _controller.paperStyle,
+                                ),
+                              ),
                             ),
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                painter: GridPainter(
+                                  viewport: viewport,
+                                  style: _controller.paperStyle,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  ListenableBuilder(
+                    listenable: elementsListenable,
+                    builder: (context, _) => RepaintBoundary(
+                      child: CustomPaint(
+                        painter: ElementsPainter(
+                          elements: _controller.visibleElements,
+                          spatialIndex: _controller.spatialIndex,
+                          viewport: _controller.viewport,
+                          elementsRevision: _controller.elementsRevision,
+                          selectionRevision: _controller.selectionRevision,
+                          selectionPreviewRevision:
+                              _controller.selectionPreviewRevision,
+                          tileCache: _elementsTileCache,
+                          selectedIds: _controller.selectedIds,
+                          selectionDragDelta: _controller.selectionDragDelta,
+                          selectionTransformPreview:
+                              _controller.selectionTransformPreview,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ListenableBuilder(
+                    listenable: liveListenable,
+                    builder: (context, _) => RepaintBoundary(
+                      child: CustomPaint(
+                        painter: LiveStrokePainter(
+                          liveStroke: _controller.liveStroke,
+                          liveStrokeRevision: _controller.liveStrokeRevision,
+                          liveShape: _controller.liveShapeElement,
+                          viewport: _controller.viewport,
+                          pathCache: _liveStrokePathCache,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ListenableBuilder(
+                    listenable: overlayListenable,
+                    builder: (context, _) {
+                      final bool eraserActive =
+                          _controller.activeTool == CanvasTool.eraser;
+                      return RepaintBoundary(
+                        child: CustomPaint(
+                          painter: CanvasOverlayPainter(
+                            viewport: _controller.viewport,
+                            hoverPointWorld: _controller.hoverPointWorld,
+                            hoverRadius: eraserActive
+                                ? _controller.eraserRadius
+                                : _controller.resolvedPenHoverRadiusScreen(),
+                            isEraserHover: eraserActive,
+                            eraserPath: _controller.eraserPath,
+                            eraserRadius: _controller.eraserRadius,
+                            lassoPath: _controller.lassoPath,
+                            selectionBounds: _controller.selectionBounds,
+                            hasClipboardContent:
+                                _controller.hasClipboardContent,
                           ),
                         ),
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: GridPainter(
-                              viewport: viewport,
-                              style: _controller.paperStyle,
-                            ),
-                          ),
-                        ),
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: ElementsPainter(
-                              elements: _controller.visibleElements,
-                              spatialIndex: _controller.spatialIndex,
-                              viewport: viewport,
-                              elementsRevision: _controller.elementsRevision,
-                              selectionRevision: _controller.selectionRevision,
-                              selectionPreviewRevision:
-                                  _controller.selectionPreviewRevision,
-                              tileCache: _elementsTileCache,
-                              selectedIds: _controller.selectedIds,
-                              selectionDragDelta:
-                                  _controller.selectionDragDelta,
-                              selectionTransformPreview:
-                                  _controller.selectionTransformPreview,
-                            ),
-                          ),
-                        ),
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            // Freehand ink and the in-progress shape preview
-                            // share the live layer — only one is ever non-null
-                            // at once.
-                            painter: LiveStrokePainter(
-                              liveStroke: _controller.liveStroke,
-                              liveStrokeRevision:
-                                  _controller.liveStrokeRevision,
-                              liveShape: _controller.liveShapeElement,
-                              viewport: viewport,
-                              pathCache: _liveStrokePathCache,
-                            ),
-                          ),
-                        ),
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: CanvasOverlayPainter(
-                              viewport: viewport,
-                              hoverPointWorld: _controller.hoverPointWorld,
-                              hoverRadius: eraserActive
-                                  ? _controller.eraserRadius
-                                  : _controller.resolvedPenHoverRadiusScreen(),
-                              isEraserHover: eraserActive,
-                              eraserPath: _controller.eraserPath,
-                              eraserRadius: _controller.eraserRadius,
-                              lassoPath: _controller.lassoPath,
-                              selectionBounds: _controller.selectionBounds,
-                              hasClipboardContent:
-                                  _controller.hasClipboardContent,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
+                      );
+                    },
+                  ),
+                  ListenableBuilder(
+                    listenable: rasterListenable,
+                    builder: (context, _) {
+                      _queueRasterScheduling(rasterSize);
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
