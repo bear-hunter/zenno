@@ -1322,6 +1322,31 @@ void main() {
       expect(controller.activeLayerId, layer.id);
     });
 
+    test('viewport elements contain only ordered spatial hits', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      controller
+        ..setViewportSize(const Size(100, 100))
+        ..addElementToStore(inkElement('near', zIndex: 0))
+        ..addElementToStore(
+          inkElement('far', zIndex: 1).translated(const Offset(1000, 0)),
+        );
+
+      expect(
+        controller.viewportElements.map((CanvasElement element) => element.id),
+        <String>['near'],
+      );
+
+      controller.setViewport(
+        const ViewportState(translation: Offset(-1000, 0)),
+      );
+
+      expect(
+        controller.viewportElements.map((CanvasElement element) => element.id),
+        <String>['far'],
+      );
+    });
+
     test(
       'hidden and locked layers are protected from selection and erasing',
       () {
