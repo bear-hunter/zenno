@@ -1545,6 +1545,64 @@ void main() {
     expect(controller.elementCount, 0);
   });
 
+  testWidgets('drawing does not rebuild controller-listening chrome', (
+    tester,
+  ) async {
+    final CanvasController controller = CanvasController();
+    addTearDown(controller.dispose);
+
+    // Stands in for the toolbar: a sibling that subscribes to the controller
+    // the same way CanvasToolbar does.
+    var chromeBuilds = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 400,
+            height: 400,
+            child: Stack(
+              children: [
+                Positioned.fill(child: CanvasView(controller: controller)),
+                ListenableBuilder(
+                  listenable: controller,
+                  builder: (context, _) {
+                    chromeBuilds += 1;
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final TestGesture stylus = await tester.createGesture(
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylus.down(_canvasGlobal(tester, const Offset(40, 40)));
+    await tester.pump();
+
+    // Pen-down is a genuine state change and may rebuild once. Every sample
+    // after it must not: that is what used to rebuild the whole toolbar at
+    // pen report rate.
+    final int buildsAfterPenDown = chromeBuilds;
+    for (int i = 1; i <= 40; i++) {
+      await stylus.moveTo(_canvasGlobal(tester, Offset(40.0 + i * 4, 40)));
+      await tester.pump();
+    }
+
+    expect(
+      chromeBuilds - buildsAfterPenDown,
+      0,
+      reason: 'a pen sample must not rebuild anything outside the live layer',
+    );
+
+    await stylus.up();
+    await tester.pump();
+    expect(controller.elementCount, 1);
+  });
+
   testWidgets('a committed stroke ends exactly where the pen lifted', (
     tester,
   ) async {

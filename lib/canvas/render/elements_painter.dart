@@ -52,7 +52,6 @@ class ElementsTileCache {
   static const double tileSize = 2048.0;
 
   final Map<_TileKey, _TilePicture> _pictures = <_TileKey, _TilePicture>{};
-  final StrokePathCache strokePathCache = StrokePathCache();
   int _revision = 0;
   int _tick = 0;
 
@@ -65,7 +64,6 @@ class ElementsTileCache {
       picture.picture.dispose();
     }
     _pictures.clear();
-    strokePathCache.clear();
   }
 
   /// Releases native picture resources.
@@ -191,71 +189,6 @@ class ElementsTileCache {
       element.hashCode,
       rasterPart,
     );
-  }
-}
-
-class StrokePathCacheKey {
-  const StrokePathCacheKey({
-    required this.strokeId,
-    required this.revision,
-    required this.scaleBucket,
-    required this.quality,
-    required this.isComplete,
-  });
-
-  final String strokeId;
-  final int revision;
-  final int scaleBucket;
-  final StrokeRenderQuality quality;
-  final bool isComplete;
-
-  @override
-  bool operator ==(Object other) {
-    return other is StrokePathCacheKey &&
-        other.strokeId == strokeId &&
-        other.revision == revision &&
-        other.scaleBucket == scaleBucket &&
-        other.quality == quality &&
-        other.isComplete == isComplete;
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(strokeId, revision, scaleBucket, quality, isComplete);
-}
-
-class StrokePathCache {
-  StrokePathCache({this.maxEntries = 2048});
-
-  final int maxEntries;
-  final Map<StrokePathCacheKey, Path> _paths = <StrokePathCacheKey, Path>{};
-
-  void clear() => _paths.clear();
-
-  Path pathFor({
-    required StrokePathCacheKey key,
-    required Stroke stroke,
-    required double viewportScale,
-  }) {
-    final cached = _paths.remove(key);
-    if (cached != null) {
-      _paths[key] = cached;
-      return cached;
-    }
-    final path = stroke.tool == StrokeToolKind.fill
-        ? buildFillBoundaryPath(stroke.points)
-        : buildStrokeOutline(
-            stroke.points,
-            size: stroke.width,
-            viewportScale: viewportScale,
-            quality: key.quality,
-            isComplete: key.isComplete,
-          );
-    _paths[key] = path;
-    while (_paths.length > maxEntries) {
-      _paths.remove(_paths.keys.first);
-    }
-    return path;
   }
 }
 
@@ -601,58 +534,13 @@ class ElementsPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  Path _strokePathFor(InkElement element) {
-    if (element.stroke.tool == StrokeToolKind.fill) {
-      return element.outlinePath;
-    }
-    final StrokeRenderQuality quality = strokeRenderQualityForScale(
-      viewport.scale,
-    );
-    if (quality != StrokeRenderQuality.highZoom) {
-      return element.outlinePath;
-    }
-    final Stroke stroke = element.stroke;
-    final key = StrokePathCacheKey(
-      strokeId: stroke.id,
-      revision: _strokeRevision(stroke),
-      scaleBucket: strokeScaleBucket(viewport.scale),
-      quality: quality,
-      isComplete: true,
-    );
-    final StrokePathCache? cache = tileCache?.strokePathCache;
-    if (cache == null) {
-      return buildStrokeOutline(
-        stroke.points,
-        size: stroke.width,
-        viewportScale: viewport.scale,
-        quality: quality,
-        isComplete: true,
-      );
-    }
-    return cache.pathFor(
-      key: key,
-      stroke: stroke,
-      viewportScale: viewport.scale,
-    );
-  }
-
-  int _strokeRevision(Stroke stroke) {
-    final StrokePoint? first = stroke.points.isEmpty
-        ? null
-        : stroke.points.first;
-    final StrokePoint? last = stroke.points.isEmpty ? null : stroke.points.last;
-    // Committed strokes are immutable by contract; edits replace the points
-    // list, so the list identity plus endpoints avoids hashing every sample.
-    return Object.hashAll(<Object?>[
-      stroke.id,
-      stroke.width,
-      stroke.tool,
-      stroke.points.length,
-      identityHashCode(stroke.points),
-      first,
-      last,
-    ]);
-  }
+  /// The committed world-space outline for [element].
+  ///
+  /// One path serves every zoom level: the outline is emitted as quadratic
+  /// curves, which Skia tessellates against the device transform, so it stays
+  /// smooth however far in the user zooms. This used to rebuild a denser path
+  /// past 4x to hide the facets of a `lineTo` polygon.
+  Path _strokePathFor(InkElement element) => element.outlinePath;
 
   /// Cheap low-zoom stroke rendering for overview/deep-map navigation.
   void _paintInkOverview(Canvas canvas, InkElement element) {

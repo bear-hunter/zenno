@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -116,18 +117,25 @@ class _LiveStrokeBuilder {
 
   void append(StrokePoint point) {
     _points.add(point);
-    _snapshot = null;
   }
 
+  /// The live stroke as a [Stroke], reusing one instance for the whole gesture.
+  ///
+  /// The point list is exposed as an unmodifiable *view*, not a copy, so this
+  /// stays O(1) per frame. Copying the buffer on every sample made the live
+  /// layer allocate the whole stroke ~120 times a second.
   Stroke snapshot() {
     return _snapshot ??= Stroke(
       id: id,
-      points: List<StrokePoint>.unmodifiable(_points),
+      points: UnmodifiableListView<StrokePoint>(_points),
       color: color,
       width: width,
       tool: tool,
     );
   }
+
+  /// An immutable copy of the samples, for committing the stroke.
+  List<StrokePoint> committedPoints() => List<StrokePoint>.unmodifiable(_points);
 }
 
 enum _RasterJobKind { image, pdf }
@@ -345,6 +353,24 @@ class CanvasController extends ChangeNotifier implements ElementStore {
             if (_isElementVisible(element)) element,
         ]);
   }
+
+  /// Repaint channel for the in-progress ink, erase, lasso and hover layers.
+  ///
+  /// These change at pen report rate (~120 Hz on an S Pen, and continuously
+  /// while merely hovering). Routing them through [notifyListeners] rebuilt the
+  /// whole editor — including the toolbar — once per sample. Widgets that only
+  /// draw in-progress input listen here instead; every [notifyListeners] also
+  /// pokes this channel, so those layers still see ordinary state changes.
+  Listenable get liveLayerListenable => _liveLayerSignal;
+  final _CanvasSignal _liveLayerSignal = _CanvasSignal();
+
+  /// Fires only when the editor's page-level gate changes: load state, load
+  /// failure, or a pending import error.
+  ///
+  /// The editor page rebuilds its whole chrome stack from this, so it must not
+  /// carry ordinary canvas edits.
+  Listenable get editorGateListenable => _editorGateSignal;
+  final _CanvasSignal _editorGateSignal = _CanvasSignal();
 
   /// The stroke currently being drawn, or `null` when nothing is in progress.
   ///
@@ -736,6 +762,11 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     return changed;
   }
 
+  /// Coalesces in-progress input updates to one repaint per frame.
+  ///
+  /// Deliberately pokes only [liveLayerListenable]: a stroke sample changes
+  /// nothing the toolbar or the committed-element layer can see, so waking
+  /// them here would rebuild the entire editor per pen sample.
   void _notifyLiveStrokeSoon() {
     if (_liveStrokeNotifyScheduled) {
       return;
@@ -745,15 +776,45 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       SchedulerBinding.instance.scheduleFrameCallback((_) {
         _liveStrokeNotifyScheduled = false;
         if (!_disposed) {
-          notifyListeners();
+          _liveLayerSignal.notify();
         }
       });
       SchedulerBinding.instance.ensureVisualUpdate();
     } on Object {
       _liveStrokeNotifyScheduled = false;
-      notifyListeners();
+      _liveLayerSignal.notify();
     }
   }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) {
+      return;
+    }
+    super.notifyListeners();
+    // Any general state change may also affect what the live layers draw
+    // (tool, viewport, paper), so they always follow the main channel too.
+    _liveLayerSignal.notify();
+    _syncEditorGate();
+  }
+
+  /// Fires [editorGateListenable] only when the page-level gate actually moved.
+  ///
+  /// Derived rather than wired into each mutation site: the gate depends on two
+  /// fields written from a dozen places, and a missed call would strand the
+  /// editor on its loading spinner.
+  void _syncEditorGate() {
+    if (_isLoaded == _lastGateLoaded &&
+        _importErrorMessage == _lastGateImportError) {
+      return;
+    }
+    _lastGateLoaded = _isLoaded;
+    _lastGateImportError = _importErrorMessage;
+    _editorGateSignal.notify();
+  }
+
+  bool _lastGateLoaded = false;
+  String? _lastGateImportError;
 
   String? _editableActiveLayerId() {
     final CanvasLayer? active = _layerById(activeLayerId);
@@ -1342,19 +1403,24 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// through an [AddElementCommand], so the commit is undoable. The
   /// [liveStroke] is always cleared.
   void endStroke() {
-    final Stroke? stroke = _liveStrokeBuilder?.snapshot();
+    final _LiveStrokeBuilder? builder = _liveStrokeBuilder;
+    final Stroke? stroke = builder?.snapshot();
     final String? layerId = _editableActiveLayerId();
     _liveStrokeBuilder = null;
     _liveStrokeRevision += 1;
     if (stroke != null &&
+        builder != null &&
         layerId != null &&
         (stroke.tool == StrokeToolKind.fill
             ? isValidFillBoundary(stroke.points)
             : stroke.points.isNotEmpty)) {
+      // The live snapshot's points are a view over the builder's buffer, so a
+      // committed element must take its own immutable copy.
+      final List<StrokePoint> owned = builder.committedPoints();
       final Stroke committed = stroke.copyWith(
         points: stroke.tool == StrokeToolKind.fill
-            ? stroke.points
-            : PenInputProcessor.applyTaper(stroke.points, penProfile),
+            ? owned
+            : PenInputProcessor.applyTaper(owned, penProfile),
       );
       final InkElement element = InkElement.fromStroke(
         committed,
@@ -2041,9 +2107,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   }
 
   /// Sets the stylus hover indicator position, or clears it with `null`.
+  /// Updates the stylus/mouse hover point used by the overlay ring.
+  ///
+  /// An S Pen hovers continuously within ~1 cm of the glass, so this fires at
+  /// report rate while nothing is being drawn. It touches only the overlay
+  /// layer, and an unchanged position is dropped outright.
   void setHoverPoint(Offset? world) {
+    if (hoverPointWorld == world) {
+      return;
+    }
     hoverPointWorld = world;
-    notifyListeners();
+    _notifyLiveStrokeSoon();
   }
 
   // ---------------------------------------------------------------------------
@@ -4597,6 +4671,28 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _disposeAllRasters();
     // Fire-and-forget: closing pooled PDFium handles need not block teardown.
     unawaited(_pdfRasterService.dispose());
+    _liveLayerSignal.dispose();
+    _editorGateSignal.dispose();
+    super.dispose();
+  }
+}
+
+/// A bare repaint channel: a [ChangeNotifier] whose notify is callable.
+///
+/// The controller exposes these as [Listenable] so a widget can subscribe to
+/// one narrow signal instead of every change the canvas makes.
+class _CanvasSignal extends ChangeNotifier {
+  void notify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
     super.dispose();
   }
 }

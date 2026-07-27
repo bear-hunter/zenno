@@ -1492,8 +1492,6 @@ class _CanvasViewState extends State<CanvasView> {
               listenable: _controller,
               builder: (context, _) {
                 final ViewportState viewport = _controller.viewport;
-                final bool eraserActive =
-                    _controller.activeTool == CanvasTool.eraser;
                 return LayoutBuilder(
                   builder: (context, constraints) {
                     final Size size = constraints.biggest;
@@ -1530,35 +1528,50 @@ class _CanvasViewState extends State<CanvasView> {
                             ),
                           ),
                         ),
+                        // The live and overlay layers redraw at pen report
+                        // rate. They subscribe to the controller's live-layer
+                        // channel so a stroke sample rebuilds these two
+                        // painters only, never the surrounding editor.
                         RepaintBoundary(
-                          child: CustomPaint(
-                            // Freehand ink and the in-progress shape preview
-                            // share the live layer — only one is ever non-null
-                            // at once.
-                            painter: LiveStrokePainter(
-                              liveStroke: _controller.liveStroke,
-                              liveStrokeRevision:
-                                  _controller.liveStrokeRevision,
-                              liveShape: _controller.liveShapeElement,
-                              viewport: viewport,
-                              pathCache: _liveStrokePathCache,
+                          child: ListenableBuilder(
+                            listenable: _controller.liveLayerListenable,
+                            builder: (context, _) => CustomPaint(
+                              // Freehand ink and the in-progress shape preview
+                              // share the live layer — only one is ever
+                              // non-null at once.
+                              painter: LiveStrokePainter(
+                                liveStroke: _controller.liveStroke,
+                                liveStrokeRevision:
+                                    _controller.liveStrokeRevision,
+                                liveShape: _controller.liveShapeElement,
+                                viewport: _controller.viewport,
+                                pathCache: _liveStrokePathCache,
+                              ),
                             ),
                           ),
                         ),
                         RepaintBoundary(
-                          child: CustomPaint(
-                            painter: CanvasOverlayPainter(
-                              viewport: viewport,
-                              hoverPointWorld: _controller.hoverPointWorld,
-                              hoverRadius: eraserActive
-                                  ? _controller.eraserRadius
-                                  : _controller.resolvedPenHoverRadiusScreen(),
-                              isEraserHover: eraserActive,
-                              eraserPath: _controller.eraserPath,
-                              eraserRadius: _controller.eraserRadius,
-                              lassoPath: _controller.lassoPath,
-                              selectionBounds: _controller.selectionBounds,
-                            ),
+                          child: ListenableBuilder(
+                            listenable: _controller.liveLayerListenable,
+                            builder: (context, _) {
+                              final bool erasing =
+                                  _controller.activeTool == CanvasTool.eraser;
+                              return CustomPaint(
+                                painter: CanvasOverlayPainter(
+                                  viewport: _controller.viewport,
+                                  hoverPointWorld: _controller.hoverPointWorld,
+                                  hoverRadius: erasing
+                                      ? _controller.eraserRadius
+                                      : _controller
+                                            .resolvedPenHoverRadiusScreen(),
+                                  isEraserHover: erasing,
+                                  eraserPath: _controller.eraserPath,
+                                  eraserRadius: _controller.eraserRadius,
+                                  lassoPath: _controller.lassoPath,
+                                  selectionBounds: _controller.selectionBounds,
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],

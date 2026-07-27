@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/rendering.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
@@ -6,53 +8,125 @@ import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/shape_painter.dart';
 
+/// The two pieces a live stroke is drawn from: a frozen head and a live tail.
+class LiveStrokeGeometry {
+  const LiveStrokeGeometry({required this.tail, this.prefix});
+
+  /// Everything tessellated so far, pre-recorded. `null` for a young stroke
+  /// that is still cheap to rebuild whole.
+  final ui.Picture? prefix;
+
+  /// The freshly tessellated end of the stroke, rebuilt every frame.
+  final Path tail;
+}
+
+/// Builds the in-progress stroke's geometry incrementally.
+///
+/// A live stroke grows by a sample every few milliseconds. Re-running
+/// `getStroke` over the whole buffer each frame makes a stroke cost O(n²) over
+/// its life, so a long annotation visibly degrades as it is drawn.
+///
+/// Instead the settled head of the stroke is tessellated once and folded into a
+/// [ui.Picture]; only the last [_blockSize] or so samples are rebuilt per
+/// frame. Each frozen block re-consumes [_overlap] samples from before its
+/// start, and the tail does the same, so the smoothing filter has continuous
+/// input across the seams and the filled regions overlap rather than gap.
 class LiveStrokePathCache {
+  /// Samples accumulated before the head is extended again.
+  static const int _blockSize = 48;
+
+  /// Samples each block and the tail re-consume for smoothing continuity.
+  static const int _overlap = 10;
+
+  /// Below this length a stroke is rebuilt whole — the bookkeeping is not
+  /// worth it, and short strokes are where end-cap fidelity matters most.
+  static const int _incrementalThreshold = 96;
+
   String? _strokeId;
-  int? _revision;
-  int? _scaleBucket;
-  StrokeRenderQuality? _quality;
-  Path? _path;
+  ui.Picture? _prefix;
+  int _prefixEnd = 0;
+
+  Path? _tail;
+  int? _tailRevision;
 
   void clear() {
+    _prefix?.dispose();
+    _prefix = null;
+    _prefixEnd = 0;
     _strokeId = null;
-    _revision = null;
-    _scaleBucket = null;
-    _quality = null;
-    _path = null;
+    _tail = null;
+    _tailRevision = null;
   }
 
-  Path pathFor({
+  /// Returns the geometry for [stroke] at [revision], reusing frozen work.
+  ///
+  /// [blockPaint] is the opaque paint the frozen blocks are recorded with; the
+  /// painter applies any transparency to the composed result instead, so
+  /// overlapping blocks cannot double-darken at a seam.
+  LiveStrokeGeometry geometryFor({
     required Stroke stroke,
     required int revision,
-    required double viewportScale,
+    required Paint blockPaint,
   }) {
-    final StrokeRenderQuality quality = strokeRenderQualityForScale(
-      viewportScale,
-    );
-    final int scaleBucket = strokeScaleBucket(viewportScale);
-    final Path? cached = _path;
-    if (cached != null &&
-        _strokeId == stroke.id &&
-        _revision == revision &&
-        _scaleBucket == scaleBucket &&
-        _quality == quality) {
-      return cached;
+    if (_strokeId != stroke.id) {
+      clear();
+      _strokeId = stroke.id;
     }
-    final Path next = stroke.tool == StrokeToolKind.fill
-        ? buildFillBoundaryPath(stroke.points)
-        : buildStrokeOutline(
-            stroke.points,
-            size: stroke.width,
-            viewportScale: viewportScale,
-            quality: quality,
-            isComplete: false,
-          );
-    _strokeId = stroke.id;
-    _revision = revision;
-    _scaleBucket = scaleBucket;
-    _quality = quality;
-    _path = next;
-    return next;
+
+    final List<StrokePoint> points = stroke.points;
+    if (stroke.tool == StrokeToolKind.fill) {
+      return LiveStrokeGeometry(tail: buildFillBoundaryPath(points));
+    }
+
+    if (points.length >= _incrementalThreshold &&
+        points.length - _prefixEnd > _blockSize + _overlap) {
+      _freezeBlock(stroke, blockPaint);
+    }
+
+    if (_tailRevision != revision || _tail == null) {
+      final int tailStart = _prefixEnd == 0
+          ? 0
+          : (_prefixEnd - _overlap).clamp(0, points.length);
+      _tail = _outlineFor(stroke, tailStart, points.length);
+      _tailRevision = revision;
+    }
+
+    return LiveStrokeGeometry(prefix: _prefix, tail: _tail!);
+  }
+
+  /// Folds the next settled block of samples into the frozen prefix picture.
+  ///
+  /// The previous picture is replayed into the new recording rather than
+  /// re-tessellated, so extending the head costs one block, not one stroke.
+  void _freezeBlock(Stroke stroke, Paint blockPaint) {
+    final List<StrokePoint> points = stroke.points;
+    final int newPrefixEnd = points.length - _overlap;
+    final int blockStart = _prefixEnd == 0
+        ? 0
+        : (_prefixEnd - _overlap).clamp(0, points.length);
+    if (newPrefixEnd <= blockStart) {
+      return;
+    }
+
+    final Path blockPath = _outlineFor(stroke, blockStart, newPrefixEnd);
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(recorder);
+    final ui.Picture? previous = _prefix;
+    if (previous != null) {
+      canvas.drawPicture(previous);
+    }
+    canvas.drawPath(blockPath, blockPaint);
+
+    _prefix = recorder.endRecording();
+    previous?.dispose();
+    _prefixEnd = newPrefixEnd;
+  }
+
+  Path _outlineFor(Stroke stroke, int start, int end) {
+    final List<StrokePoint> slice = start == 0 && end == stroke.points.length
+        ? stroke.points
+        : stroke.points.sublist(start, end);
+    return buildStrokeOutline(slice, size: stroke.width, isComplete: false);
   }
 }
 
@@ -113,43 +187,64 @@ class LiveStrokePainter extends CustomPainter {
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
 
-    final path =
-        pathCache?.pathFor(
+    final Color color = Color(stroke.color);
+    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
+    final double toolOpacity = switch (stroke.tool) {
+      StrokeToolKind.highlighter => _highlighterOpacity,
+      StrokeToolKind.pencil => _pencilOpacity,
+      StrokeToolKind.marker => _markerOpacity,
+      StrokeToolKind.airbrush => _airbrushOpacity,
+      StrokeToolKind.fill || StrokeToolKind.pen => 1.0,
+    };
+    final double alpha = toolOpacity * userOpacity;
+    final BlendMode blendMode = stroke.tool == StrokeToolKind.highlighter
+        ? BlendMode.multiply
+        : BlendMode.srcOver;
+
+    // Blocks are composed opaque and the stroke's transparency is applied to
+    // the composed result, so the overlap between blocks cannot show as a
+    // darker seam.
+    final Paint opaquePaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = color.withValues(alpha: 1);
+
+    final LiveStrokeGeometry geometry =
+        pathCache?.geometryFor(
           stroke: stroke,
           revision: liveStrokeRevision,
-          viewportScale: viewport.scale,
+          blockPaint: opaquePaint,
         ) ??
-        (stroke.tool == StrokeToolKind.fill
-            ? buildFillBoundaryPath(stroke.points)
-            : buildStrokeOutline(
-                stroke.points,
-                size: stroke.width,
-                viewportScale: viewport.scale,
-                quality: strokeRenderQualityForScale(viewport.scale),
-                isComplete: false,
-              ));
+        LiveStrokeGeometry(
+          tail: stroke.tool == StrokeToolKind.fill
+              ? buildFillBoundaryPath(stroke.points)
+              : buildStrokeOutline(
+                  stroke.points,
+                  size: stroke.width,
+                  isComplete: false,
+                ),
+        );
 
-    final paint = Paint()..style = PaintingStyle.fill;
-    final color = Color(stroke.color);
-    final double userOpacity = ((stroke.color >>> 24) & 0xFF) / 255;
-    switch (stroke.tool) {
-      case StrokeToolKind.highlighter:
-        paint
-          ..color = color.withValues(alpha: _highlighterOpacity * userOpacity)
-          ..blendMode = BlendMode.multiply;
-      case StrokeToolKind.pencil:
-        paint.color = color.withValues(alpha: _pencilOpacity * userOpacity);
-      case StrokeToolKind.marker:
-        paint.color = color.withValues(alpha: _markerOpacity * userOpacity);
-      case StrokeToolKind.airbrush:
-        paint.color = color.withValues(alpha: _airbrushOpacity * userOpacity);
-      case StrokeToolKind.fill:
-        paint.color = color;
-      case StrokeToolKind.pen:
-        paint.color = color;
+    final bool needsLayer = alpha < 1 || blendMode != BlendMode.srcOver;
+    if (needsLayer) {
+      canvas.saveLayer(
+        null,
+        Paint()
+          ..color = const Color(0xFF000000).withValues(alpha: alpha)
+          ..blendMode = blendMode,
+      );
     }
-
-    canvas.drawPath(path, paint);
+    if (geometry.prefix case final ui.Picture prefix) {
+      canvas.drawPicture(prefix);
+    }
+    canvas.drawPath(
+      geometry.tail,
+      needsLayer ? opaquePaint : (Paint()
+        ..style = PaintingStyle.fill
+        ..color = color.withValues(alpha: alpha)),
+    );
+    if (needsLayer) {
+      canvas.restore();
+    }
 
     canvas.restore();
   }

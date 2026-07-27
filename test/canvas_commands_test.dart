@@ -358,7 +358,7 @@ void main() {
   });
 
   group('live stroke repaint', () {
-    test('appendToStroke replaces liveStroke identity before commit', () {
+    test('appendToStroke grows liveStroke without reallocating it', () {
       final CanvasController controller = CanvasController();
       addTearDown(controller.dispose);
 
@@ -368,8 +368,31 @@ void main() {
       controller.appendToStroke(const Offset(10, 0), 0.5);
       final Stroke second = controller.liveStroke!;
 
-      expect(identical(first, second), isFalse);
+      // One Stroke serves the whole gesture and its points are a view over the
+      // builder's buffer, so a sample costs no copy. The painter tracks growth
+      // through liveStrokeRevision rather than object identity.
+      expect(identical(first, second), isTrue);
       expect(second.points, hasLength(2));
+      expect(controller.liveStrokeRevision, greaterThan(0));
+    });
+
+    test('a committed stroke owns its points independently of the builder', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      controller.beginStroke(const Offset(0, 0), 0.5);
+      controller.appendToStroke(const Offset(40, 0), 0.5);
+      controller.endStroke();
+
+      final InkElement committed = controller.elements.single as InkElement;
+      final int committedLength = committed.stroke.points.length;
+
+      // A later stroke must not be able to grow the previous one's buffer.
+      controller.beginStroke(const Offset(0, 80), 0.5);
+      controller.appendToStroke(const Offset(40, 80), 0.5);
+      controller.appendToStroke(const Offset(80, 80), 0.5);
+
+      expect(committed.stroke.points, hasLength(committedLength));
     });
 
     test('LiveStrokePainter repaints after an appended stroke sample', () {
@@ -406,20 +429,53 @@ void main() {
       final CanvasController controller = CanvasController();
       addTearDown(controller.dispose);
       var notifications = 0;
+      var liveRepaints = 0;
       controller.addListener(() {
         notifications += 1;
+      });
+      controller.liveLayerListenable.addListener(() {
+        liveRepaints += 1;
       });
 
       controller.beginStroke(const Offset(0, 0), 0.5);
       controller.appendToStroke(const Offset(10, 0), 0.5);
       controller.appendToStroke(const Offset(20, 0), 0.5);
 
-      expect(notifications, 1);
+      expect(notifications, 1, reason: 'only beginStroke is a general change');
+      expect(liveRepaints, 1);
       expect(controller.liveStroke?.points, hasLength(3));
 
       await tester.pump();
 
-      expect(notifications, 2);
+      // Appended samples coalesce into one repaint of the live layer, and do
+      // not wake the general channel at all: nothing outside that layer can
+      // see a stroke sample, so waking it would rebuild the whole editor.
+      expect(liveRepaints, 2);
+      expect(notifications, 1);
+    });
+
+    testWidgets('hovering never wakes the general listener channel', (
+      tester,
+    ) async {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      var notifications = 0;
+      var liveRepaints = 0;
+      controller.addListener(() => notifications += 1);
+      controller.liveLayerListenable.addListener(() => liveRepaints += 1);
+
+      controller.setHoverPoint(const Offset(10, 10));
+      await tester.pump();
+      controller.setHoverPoint(const Offset(20, 20));
+      await tester.pump();
+
+      expect(notifications, 0);
+      expect(liveRepaints, 2);
+
+      // An unchanged hover position is dropped outright.
+      controller.setHoverPoint(const Offset(20, 20));
+      await tester.pump();
+      expect(liveRepaints, 2);
     });
   });
 
