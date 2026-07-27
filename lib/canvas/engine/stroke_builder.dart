@@ -120,18 +120,19 @@ Path buildStrokeOutline(
 /// smooth at any zoom, where a `lineTo` polygon would show its facets and need
 /// resampling to hide them.
 Path _outlineToPath(List<Offset> outline) {
-  final Offset first = outline.first;
-  final Offset second = outline[1];
-  final Path path = Path()
-    ..moveTo((first.dx + second.dx) / 2, (first.dy + second.dy) / 2);
-  for (var i = 1; i < outline.length; i++) {
-    final Offset control = outline[i];
+  final Offset closingMidpoint = Offset(
+    (outline.last.dx + outline.first.dx) / 2,
+    (outline.last.dy + outline.first.dy) / 2,
+  );
+  final path = Path()..moveTo(closingMidpoint.dx, closingMidpoint.dy);
+  for (var i = 0; i < outline.length; i++) {
+    final Offset current = outline[i];
     final Offset next = outline[(i + 1) % outline.length];
     path.quadraticBezierTo(
-      control.dx,
-      control.dy,
-      (control.dx + next.dx) / 2,
-      (control.dy + next.dy) / 2,
+      current.dx,
+      current.dy,
+      (current.dx + next.dx) / 2,
+      (current.dy + next.dy) / 2,
     );
   }
   return path..close();

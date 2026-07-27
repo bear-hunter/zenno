@@ -33,7 +33,7 @@ void main() {
       const StylusButtonMapping(
         hold: StylusButtonAction.temporaryEraser,
         tap: StylusButtonAction.togglePreviousTool,
-        drag: StylusButtonAction.temporaryEraser,
+        drag: StylusButtonAction.arrow,
         penLongPress: StylusButtonAction.temporaryLasso,
       ),
     );

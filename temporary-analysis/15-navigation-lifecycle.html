@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyzer 15 — Zenno navigation and lifecycle audit</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #151b23;
+      --panel-2: #1b2330;
+      --text: #e6edf3;
+      --muted: #9da7b3;
+      --line: #303946;
+      --critical: #ff6b6b;
+      --high: #ff9f43;
+      --medium: #feca57;
+      --low: #74b9ff;
+      --good: #55efc4;
+      --link: #79c0ff;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.58 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--link); }
+    code, .path {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    code { background: #202936; border-radius: 4px; padding: 0.08rem 0.3rem; }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(135deg, #172130, #10151d 65%);
+      padding: 2.5rem max(1.25rem, calc((100vw - 1180px) / 2));
+    }
+    header h1 { margin: 0 0 0.4rem; font-size: clamp(1.7rem, 4vw, 2.8rem); }
+    header p { max-width: 900px; margin: 0.4rem 0; color: var(--muted); }
+    main {
+      width: min(1180px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 1.5rem 0 5rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      gap: 1.5rem;
+    }
+    .content { min-width: 0; }
+    nav {
+      position: sticky;
+      top: 1rem;
+      align-self: start;
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    nav strong { display: block; margin-bottom: 0.5rem; }
+    nav a { display: block; padding: 0.27rem 0; text-decoration: none; }
+    section, article {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    h2, h3 { scroll-margin-top: 1rem; }
+    h2 { margin: 0 0 0.85rem; font-size: 1.45rem; }
+    h3 { margin: 0.2rem 0 0.6rem; font-size: 1.14rem; }
+    p { margin: 0.55rem 0; }
+    ul, ol { margin: 0.55rem 0; padding-left: 1.4rem; }
+    li + li { margin-top: 0.32rem; }
+    .meta-grid, .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 0.75rem;
+    }
+    .metric {
+      padding: 0.85rem;
+      border-radius: 9px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+    }
+    .metric b { display: block; font-size: 1.25rem; }
+    .muted { color: var(--muted); }
+    .finding { border-left: 5px solid var(--line); }
+    .finding.high { border-left-color: var(--high); }
+    .finding.medium { border-left-color: var(--medium); }
+    .finding.low { border-left-color: var(--low); }
+    .finding.positive { border-left-color: var(--good); }
+    .badge {
+      display: inline-block;
+      padding: 0.12rem 0.48rem;
+      margin-right: 0.35rem;
+      border-radius: 999px;
+      color: #111;
+      font-weight: 750;
+      font-size: 0.76rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .badge.high { background: var(--high); }
+    .badge.medium { background: var(--medium); }
+    .badge.low { background: var(--low); }
+    .badge.good { background: var(--good); }
+    .confidence { color: var(--muted); font-size: 0.9rem; }
+    .evidence {
+      background: #10161f;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.7rem 0.85rem;
+      margin: 0.7rem 0;
+    }
+    .impact strong, .root strong, .recommendation strong { color: #fff; }
+    table { width: 100%; border-collapse: collapse; margin: 0.7rem 0; }
+    th, td { border: 1px solid var(--line); padding: 0.55rem; text-align: left; vertical-align: top; }
+    th { background: var(--panel-2); }
+    .iteration { border-left: 4px solid var(--good); }
+    @media (max-width: 880px) {
+      main { display: block; }
+      nav { position: static; margin-bottom: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Zenno routing, navigation &amp; lifecycle audit</h1>
+    <p><strong>Analyzer 15</strong> · analysis-only · assigned lens: routing, navigation, app lifecycle/backgrounding, initialization, shutdown, deep state restoration, and screen ownership.</p>
+    <p>Iteration 1 written <time datetime="2026-07-18T05:04:29+08:00">2026-07-18 05:04:29 PST (+08:00)</time> against local HEAD <code>7e53357</code> on <code>feat/intuitive-tool-wheel</code>. No builds, tests, app runs, Git mutations, dependency changes, or external services were used.</p>
+  </header>
+
+  <main>
+    <div class="content">
+      <section id="scope">
+        <h2>Scope and evidence standard</h2>
+        <div class="meta-grid">
+          <div class="metric"><b>137</b><span class="muted">Dart files under <code>lib/</code> inventoried</span></div>
+          <div class="metric"><b>52</b><span class="muted">Dart test files inventoried</span></div>
+          <div class="metric"><b>14</b><span class="muted">current findings</span></div>
+          <div class="metric"><b>0</b><span class="muted">source/config/Git files changed</span></div>
+        </div>
+        <p>The review traced the app root, the full <code>go_router</code> table, every imperative <code>Navigator</code> entry point, every <code>PopScope</code>, stateful screen initialization/disposal, focus runtime restoration, canvas flushing, database lifetime, Android launch configuration, web/PWA launch configuration, and the relevant navigation/lifecycle tests. Existing review and plan documents were treated as context, then checked against current source rather than repeated as fact.</p>
+        <p>Severity reflects likely impact on Zenno's thinking flow and data integrity. Confidence separates a definite code property from a user-visible outcome that depends on an OS or timing condition. Recommendations are analysis-only.</p>
+      </section>
+
+      <section id="summary">
+        <h2>Executive summary</h2>
+        <p>The in-memory navigation design is pleasant during an uninterrupted session: five independent branches preserve their stacks, the canvas is full-bleed on the root navigator, and the focus timer is wall-clock based. The weak boundary is interruption and initialization concurrency. A swipe-down gesture can bypass the dirty guards inside editable bottom sheets, app/process restoration is not configured, focus recovery is lazy and can become permanently poisoned after one startup read failure, the canvas has no lifecycle checkpoint before Android may suspend or kill it, and fire-and-forget repository activation cleanup can race a media import into deleting the newly attached file.</p>
+        <div class="summary-grid">
+          <div class="metric"><b style="color:var(--high)">5 High</b><span>sheet-draft loss, canvas checkpointing, focus restore dead-end/divergence, media-cleanup race</span></div>
+          <div class="metric"><b style="color:var(--medium)">6 Medium</b><span>process restoration, focus ownership, wakelock sync, route payload/error handling, canvas ID ownership</span></div>
+          <div class="metric"><b style="color:var(--low)">3 Low</b><span>pre-first-frame failure, PWA orientation, and ineffective tab reset</span></div>
+        </div>
+        <h3>Priority order</h3>
+        <ol>
+          <li>Disable drag-to-dismiss on editable goal/revision sheets and route all dismiss attempts through their existing guarded close path.</li>
+          <li>Serialize orphan cleanup with media imports, or revalidate every candidate against current database references immediately before deletion.</li>
+          <li>Make focus transitions durable before exposing them as successful, especially Finish/End early, and add a retryable shutdown checkpoint.</li>
+          <li>Add one app-owned lifecycle/checkpoint boundary for canvas writes and one eager, recoverable bootstrap for active focus restoration.</li>
+          <li>Decide the intended restoration contract: at minimum restore the selected branch/current durable screen and preserve text drafts that represent unfinished thinking.</li>
+          <li>Give each canvas ID a distinct route/widget ownership key and define guarded behavior for any in-place canvas location replacement.</li>
+        </ol>
+      </section>
+
+      <article id="n15-01" class="finding high">
+        <h3><span class="badge high">High</span>N15-01 — Drag-to-dismiss bypasses dirty guards in editable bottom sheets</h3>
+        <p class="confidence">Confidence: 99% after cross-checking the installed Flutter 3.41.6 bottom-sheet and navigation implementation.</p>
+        <div class="evidence">
+          <ul>
+            <li>Goal details use <code>showModalBottomSheet</code> with <code>showDragHandle: true</code> and leave <code>enableDrag</code> at its default <code>true</code>: <span class="path">lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:22-31</span>.</li>
+            <li>Revision details use the same dismissible configuration: <span class="path">lib/features/revision/presentation/widgets/revision_card_detail_sheet.dart:20-29</span>.</li>
+            <li>Both sheet bodies attempt to protect dirty/busy state with <code>PopScope</code>: <span class="path">goal_card_detail_sheet.dart:261-265</span> and <span class="path">revision_card_detail_sheet.dart:305-315</span>.</li>
+            <li>In the installed Flutter implementation, scrim dismissal uses <code>Navigator.maybePop</code> (which consults <code>PopScope</code>), but a completed downward sheet drag calls <code>Navigator.pop</code> directly. Direct <code>pop</code> does not consult <code>Route.popDisposition</code>; the callback arrives with <code>didPop == true</code>, after the route has already closed.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> After typing a goal title/summary/status note or revision title/notes, the user can swipe the sheet down and lose the draft without the intended “Discard changes?” prompt. The failure is especially plausible because both sheets visibly advertise dragging with a handle. Persisted records remain intact, but original thought text is discarded.</p>
+        <p class="root"><strong>Root cause.</strong> <code>PopScope</code> protects back and <code>maybePop</code> requests; it cannot retroactively veto a direct programmatic <code>Navigator.pop</code>. The modal route owns the drag gesture outside the guarded sheet body.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Set <code>enableDrag: false</code> for editable sheets. Keep scrim/back dismissal, which can reach <code>PopScope</code>, or set <code>isDismissible: false</code> too and provide an explicit close button that invokes the same guard. If drag is a hard requirement, own the sheet route/drag callback and ask the draft owner before popping. Add tests for dirty scrim, system back, and downward drag as three separate paths.</p>
+      </article>
+
+      <article id="n15-02" class="finding high">
+        <h3><span class="badge high">High</span>N15-02 — Canvas persistence has route-exit flushing but no app-lifecycle checkpoint</h3>
+        <p class="confidence">Confidence: 92% that the gap exists; 72% that a given interruption loses a committed mark because the write-through window is normally short.</p>
+        <div class="evidence">
+          <ul>
+            <li>The editor waits for <code>_controller.flush()</code> on its controlled back path before popping: <span class="path">lib/canvas/canvas_editor_page.dart:258-305</span>.</li>
+            <li>On widget disposal it starts, but cannot await, <code>flush().whenComplete(dispose)</code>: <span class="path">lib/canvas/canvas_editor_page.dart:207-215</span>.</li>
+            <li>Structural writes are asynchronous and tracked; viewport writes are delayed by 400 ms: <span class="path">lib/canvas/canvas_controller.dart:222-252</span>, <span class="path">931-943</span>, <span class="path">1036-1057</span>, and <span class="path">1099-1117</span>.</li>
+            <li><span class="path">lib/canvas/canvas_controller.dart:4514-4517</span> explicitly says callers that skip <code>flush</code> can lose the final viewport.</li>
+            <li>A repository-wide search found no <code>AppLifecycleListener</code>, <code>WidgetsBindingObserver</code>, or <code>didChangeAppLifecycleState</code> in production source.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> Home-button/background transitions followed by process reclamation can occur without the guarded back path. A recent viewport is definitely exposed to the debounce window; recently committed elements may still have an in-flight SQLite write. An in-progress live stroke is not a committed element until pointer-up (<span class="path">lib/canvas/canvas_controller.dart:1226-1336</span>). This is the highest data-integrity risk in this lens even though normal local writes are fast.</p>
+        <p class="root"><strong>Root cause.</strong> Save durability is owned by the editor route, but Android can suspend/terminate the app without closing that route. Widget <code>dispose</code> is a teardown notification, not an awaitable shutdown barrier.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Give the editor (or an app-level canvas session owner) a lifecycle observer and checkpoint on <code>inactive</code>/<code>paused</code>. Coalesce concurrent flushes, commit or explicitly cancel the active gesture according to a documented policy, and keep the existing guarded route close. Verify with a fake lifecycle transition and delayed repository writes; do not rely on <code>dispose</code> for durability.</p>
+      </article>
+
+      <article id="n15-03" class="finding high">
+        <h3><span class="badge high">High</span>N15-03 — One focus-restoration read failure permanently poisons starting a session for that app lifetime</h3>
+        <p class="confidence">Confidence: 98%.</p>
+        <div class="evidence">
+          <ul>
+            <li><span class="path">lib/features/focus/application/active_session_controller.dart:116-117</span> stores a single <code>Future.microtask(_restoreAtStartup)</code> in <code>_restoreFuture</code>.</li>
+            <li><span class="path">active_session_controller.dart:449-454</span> uses <code>try/finally</code> but no <code>catch</code>; it changes restoring state to “none” even when the database read throws, then leaves the future completed with that error.</li>
+            <li>Every start awaits that same future before doing anything: <span class="path">active_session_controller.dart:131-138</span>.</li>
+            <li><span class="path">focus_home_page.dart:50-59</span> will render “Start a focus session” after state becomes <code>none</code>, while <span class="path">focus_setup_page.dart:184-203</span> can only report a generic start failure; it cannot repair or replace the poisoned restore future.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> A transient database-open/lock/migration/read error can make the UI advertise that a new session can start, but every attempt fails until the provider container/app is recreated. If a persisted session exists, the user also cannot safely replace it. This is a recoverability dead-end at exactly the moment lifecycle restoration is needed.</p>
+        <p class="root"><strong>Root cause.</strong> Restoration outcome and restoration completion are conflated. The controller suppresses the visible restoring state in <code>finally</code> but preserves the error in the gating future, with no error state or retry transition.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Model restoration as <code>restoring / restored / failed(error)</code>. Catch the read error, expose a retry action, and replace the gate only when a new restoration attempt starts. A start request should either await a successful restore or show the restoration error; it should never present a usable start card backed by a permanently failed gate.</p>
+      </article>
+
+      <article id="n15-04" class="finding medium">
+        <h3><span class="badge medium">Medium</span>N15-04 — Process recreation restores data records, not navigation context or unfinished text</h3>
+        <p class="confidence">Confidence: 99%.</p>
+        <div class="evidence">
+          <ul>
+            <li><span class="path">lib/app.dart:35-42</span> creates <code>MaterialApp.router</code> without a <code>restorationScopeId</code>.</li>
+            <li><span class="path">lib/config/router/app_router.dart:25-81</span> supplies no router, shell, or branch restoration scope IDs and always declares Library as the initial location.</li>
+            <li>A full production search found no <code>RestorationMixin</code>, <code>RestorableProperty</code>, <code>restorationId</code>, or restorable route push.</li>
+            <li>Important drafts live only in widget/controller memory: focus setup (<span class="path">focus_setup_controller.dart:122-208</span>), review note (<span class="path">focus_review_page.dart:30-41</span>), reflection answers (<span class="path">reflection_editor_page.dart:56-83</span>), and template prompt controllers (<span class="path">template_editor_page.dart:33-75</span>).</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> After Android process death or web reload, Zenno returns to Library rather than the last branch/screen. Unsaved review notes, reflection answers, template drafts, setup choices, search text, collapsed folders, branch back stacks, and modal ownership are gone. Persisted canvas/board rows remain safe, but the user's place in a thought process is not restored.</p>
+        <p class="root"><strong>Root cause.</strong> <code>StatefulShellRoute</code> preserves state only in memory unless restoration is wired; most feature screens are anonymous imperative <code>MaterialPageRoute</code>s and therefore have no durable identity or serializable arguments.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Define a narrow restoration contract before broad refactoring: selected branch, current durable screen and ID, canvas ID/viewport, active focus/review destination, and drafts that contain original user text. Give durable screens named/declarative routes and serializable arguments; use restoration IDs or explicit draft persistence for text. Do not attempt to serialize transient dialogs or in-flight destructive operations.</p>
+      </article>
+
+      <article id="n15-05" class="finding medium">
+        <h3><span class="badge medium">Medium</span>N15-05 — Active focus restoration and ownership are lazy, despite being app-wide state</h3>
+        <p class="confidence">Confidence: 97%.</p>
+        <div class="evidence">
+          <ul>
+            <li>The initial route is Library: <span class="path">lib/config/router/app_router.dart:25-28</span>.</li>
+            <li>All shell branches use the default lazy loading policy; none is marked for preload: <span class="path">app_router.dart:29-73</span>.</li>
+            <li><code>activeSessionControllerProvider</code> is watched only by Focus Home, Active, and Review screens; the root app and shell never read it. Relevant root/shell evidence: <span class="path">lib/app.dart:27-42</span> and <span class="path">lib/core/widgets/app_scaffold.dart:11-115</span>.</li>
+            <li>The provider begins restoration only inside its <code>build</code>: <span class="path">active_session_controller.dart:94-117</span>.</li>
+            <li>The controller documentation says a “global shell pill” renders its state (<span class="path">active_session_controller.dart:23-24</span>), but no such shell consumer exists.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> After restarting into Library, a persisted running session is not restored, checkpointed, or given its configured wakelock until the user first opens Focus. The wall-clock timer can catch up later, so elapsed time is not inherently corrupted, but active work is invisible and app-wide lifecycle behavior is delayed. While working in Library/Revision/Goals/Settings, there is also no shell-level timer/status affordance.</p>
+        <p class="root"><strong>Root cause.</strong> An app-scoped session is technically <code>keepAlive</code> after creation, but screen-scoped consumers are the only creation trigger and the shell does not own the advertised global presentation.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Eagerly initialize restoration from a small app bootstrap owner after the database is ready, and expose recoverable failure state. If the product intends cross-feature focus, add the documented lightweight shell pill/return action; otherwise remove the global claim and explicitly define Focus as tab-owned.</p>
+      </article>
+
+      <article id="n15-06" class="finding medium">
+        <h3><span class="badge medium">Medium</span>N15-06 — Changing “keep screen on” during an active session does not update the live wakelock</h3>
+        <p class="confidence">Confidence: 96%.</p>
+        <div class="evidence">
+          <ul>
+            <li>Settings writes the preference reactively: <span class="path">lib/features/settings/presentation/pages/settings_page.dart:187-240</span>.</li>
+            <li>The active controller reads settings only when a session starts or restores through <code>_syncWakelockWithSettings</code>: <span class="path">active_session_controller.dart:175-184</span>, <span class="path">436-445</span>, and <span class="path">477-484</span>.</li>
+            <li>No listener watches <code>appSettingsProvider</code> or settings changes from the active-session owner.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> Because branch switching during a session is supported, the user can open Settings and toggle this option. The control persists, but the current session continues with the old wakelock state until it ends/restarts. That can allow the tablet to sleep unexpectedly or keep it awake contrary to the new choice.</p>
+        <p class="root"><strong>Root cause.</strong> Settings owns persistence and Focus owns the platform resource, but there is no live coordination channel between them.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Have the app-scoped active-session owner listen to just <code>keepScreenOnInFocus</code> while a session exists and reconcile the wakelock on changes. Serialize toggles and keep the existing best-effort error handling so rapid setting changes cannot finish out of order.</p>
+      </article>
+
+      <article id="n15-07" class="finding medium">
+        <h3><span class="badge medium">Medium</span>N15-07 — Linked-canvas arrival state is carried in an ephemeral route object</h3>
+        <p class="confidence">Confidence: 88%.</p>
+        <div class="evidence">
+          <ul>
+            <li><span class="path">lib/canvas/canvas_editor_navigation.dart:89-103</span> pushes only <code>/canvas/&lt;id&gt;</code> in the URL and puts <code>ViewportState</code> in <code>extra</code>.</li>
+            <li><span class="path">lib/canvas/canvas_editor_page.dart:311-319</span> reads the viewport only from that runtime object.</li>
+            <li>The <code>GoRouter</code> has no <code>extraCodec</code> or restoration configuration: <span class="path">lib/config/router/app_router.dart:25-81</span>.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> Normal in-process link following works, and applying the viewport later schedules persistence. However, immediate reload/process recreation/browser history restoration cannot reconstruct which pinned viewport the link intended from the route alone. The canvas may open at its last persisted camera instead of the linked thought location.</p>
+        <p class="root"><strong>Root cause.</strong> Durable identity (canvas ID) is in the route; durable navigation intent (target camera) is an unserialized object.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Encode a bookmark/link identifier or compact validated viewport parameters in serializable route state, then resolve against the repository after load. Prefer an ID over raw floating-point URL fields if links already have stable identity. Keep the existing “arrival wins after hydration” ordering.</p>
+      </article>
+
+      <article id="n15-08" class="finding medium">
+        <h3><span class="badge medium">Medium</span>N15-08 — Unknown or stale locations have no Zenno-owned recovery route</h3>
+        <p class="confidence">Confidence: 95%.</p>
+        <div class="evidence">
+          <ul>
+            <li>The router defines five shell roots and one canvas route only: <span class="path">lib/config/router/app_router.dart:25-81</span>.</li>
+            <li>There is no <code>errorBuilder</code>, <code>errorPageBuilder</code>, <code>onException</code>, redirect, or catch-all route.</li>
+            <li>A stale canvas ID is thoughtfully handled inside the editor (<span class="path">lib/canvas/canvas_editor_page.dart:502-536</span>), but an unrecognized URL never reaches that recovery UI.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> A malformed/stale web URL or future route rename falls through to framework-owned error presentation rather than a quiet Zenno screen with “Return to Library.” This is primarily a flow/recoverability issue, not a data-integrity issue.</p>
+        <p class="root"><strong>Root cause.</strong> Route success paths are centralized, but route failure ownership is left to <code>go_router</code>.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Add one minimal router error page that logs technical detail only in diagnostics and gives the user a safe Library action. Avoid automatic redirects that would hide a route bug or discard a recoverable stack.</p>
+      </article>
+
+      <article id="n15-09" class="finding low">
+        <h3><span class="badge low">Low</span>N15-09 — Uncaught platform setup calls can prevent the first Flutter frame</h3>
+        <p class="confidence">Confidence: 90% for the control flow; 55% for practical occurrence on the Android target.</p>
+        <div class="evidence">
+          <ul>
+            <li><span class="path">lib/main.dart:7-15</span> awaits immersive mode and preferred orientation before <code>runApp</code>, with no fallback or error boundary.</li>
+            <li>Database opening is lazy after <code>runApp</code>, so its failures can at least render provider error states; these two platform futures cannot.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> An unsupported or failing platform-channel call can leave only the native launch surface and no actionable recovery UI. The configured Android target should normally support both calls, so severity is low.</p>
+        <p class="root"><strong>Root cause.</strong> Non-essential window policy is a hard prerequisite for constructing the app.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Keep orientation-before-first-frame if it prevents visible rotation, but catch/report platform setup failures and still call <code>runApp</code>. Treat immersive mode as best-effort. If orientation failure is considered fatal, show a native/Flutter error surface instead of hanging startup.</p>
+      </article>
+
+      <article id="n15-10" class="finding low">
+        <h3><span class="badge low">Low</span>N15-10 — Installed web app declares portrait while Zenno initializes as landscape-only</h3>
+        <p class="confidence">Confidence: 99% that configuration conflicts; runtime enforcement varies by browser.</p>
+        <div class="evidence">
+          <ul>
+            <li><span class="path">web/manifest.json:4-10</span> declares <code>"orientation": "portrait-primary"</code>.</li>
+            <li><span class="path">lib/main.dart:10-14</span> requests only <code>landscapeLeft</code> and <code>landscapeRight</code>.</li>
+            <li>The Android manifest is internally consistent with landscape at <span class="path">android/app/src/main/AndroidManifest.xml:7-16</span>; the conflict is web/PWA-only, and README identifies Android as the real runtime target (<span class="path">README.md:3-5</span>).</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> An installed PWA can launch in the opposite orientation from the layout's intent, causing an avoidable rotate/reflow or leaving a browser that honors only the manifest in portrait.</p>
+        <p class="root"><strong>Root cause.</strong> Generated web metadata was never aligned with the app's tablet landscape contract.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Change the PWA manifest to <code>landscape</code> or <code>landscape-primary</code> if web installation is supported. If web is preview-only, document that the manifest is non-product and remove conflicting product claims.</p>
+      </article>
+
+      <article id="n15-11" class="finding high">
+        <h3><span class="badge high">High</span>N15-11 — Failed focus transition writes leave memory and durable runtime describing different sessions</h3>
+        <p class="confidence">Confidence: 98% for divergence after a failed write; restart impact depends on interruption before a later successful retry.</p>
+        <div class="evidence">
+          <ul>
+            <li>Pause, resume, end-stretch, and skip-break mutate the engine and emit the new UI state before awaiting persistence: <span class="path">lib/features/focus/application/active_session_controller.dart:192-220</span>.</li>
+            <li>Finish/abandon mutates the engine, stops the ticker, and emits the terminal snapshot before <code>finishSession</code> succeeds: <span class="path">active_session_controller.dart:264-303</span>.</li>
+            <li>On write failure, the active page catches the exception and shows “Could not …” but does not restore the preceding engine state: <span class="path">lib/features/focus/presentation/pages/focus_active_page.dart:69-92, 119-167, 169-220</span>.</li>
+            <li>The provider's shutdown callback stops the ticker and disables wakelock but does not checkpoint or retry runtime: <span class="path">active_session_controller.dart:103-117</span>.</li>
+            <li>The existing failed-pause test expects the UI to have already switched from Pause to Resume while persistence is still pending/failing: <span class="path">test/focus_flow_safety_test.dart:70-109</span>.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> A failed Pause can leave memory paused while SQLite says running; a failed Resume can do the reverse. Most importantly, failed Finish/End early leaves the in-memory engine terminal with its ticker stopped while the row is still <code>inProgress</code>. If Zenno is then backgrounded/killed before a successful retry, restart reconstructs the stale durable state—potentially counting the entire downtime as focus or freezing time that was actually worked. The history can therefore misstate learning effort.</p>
+        <p class="root"><strong>Root cause.</strong> Engine state is updated optimistically, but there is no rollback snapshot, durable “transition pending” state, or lifecycle flush. Error copy says the action failed while the visible state often shows that it succeeded.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> For these local SQLite transitions, prefer a simple durable-first boundary: compute the next runtime/final tally, persist it, then publish the new controller state. If optimistic UI is retained, snapshot and roll back the engine on failure and expose an explicit unsynced/retry state that blocks unsafe exit. Finish/abandon must not stop the only retry mechanism until the row close succeeds. Add delayed/failing repository tests followed by provider disposal and restoration.</p>
+      </article>
+
+      <article id="n15-12" class="finding high">
+        <h3><span class="badge high">High</span>N15-12 — Fire-and-forget repository cleanup can delete a newly imported canvas attachment</h3>
+        <p class="confidence">Confidence: 98% that the race is possible; occurrence requires an overlap between repository activation's enumeration and a user's file import.</p>
+        <div class="evidence">
+          <ul>
+            <li>Creating <code>libraryRepositoryProvider</code> launches <code>cleanupOrphanedFiles()</code> without awaiting it, then immediately returns the interactive repository: <span class="path">lib/features/library/application/library_providers.dart:16-24</span>.</li>
+            <li>Despite its “singleton” comment, generated metadata marks this provider <code>isAutoDispose: true</code>, so cleanup is tied to provider activation and can run again after a period without listeners: <span class="path">lib/features/library/application/library_providers.g.dart:11-36</span>.</li>
+            <li>Cleanup reads image, PDF, and thumbnail references once, then passes that frozen set to filesystem cleanup: <span class="path">lib/features/library/data/library_repository.dart:28-45</span>.</li>
+            <li>The filesystem pass later enumerates every file under <code>canvas_media</code> and <code>thumbnails</code> and directly deletes anything absent from that old set; it performs no current database check before deletion: <span class="path">lib/features/library/data/library_file_cleanup_io.dart:29-59</span>.</li>
+            <li>Image/PDF import copies the selected file directly into <code>canvas_media</code> before returning it to the controller: <span class="path">lib/canvas/io/canvas_import.dart:87-107, 115-132, 146-164</span>.</li>
+            <li>Only after decoding/probing and placement does the controller enqueue the database upsert; that write is explicitly asynchronous: <span class="path">lib/canvas/canvas_controller.dart:945-961, 982-1017, 3891-3918, 3961-4015</span>. Image/PDF reference rows are written inside the later element transaction at <span class="path">lib/canvas/persistence/canvas_repository.dart:338-376, 401-435</span>.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> If cleanup snapshots references, then an import creates its app-owned file before cleanup reaches that directory, cleanup can delete the file whether the subsequent element transaction is still pending or has already committed. The canvas can visibly accept an image/PDF and persist a row whose source path no longer exists. That is attachment data loss and a broken note after reload; an image may remain deceptively visible from its in-memory raster until the editor closes.</p>
+        <p class="root"><strong>Root cause.</strong> The comment calls cleanup “safe to call at startup” because undo history is empty, but provider activation is not an exclusive phase: the cleanup future is detached and the UI becomes interactive. The reference snapshot, filesystem scan, file creation, and reference insertion have no shared serialization or atomic protocol. Auto-disposal also means “startup” is not a one-time invariant enforced by the provider.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Use one repository-level media coordinator. The smallest safe design is to await orphan cleanup before allowing media import and, for defense in depth, re-query current references immediately before each deletion. A stronger design stages imports outside the owned live directory, commits the reference, then atomically promotes the file while cleanup ignores staged names. Add a deterministic test that pauses cleanup after its snapshot, completes an import/reference write, resumes cleanup, and asserts the file survives.</p>
+      </article>
+
+      <article id="n15-13" class="finding low">
+        <h3><span class="badge low">Low</span>N15-13 — Reselecting the current tab requests a reset that imperative child routes do not perform</h3>
+        <p class="confidence">Confidence: 99% for the route reconciliation behavior in the locked go_router 17.2.3 / Flutter 3.41.6 versions.</p>
+        <div class="evidence">
+          <ul>
+            <li>The shell passes <code>initialLocation: true</code> precisely when the user selects the already-current branch: <span class="path">lib/core/widgets/app_scaffold.dart:44-48</span>.</li>
+            <li>The five branch route tables contain only their root pages: <span class="path">lib/config/router/app_router.dart:29-74</span>. Focus history/setup/active/review and Goal templates/reflections are instead pushed with raw <code>Navigator.push(MaterialPageRoute)</code>; representative call sites are <span class="path">lib/features/focus/presentation/pages/focus_home_page.dart:62-118</span> and <span class="path">lib/features/goal_cycle/presentation/pages/templates_page.dart:40-126</span>.</li>
+            <li>The repository locks <code>go_router 17.2.3</code>: <span class="path">pubspec.lock:419-426</span>. Its <code>goBranch(initialLocation: true)</code> calls <code>go</code> for the same branch root. Flutter reuses the unchanged keyed root page and reattaches its associated pageless routes; only removing/replacing the owning page forces those pageless routes out.</li>
+            <li>No application-shell test exercises reselecting a branch while an imperative child screen or modal is present; the only shell test builds root placeholder pages: <span class="path">test/quiet_desk_design_test.dart:180-205</span>.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> Tapping Focus while already on Focus Setup/Active/Review, or Goals while inside Templates/Reflection, does not return to the tab root despite the explicit reset flag. This is a minor navigation predictability issue. The current behavior has an important safety benefit: it does not silently remove dirty drafts or bypass Active session abandonment rules.</p>
+        <p class="root"><strong>Root cause.</strong> go_router can reset only the route matches it owns. Zenno's deeper branch screens live exclusively in the child Navigator's imperative history and are intentionally preserved when their owning declarative root page is reused.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Decide the product contract explicitly. If reselect should preserve the current thinking context, pass <code>initialLocation: false</code> and remove the misleading reset intent. If reselect should return home, add a branch-level, asynchronous guarded-unwind coordinator that allows each dirty/busy owner to approve leaving; do not convert to an unconditional declarative reset. Cover clean, dirty, saving, and active-session stacks in an AppScaffold navigation test.</p>
+      </article>
+
+      <article id="n15-14" class="finding medium">
+        <h3><span class="badge medium">Medium</span>N15-14 — An in-place <code>/canvas/:id</code> route update can reuse the editor state across different notes</h3>
+        <p class="confidence">Confidence: 99% for state reuse under <code>go</code>/route replacement; current in-app canvas entry points use unique-keyed <code>push</code>, which substantially limits present-day reachability.</p>
+        <div class="evidence">
+          <ul>
+            <li>The canvas route builds <code>CanvasEditorPage</code> without a widget key derived from <code>id</code>: <span class="path">lib/config/router/app_router.dart:75-80</span>.</li>
+            <li>The locked go_router version is 17.2.3 (<span class="path">pubspec.lock:419-426</span>). Dependency inspection shows normal route matches key pages by the matched path pattern, so both <code>/canvas/a</code> and <code>/canvas/b</code> use <code>/canvas/:id</code>; only imperative <code>push</code> wraps the match in a fresh unique key.</li>
+            <li><code>CanvasEditorPage</code> constructs a <code>late final</code> controller once with the then-current ID: <span class="path">lib/canvas/canvas_editor_page.dart:98-129</span>. The outer editor state has no <code>didUpdateWidget</code> handling for a changed <code>canvasId</code>.</li>
+            <li>After widget reuse, build-time ownership reads the new ID for the title (<span class="path">canvas_editor_page.dart:475-480, 649-654</span>), inline rename writes <code>widget.canvasId</code> (<span class="path">702-768</span>), and thumbnail generation writes <code>widget.canvasId</code> (<span class="path">217-236</span>), while structural edits still flow through the old controller/repository ID.</li>
+            <li>Current internal navigation consistently funnels through <code>openCanvasEditor</code>, which calls <code>context.push</code>: <span class="path">lib/canvas/canvas_editor_navigation.dart:14-23, 58-103</span>. Existing tests cover push/reuse stacks but not <code>router.go</code> or route-information replacement between two IDs: <span class="path">test/canvas_editor_navigation_test.dart:20-128</span>.</li>
+          </ul>
+        </div>
+        <p class="impact"><strong>Impact.</strong> If a same-route location update occurs, the screen can say canvas B and rename or thumbnail B while drawing, deleting, importing, and viewport writes still mutate canvas A. That violates note ownership and can place thinking in the wrong document. It is not reached by the current internal link/card actions, but it is a dangerous invariant for future redirects, restoration, browser route changes, or deep-link handling.</p>
+        <p class="root"><strong>Root cause.</strong> Route identity is based on the path template while state identity is document-specific. The widget reads the live parameter in some paths, but the controller snapshots it once, creating split ownership when Flutter legitimately reuses the state.</p>
+        <p class="recommendation"><strong>Analysis-only recommendation.</strong> Make document identity explicit at the page/widget boundary with a key containing <code>canvasId</code>, and keep all supported internal transitions on the guarded <code>openCanvasEditor</code> path. Because declarative page replacement can bypass <code>PopScope</code>, also define how the old controller is flushed before allowing any <code>go</code>/replace-style canvas switch. A focused router test should load A, replace the location with B, edit, and prove that only B changes while A flushes cleanly.</p>
+      </article>
+
+      <section id="positives">
+        <h2>Controls already protecting flow</h2>
+        <ul>
+          <li><strong>Full-bleed canvas ownership is explicit.</strong> A root navigator key keeps <code>/canvas/:id</code> above the shell (<span class="path">lib/config/router/app_router.dart:13-17, 75-80</span>).</li>
+          <li><strong>Duplicate live canvas editors are actively coordinated.</strong> The static registry closes only current editors through their guarded path and reuses an existing route (<span class="path">lib/canvas/canvas_editor_navigation.dart:27-123</span>); focused coverage exists in <span class="path">test/canvas_editor_navigation_test.dart:20-128</span>.</li>
+          <li><strong>Stale canvas routes do not recreate deleted notes.</strong> Existence is checked before hydration (<span class="path">lib/canvas/canvas_controller.dart:869-874</span>) and a user-facing missing state is rendered.</li>
+          <li><strong>Focus timing is wall-clock based.</strong> Background ticker throttling does not itself create drift, and phase overrun can traverse multiple Pomodoro boundaries (<span class="path">lib/features/focus/domain/timer_engine.dart:268-305, 433-460</span>).</li>
+          <li><strong>Focus setup waits for startup restoration.</strong> This prevents a fast start from orphaning an older persisted session when restoration succeeds (<span class="path">active_session_controller.dart:131-138</span>), with evidence in <span class="path">test/active_session_controller_test.dart:140-199</span>.</li>
+          <li><strong>Dirty-screen back guards are broadly present.</strong> Ordinary Android back and modal-scrim <code>maybePop</code> paths are guarded; the remaining confirmed bypass is bottom-sheet drag dismissal.</li>
+        </ul>
+      </section>
+
+      <section id="test-gaps">
+        <h2>Verification gaps found by inspection</h2>
+        <table>
+          <thead><tr><th>Missing scenario</th><th>Why it matters</th><th>Closest existing evidence</th></tr></thead>
+          <tbody>
+            <tr><td>Dirty goal/revision sheet dismissed by downward drag</td><td>Direct regression test for N15-01; scrim/back tests alone do not cover direct-pop drag behavior</td><td>Current safety tests exercise guarded pop surfaces but do not simulate sheet drag dismissal.</td></tr>
+            <tr><td>Canvas lifecycle pause with delayed pending writes</td><td>Proves checkpoint behavior under interruption</td><td>Canvas editor tests cover guarded system back, not app lifecycle/process suspension.</td></tr>
+            <tr><td>Focus restoration repository throws, then retry/start</td><td>Reproduces N15-03's poisoned gate</td><td>Focus tests cover slow restoration, successful restoration, concurrency, and wakelock failure.</td></tr>
+            <tr><td>Pause/resume/finish write fails, provider is disposed, then session restores</td><td>Proves N15-11's memory/disk divergence and restart tally</td><td>Current failure tests stop at the visible SnackBar and do not recreate the controller from durable state.</td></tr>
+            <tr><td>Repository cleanup pauses after reference snapshot while a media import completes</td><td>Deterministically reproduces N15-12 without timing luck</td><td>Repository tests cover deletion-time path selection, not concurrent activation cleanup and file creation.</td></tr>
+            <tr><td>Cold launch with an in-progress session while initial route is Library</td><td>Shows whether restoration/wakelock is eager</td><td>Controller tests instantiate the provider directly, bypassing actual router laziness.</td></tr>
+            <tr><td>State restoration after activity/process recreation</td><td>Defines the intended continuity contract</td><td>No restoration APIs appear in production or tests.</td></tr>
+            <tr><td>Unknown URL and serialized canvas arrival target</td><td>Validates web/deep navigation recovery</td><td>Canvas route tests use in-memory router pushes and runtime <code>extra</code>.</td></tr>
+            <tr><td>Reselect current branch with clean, dirty, saving, and active imperative routes</td><td>Defines and verifies N15-13's intended tab contract</td><td>The shell test contains only root placeholder pages.</td></tr>
+            <tr><td><code>router.go</code> or route-information replacement from canvas A to B</td><td>Detects N15-14's split screen/controller ownership</td><td>Canvas navigation coverage uses unique-keyed pushes only.</td></tr>
+          </tbody>
+        </table>
+        <p class="muted">No tests were run under the analysis-only constraint; these are coverage observations from source.</p>
+      </section>
+
+      <section id="architecture">
+        <h2>Screen ownership map</h2>
+        <table>
+          <thead><tr><th>Surface</th><th>Owner</th><th>Persistence/restoration behavior</th></tr></thead>
+          <tbody>
+            <tr><td>Library, Focus, Revision, Goals, Settings</td><td>Five <code>StatefulShellBranch</code> navigators</td><td>Back stacks retained in memory; no app restoration IDs.</td></tr>
+            <tr><td>Canvas editor chain</td><td>Root <code>go_router</code> navigator</td><td>URL carries canvas ID; runtime <code>extra</code> carries arrival viewport; guarded close flushes. Declarative A→B replacement does not give the state a distinct document key.</td></tr>
+            <tr><td>Focus Setup/Active/Review/History</td><td>Imperative <code>MaterialPageRoute</code> on Focus branch</td><td>Anonymous/in-memory route identity; timer state durable, UI drafts not durable.</td></tr>
+            <tr><td>Templates and template editor</td><td>Imperative routes on Goals branch</td><td>Template records persist only on Save; draft controller state is memory-only.</td></tr>
+            <tr><td>Goal/revision card detail</td><td>Branch-owned modal bottom-sheet routes</td><td>Pop guards protect back and scrim dismissal; the route-owned drag gesture can bypass them.</td></tr>
+            <tr><td>Reflection editor</td><td>Imperative route pushed above goal detail sheet</td><td>Returns to the still-mounted sheet in memory; no process restoration.</td></tr>
+            <tr><td>Database and owned media</td><td>App <code>ProviderScope</code> plus independent filesystem helpers</td><td>Single database connection closes on container disposal; auto-disposed repository activation launches orphan cleanup detached from imports.</td></tr>
+            <tr><td>Active focus session</td><td>Keep-alive Riverpod controller, instantiated by Focus screens</td><td>Runtime rows persist; bootstrap and visual ownership are still screen-triggered.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="iterations" class="iteration">
+        <h2>Iteration log</h2>
+        <h3>Iteration 7 · 2026-07-18 05:18:59 PST</h3>
+        <p>Added N15-14 after tracing route parameters through go_router page keys and Flutter state reuse. Zenno's internal canvas coordinator uses unique-keyed imperative pushes and is safe on this dimension. A declarative location update is not: both IDs share the route-pattern key while the editor mixes a one-time controller ID with live widget-ID title and thumbnail paths. The finding is medium rather than high because no current application call site performs that replacement, but the potential impact crosses note ownership.</p>
+        <h3>Iteration 6 · 2026-07-18 05:18:00 PST</h3>
+        <p>Added N15-13 after revisiting the corrected branch-reset hypothesis from the opposite direction. The same Flutter reconciliation rule that prevents a same-root <code>go</code> from discarding attached imperative drafts also prevents <code>initialLocation: true</code> from doing the reset the shell appears to request. This is low severity and currently data-safe; the recommendation is to choose an explicit preserve-or-guarded-reset contract, not to force-pop child routes.</p>
+        <h3>Iteration 5 · 2026-07-18 05:16:02 PST</h3>
+        <p>Broadened and strengthened N15-12 after checking generated provider metadata: <code>libraryRepositoryProvider</code> is auto-disposed, so the supposedly startup-only housekeeping is actually an activation side effect that can recur. Also traced the asynchronous 1 Hz focus callback against pause/finish SQL. I rejected a prospective stale-write finding: a tick invokes its database update before its first yield, while Finish cancels future ticks before invoking the terminal update, leaving the final write later in the database call order. The already-reported failure divergence in N15-11 remains; no unsupported concurrency claim was added.</p>
+        <h3>Iteration 4 · 2026-07-18 05:12:50 PST</h3>
+        <p>Added N15-12 after challenging startup's implicit exclusivity. The repository provider returns while orphan cleanup is still using a frozen reference snapshot; canvas import creates files in the scanned directory before its asynchronous element transaction creates the durable reference. No shared lock or final database recheck closes that deletion window. Also corrected one stale ownership-map phrase left over from the superseded branch-reset hypothesis.</p>
+        <h3>Iteration 3 · 2026-07-18 05:10:53 PST</h3>
+        <p>Added N15-11 after tracing every focus transition through controller mutation, repository write, UI error handling, provider disposal, and restoration. The timer's wall-clock design is sound when runtime checkpoints are sound, but transition methods publish state before durability. A failed terminal write is the sharpest case: the in-memory ticker stops while SQLite still describes a running session, so restart can count the shutdown gap as focus. Updated priorities and coverage gaps.</p>
+        <h3>Iteration 2 · 2026-07-18 05:08:45 PST</h3>
+        <p><strong>Corrected N15-01.</strong> The first pass claimed that reselecting a current branch could discard dirty imperative routes. Inspection of <code>go_router 17.2.3</code> and Flutter's page/pageless-route reconciliation showed that Zenno's child screens are raw <code>Navigator.push</code> routes attached to an unchanged branch-root page; the evidence did not support claiming they are removed by a same-location branch <code>go</code>. That weak claim was removed. The replacement finding is stronger: Flutter's modal scrim calls guarded <code>maybePop</code>, while sheet drag completion calls unguarded direct <code>pop</code>, so the visible drag handles on both editable card sheets bypass their <code>PopScope</code> and can discard drafts.</p>
+        <h3>Iteration 1 · 2026-07-18 05:04:29 PST</h3>
+        <p>Completed the first evidence-based pass. Established the route/screen ownership map, identified three high-severity interruption paths, recorded seven supporting medium/low findings, and listed coverage gaps.</p>
+      </section>
+    </div>
+
+    <nav aria-label="Report navigation">
+      <strong>Contents</strong>
+      <a href="#scope">Scope</a>
+      <a href="#summary">Executive summary</a>
+      <a href="#n15-01">N15-01 Sheet drag / drafts</a>
+      <a href="#n15-02">N15-02 Canvas lifecycle flush</a>
+      <a href="#n15-03">N15-03 Focus restore failure</a>
+      <a href="#n15-04">N15-04 Process restoration</a>
+      <a href="#n15-05">N15-05 Lazy focus ownership</a>
+      <a href="#n15-06">N15-06 Wakelock setting</a>
+      <a href="#n15-07">N15-07 Route extra</a>
+      <a href="#n15-08">N15-08 Unknown routes</a>
+      <a href="#n15-09">N15-09 Startup calls</a>
+      <a href="#n15-10">N15-10 PWA orientation</a>
+      <a href="#n15-11">N15-11 Focus state divergence</a>
+      <a href="#n15-12">N15-12 Media-cleanup race</a>
+      <a href="#n15-13">N15-13 Current-tab reset</a>
+      <a href="#n15-14">N15-14 Canvas ID reuse</a>
+      <a href="#positives">Existing controls</a>
+      <a href="#test-gaps">Verification gaps</a>
+      <a href="#architecture">Ownership map</a>
+      <a href="#iterations">Iteration log</a>
+    </nav>
+  </main>
+</body>
+</html>

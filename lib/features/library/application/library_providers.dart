@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -13,26 +14,22 @@ import 'package:zenno/features/settings/application/settings_providers.dart';
 part 'library_providers.g.dart';
 
 /// Provides the singleton [LibraryRepository], wired to the app database.
-///
-/// Kept alive deliberately: this repository owns orphaned-file housekeeping,
-/// and an autoDispose rebuild would re-run that scan every time the library
-/// screen is re-entered.
+bool _orphanCleanupScheduled = false;
+
 @Riverpod(keepAlive: true)
 LibraryRepository libraryRepository(Ref ref) {
-  return LibraryRepository(ref.watch(databaseProvider));
-}
-
-/// Runs orphaned-media housekeeping exactly once per app launch.
-///
-/// Deliberately not a provider side effect: file deletion must not be tied to
-/// a provider's lifecycle, where it would re-run on every rebuild and could
-/// race an in-flight import.
-Future<void> runLibraryStartupCleanup(ProviderContainer container) async {
-  try {
-    await container.read(libraryRepositoryProvider).cleanupOrphanedFiles();
-  } catch (error) {
-    debugPrint('Library file cleanup failed: $error');
+  final repository = LibraryRepository(ref.watch(databaseProvider));
+  if (!_orphanCleanupScheduled) {
+    _orphanCleanupScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      unawaited(
+        repository.cleanupOrphanedFiles().catchError((Object error) {
+          debugPrint('Library file cleanup failed: $error');
+        }),
+      );
+    });
   }
+  return repository;
 }
 
 /// Current persisted [LibrarySort] for the library grid.

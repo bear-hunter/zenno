@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyzer 06 — Zenno Android/Web Cross-Platform Analysis</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --panel: #13171c;
+      --panel-2: #181e25;
+      --text: #e8edf2;
+      --muted: #9ba8b5;
+      --line: #2a333d;
+      --critical: #ff6b6b;
+      --high: #ffad66;
+      --medium: #ffd166;
+      --low: #8ecae6;
+      --good: #7bd88f;
+      --link: #8ec5ff;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    a { color: var(--link); }
+    code {
+      padding: .08rem .35rem;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #0d1116;
+      overflow-wrap: anywhere;
+    }
+    .layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 100vh; }
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 24px 20px;
+      border-right: 1px solid var(--line);
+      background: #0e1115;
+    }
+    nav h1 { margin: 0 0 4px; font-size: 18px; }
+    nav .identity { color: var(--muted); font-size: 13px; }
+    nav ul { list-style: none; padding: 0; margin: 22px 0; }
+    nav li { margin: 8px 0; }
+    nav a { text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+    main { width: min(1120px, 100%); padding: 42px 48px 100px; }
+    h1, h2, h3 { line-height: 1.25; }
+    h1 { font-size: clamp(28px, 4vw, 46px); margin: 0 0 10px; }
+    h2 { margin-top: 52px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h3 { margin: 0; font-size: 19px; }
+    .lede { max-width: 850px; color: var(--muted); font-size: 17px; }
+    .meta, .grid { display: grid; gap: 12px; }
+    .meta { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin: 24px 0; }
+    .grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+    .metric, .finding, .note {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+    .metric { padding: 16px; }
+    .metric strong { display: block; font-size: 24px; }
+    .metric span { color: var(--muted); }
+    .finding { margin: 18px 0; padding: 22px; scroll-margin-top: 18px; }
+    .finding header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .03em; color: #101216; }
+    .critical { background: var(--critical); }
+    .high { background: var(--high); }
+    .medium { background: var(--medium); }
+    .low { background: var(--low); }
+    .good { background: var(--good); }
+    .confidence { color: var(--muted); font-size: 13px; }
+    .finding dt { margin-top: 12px; color: var(--muted); font-weight: 700; }
+    .finding dd { margin: 2px 0 0; }
+    .evidence { margin: 8px 0 0; padding-left: 22px; }
+    .note { padding: 18px; background: var(--panel-2); }
+    .good-text { color: var(--good); }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-size: 13px; }
+    .iteration { border-left: 3px solid var(--link); padding-left: 16px; margin: 20px 0; }
+    .muted { color: var(--muted); }
+    @media (max-width: 800px) {
+      .layout { display: block; }
+      nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      nav ul { columns: 2; }
+      main { padding: 30px 20px 70px; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="Report navigation">
+    <h1>Analyzer 06</h1>
+    <div class="identity">Android / web / Drift lens</div>
+    <ul>
+      <li><a href="#scope">Scope &amp; constraints</a></li>
+      <li><a href="#summary">Executive summary</a></li>
+      <li><a href="#architecture">Platform architecture</a></li>
+      <li><a href="#findings">Findings</a></li>
+      <li><a href="#positives">Protective decisions</a></li>
+      <li><a href="#priorities">Recommended order</a></li>
+      <li><a href="#coverage">Coverage &amp; limits</a></li>
+      <li><a href="#iterations">Iteration log</a></li>
+    </ul>
+    <p class="muted">Standalone analysis report. No source, dependency, test, Git, build, app, or external-service state was changed.</p>
+  </nav>
+
+  <main>
+    <header>
+      <h1>Zenno cross-platform behavior</h1>
+      <p class="lede">A code-evidence review of Flutter Android and web divergence, conditional imports, Drift's IndexedDB/WASM runtime, browser locking, file-backed canvas media, orientation, and platform verification gaps.</p>
+      <div class="meta">
+        <div class="metric"><strong>Analyzer 06</strong><span>Assigned identity</span></div>
+        <div class="metric"><strong>Iteration 9</strong><span>2026-07-18 05:20 PST</span></div>
+        <div class="metric"><strong>18</strong><span>Findings / risks</span></div>
+        <div class="metric"><strong>Analysis only</strong><span>No runtime verification permitted</span></div>
+      </div>
+    </header>
+
+    <section id="scope">
+      <h2>Scope and constraints</h2>
+      <p>This report follows the assigned lens: Flutter behavior across Android and web, conditional imports, Drift web runtime, workers/WASM, browser storage and locking, and observable platform divergence. The repository was inspected read-only, including relevant hidden/untracked planning material. No credentials or secret values are reproduced.</p>
+      <p>Per delegation, I did <strong>not</strong> run Flutter/Dart builds, tests, analysis, installs, the app, or Git commands. Conclusions distinguish static proof from runtime risk. The sole written artifact is this report.</p>
+    </section>
+
+    <section id="summary">
+      <h2>Executive summary</h2>
+      <div class="note">
+        <p><strong>Bottom line:</strong> the database boundary reflects the repository's latest lesson—web uses a direct <code>WasmDatabase</code> with an IndexedDB filesystem and an exclusive Web Lock, avoiding the previously hanging shared-worker probe. The application entry graph does reach four unconditional <code>dart:io</code> imports, but an adversarial read of the installed Dart SDK corrected the first-pass conclusion: current JS/Wasm targets provide web stubs for <code>dart:io</code>, and Zenno's normal UI guards appear to avoid invoking unsupported file operations. This is architectural fragility, not a statically proven compile blocker.</p>
+        <p>The highest supported priorities are failure-safe lock lifetime, typed/recoverable initialization handling, and a real web compile/browser-database verification lane. Android remains the only complete note-taking target: web deliberately disables media import, export, and thumbnails, and its direct main-isolate database executor should be profiled before web is trusted for writing flow. Completed web writes are flushed to IndexedDB, but the newest in-flight write has no browser-unload guarantee.</p>
+      </div>
+      <div class="grid" style="margin-top: 16px">
+        <div class="note"><strong style="color:var(--medium)">Boundary debt</strong><br>Web safety depends on runtime guards around unsupported <code>dart:io</code> operations.</div>
+        <div class="note"><strong style="color:var(--high)">Data access risk</strong><br>A failed web initialization can retain the exclusive database lock until the tab closes/reloads.</div>
+        <div class="note"><strong style="color:var(--medium)">Flow risk</strong><br>Direct WASM SQLite and immediate per-gesture writes share the browser UI isolate; impact is unmeasured.</div>
+        <div class="note"><strong class="good-text">Good foundation</strong><br>Connection conditional import, direct IndexedDB VFS, foreign keys, and fail-closed second-tab behavior are structurally sound choices.</div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>Observed platform architecture</h2>
+      <table>
+        <thead><tr><th>Concern</th><th>Android/native</th><th>Web</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>Database executor</td><td><code>driftDatabase(name: 'zenno')</code></td><td>Delayed direct <code>WasmDatabase</code></td><td><code>lib/core/database/connection_native.dart:1-4</code>; <code>connection_web.dart:6-21</code></td></tr>
+          <tr><td>Database file system</td><td>App-support SQLite selected by <code>drift_flutter</code></td><td><code>IndexedDbFileSystem(dbName: 'zenno')</code>, path <code>/database</code></td><td><code>connection_web.dart:10-18</code></td></tr>
+          <tr><td>Concurrency</td><td>Native executor semantics</td><td>One exclusive origin-wide Web Lock for tab lifetime</td><td><code>web_database_lock.dart:8-41</code></td></tr>
+          <tr><td>Workers</td><td>Native Drift/PDF plugin behavior</td><td>No Drift worker; SQLite runs through direct browser connection</td><td><code>connection_web.dart:6-21</code>; no <code>web/drift_worker.js</code></td></tr>
+          <tr><td>Canvas media</td><td>Copied into app documents; absolute paths persisted</td><td>Import/export disabled; cleanup is a no-op; thumbnails are placeholders</td><td><code>canvas_import.dart:61-68,87-164</code>; <code>canvas_toolbar.dart:695-724</code>; <code>library_file_cleanup_stub.dart:1-5</code>; <code>canvas_card.dart:359-381</code></td></tr>
+          <tr><td>Orientation</td><td>Landscape in Dart and Android manifest</td><td>PWA manifest requests portrait</td><td><code>lib/main.dart:7-15</code>; <code>android/app/src/main/AndroidManifest.xml:7-16</code>; <code>web/manifest.json:4-10</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="findings">
+      <h2>Findings</h2>
+
+      <article class="finding" id="f01">
+        <header><span class="badge medium">MEDIUM</span><h3>F01 — Web file safety relies on scattered runtime guards instead of compile-time boundaries</h3><span class="confidence">Confidence: high on structure; no current compile failure proven</span></header>
+        <dl>
+          <dt>Evidence</dt>
+          <dd><ul class="evidence">
+            <li><code>lib/config/router/app_router.dart:4-10</code> eagerly imports the canvas editor and library page from the root app graph.</li>
+            <li><code>lib/canvas/canvas_editor_page.dart:2</code>, <code>lib/features/library/presentation/widgets/canvas_card.dart:2</code>, <code>lib/canvas/io/canvas_import.dart:1</code>, and <code>lib/canvas/io/canvas_export.dart:2</code> directly import <code>dart:io</code>.</li>
+            <li>The editor imports <code>CanvasController</code> (<code>canvas_editor_page.dart:14</code>), which imports the native importer (<code>canvas_controller.dart:14</code>); the toolbar also imports the native exporter (<code>canvas_toolbar.dart:7-8</code>).</li>
+            <li><code>kIsWeb</code> guards exist inside methods at <code>canvas_editor_page.dart:217-239</code>, <code>canvas_card.dart:359-381</code>, and <code>canvas_toolbar.dart:695-724</code>. Normal web UI paths appear to return before unsupported file operations.</li>
+            <li>Adversarial pass 2 inspected the installed Dart SDK platform map: JS and Wasm targets include <code>dart:io</code> web patches, and file/directory operations throw <code>UnsupportedError</code>. This disproves the first-pass assertion that direct import alone necessarily blocks compilation in the current toolchain.</li>
+          </ul></dd>
+          <dt>Root cause</dt><dd>Platform-specific file APIs are protected by feature disabling at call sites instead of compile-time conditional imports/interfaces. The codebase already demonstrates the cleaner shape in <code>lib/features/library/data/library_file_cleanup.dart:1-13</code>.</dd>
+          <dt>Impact</dt><dd>The current guarded UI may work, but any new call path to thumbnail, importer, exporter, <code>Platform.pathSeparator</code>, or <code>File</code> can become a web-only <code>UnsupportedError</code>. The safety invariant is distributed across widgets rather than enforced by the type/import boundary. This is regression risk and feature divergence, not proven current unavailability.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Create narrow platform boundaries for thumbnail storage/display, media import/source loading, and export destination. Keep shared models/rendering platform-neutral. Use native implementations under <code>dart.library.io</code> and web-safe implementations/stubs under <code>dart.library.js_interop</code>; then remove reliance on every caller remembering a <code>kIsWeb</code> guard.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f02">
+        <header><span class="badge high">HIGH</span><h3>F02 — Failed web database initialization can strand the exclusive lock</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>connection_web.dart:9</code> acquires the lock before loading <code>sqlite3.wasm</code> and opening IndexedDB at lines 10-18. The lock callback returns <code>_databaseLifetime.future</code> (<code>web_database_lock.dart:8,31-33</code>), and that completer is never completed anywhere in the codebase.</dd>
+          <dt>Root cause</dt><dd>Lock lifetime is tied to the JavaScript module/tab rather than successful database lifetime. Initialization failure has no release path.</dd>
+          <dt>Impact</dt><dd>If WASM fetching, WASM instantiation, IndexedDB opening, schema migration, or first connection setup fails, that tab can continue owning the lock. A second tab then reports “Zenno is open in another tab,” obscuring the original fault and denying recovery until reload/close. This is availability/flow harm, not proven corruption; the fail-closed behavior does protect against concurrent writers.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Make acquisition return a lease/release handle, and release it when connection initialization fails or when the database closes. Keep the lifetime hold only after a usable connection exists. Add a browser test that forces an initialization failure and proves another connection can subsequently acquire the lock.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f03">
+        <header><span class="badge medium">MEDIUM</span><h3>F03 — Web Locks is a hard, unprobed prerequisite for all persisted web screens</h3><span class="confidence">Confidence: high on code path; low incidence in documented Chrome preview</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>web_database_lock.dart:22-34</code> directly calls <code>navigator.locks.request</code>. There is no capability/secure-context check, alternate path, or specific unsupported-browser exception. Every feature repository shares the database created by <code>database_provider.dart:10-14</code>.</dd>
+          <dt>Root cause</dt><dd>A data-integrity safeguard was implemented as a mandatory browser API without an explicit compatibility gate.</dd>
+          <dt>Impact</dt><dd>In a browser or hosting context where Web Locks is absent/unavailable, the app cannot access any canvases, focus sessions, goals, revision cards, or settings. The documented <code>flutter run -d chrome</code> localhost preview should provide the API, which lowers current incidence; broader browser/embedded-web support would expose the hard failure.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Fail closed, but detect support before database creation and show a precise “this browser/context is unsupported” message. If broader web support becomes a goal, select a proven single-writer coordination design; do not silently open the same IndexedDB SQLite file from multiple direct connections.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f04">
+        <header><span class="badge medium">MEDIUM</span><h3>F04 — Direct WASM SQLite shares the browser UI isolate with note interaction</h3><span class="confidence">Confidence: medium; performance impact unmeasured</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>connection_web.dart:6-20</code> constructs <code>WasmDatabase</code> directly and has no worker transport. Controller documentation says each committed element write fires immediately as its own small transaction (<code>canvas_controller.dart:165-175</code>); <code>addElementToStore</code> calls persistence at <code>canvas_controller.dart:820-822</code>; the repository transaction writes the generic row, detail row, and canvas timestamp (<code>canvas_repository.dart:334-376</code>).</dd>
+          <dt>Root cause</dt><dd>The direct connection intentionally avoids the known shared-worker hang, trading worker isolation for reliability.</dd>
+          <dt>Impact</dt><dd>Large encoded ink strokes or bursts of edits may cause browser-main-isolate work between marks, potentially disturbing writing flow. Static inspection cannot establish whether the cost is noticeable; viewport writes are correctly debounced to 400 ms.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Preserve the no-hang direct path until measurement says otherwise. Profile frame timing and transaction duration in the supported browser with long strokes and rapid mark/erase cycles. Only consider a dedicated-worker design after it passes the in-app browser that motivated the direct connection; batching at gesture boundaries may be the simpler first lever.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f05">
+        <header><span class="badge high">HIGH IF WEB STORES REAL NOTES</span><h3>F05 — Web persistence has no durability/backup contract while export is disabled</h3><span class="confidence">Confidence: medium-high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>Web stores the whole database in <code>IndexedDbFileSystem(dbName: 'zenno')</code> (<code>connection_web.dart:10-18</code>). The repository contains no browser-storage persistence request, usage/quota estimate, or status surface. Web export is rejected as Android-only (<code>canvas_toolbar.dart:719-724</code>). README calls web a development preview and Android the reliable persistence target (<code>README.md:3-5,57-66</code>).</dd>
+          <dt>Root cause</dt><dd>The preview acquired a persistent database sufficient for development but not a user-facing data retention and recovery design.</dd>
+          <dt>Impact</dt><dd>If web is used beyond preview, browser data clearing, private sessions, storage policy, quota exhaustion, origin changes, or a broken migration can leave notes unavailable/unrecoverable, with no in-app export escape hatch. Canvas write failures are visibly retained for retry, but retry cannot create more quota or recover a cleared origin. This is the largest data-integrity concern if web becomes authoritative.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Keep web explicitly non-authoritative until it has a storage-durability status, backup/export path, migration browser tests, and recovery guidance. If preview-only remains the decision, put an unmissable non-production warning near the run instructions and in the web UI.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f06">
+        <header><span class="badge medium">MEDIUM</span><h3>F06 — Media-backed canvases are an Android-only data model in practice</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>The importer copies picker paths into native app documents and returns absolute paths (<code>canvas_import.dart:61-68,87-164</code>); image/PDF paths are persisted in Drift (<code>canvas_repository.dart:401-435</code>). Runtime reloading uses <code>ui.ImmutableBuffer.fromFilePath</code> (<code>canvas_controller.dart:4299-4317</code>) and <code>PdfDocument.openFile</code> (<code>pdf_raster_service.dart:108-113</code>). Web import/export are blocked (<code>canvas_toolbar.dart:695-724</code>), thumbnails are omitted (<code>canvas_editor_page.dart:217-239</code>; <code>canvas_card.dart:359-381</code>), and web file cleanup is a no-op (<code>library_file_cleanup_stub.dart:1-5</code>).</dd>
+          <dt>Root cause</dt><dd>The persisted media reference is a native filesystem path rather than a cross-platform asset identifier/blob abstraction.</dd>
+          <dt>Impact</dt><dd>Web can edit vector/text content only after compilation is fixed; it cannot create or faithfully rehydrate path-backed images/PDFs. Library recognition is also reduced because every web canvas card uses a placeholder.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Either document the feature matrix as intentional, or introduce a media-store interface with native files and browser blob/IndexedDB implementations. Do not attempt to make native absolute paths portable; migration must preserve existing Android files and references.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f07">
+        <header><span class="badge medium">MEDIUM</span><h3>F07 — Installed web orientation contradicts the landscape-first app</h3><span class="confidence">Confidence: high on mismatch; medium on browser behavior</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>Dart locks landscape before <code>runApp</code> (<code>lib/main.dart:7-15</code>), Android declares <code>userLandscape</code> (<code>AndroidManifest.xml:7-16</code>), while the web manifest requests <code>portrait-primary</code> (<code>web/manifest.json:4-10</code>).</dd>
+          <dt>Root cause</dt><dd>The web manifest retains scaffold defaults while Android/tablet orientation was customized.</dd>
+          <dt>Impact</dt><dd>An installed PWA may launch or advertise itself in the opposite orientation from the canvas layout, causing rotation/resizing friction at the start of a thinking session.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Choose one web policy explicitly. For parity, set the PWA orientation to landscape; for responsive preview, remove a restrictive orientation rather than asking for portrait while the app requests landscape.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f08">
+        <header><span class="badge medium">MEDIUM</span><h3>F08 — Worker guidance contradicts the implemented and learned-safe runtime</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>AGENTS.md:41</code> says to bundle a compiled Drift worker, while the immediately following lesson at <code>AGENTS.md:42</code> says the default shared-worker probe can hang and directs a conditional direct <code>WasmDatabase</code>. <code>.claude/CLAUDE.md:14,26</code> still says the web runtime needs a worker. Actual source uses the direct connection at <code>connection_web.dart:6-21</code> and no <code>web/drift_worker.js</code> exists.</dd>
+          <dt>Root cause</dt><dd>Historical guidance was appended rather than superseded, leaving mutually incompatible instructions active.</dd>
+          <dt>Impact</dt><dd>A future maintainer may “fix” the intentionally absent worker and reintroduce the in-app-browser hang already recorded as a failure.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Retire/supersede the worker-required statements and document the current invariant: direct IndexedDB-backed WASM plus exclusive lock, with the exact browser environment that rejected shared workers.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f09">
+        <header><span class="badge high">HIGH</span><h3>F09 — No verification lane executes the actual web boundary</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>No browser-targeted test annotation or web database test exists under <code>test/</code>. <code>test/library_page_test.dart:15-46</code> injects a synthetic <code>StateError</code>; it does not load WASM, acquire a Web Lock, open IndexedDB, or compile the real web app. Database and migration tests use <code>NativeDatabase.memory()</code> and native <code>SchemaVerifier</code> connections (<code>test/database_test.dart:15,101-160</code> and subsequent version cases), so they prove shared SQL/model behavior only on the native executor. The repository has no visible CI workflow. README validation lists generic analysis/tests and Android build smoke tests, but no web build check (<code>README.md:68-92</code>).</dd>
+          <dt>Root cause</dt><dd>Web is treated as a convenience preview, so VM widget tests substitute for platform integration evidence.</dd>
+          <dt>Impact</dt><dd>New unguarded calls into web-stubbed <code>dart:io</code>, missing/mismatched WASM, lock incompatibility, migration failures, and PWA asset-path failures can all land without a failing routine check.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Add the smallest useful lane after the boundary fix: compile the app for web, then a browser integration test that opens the real database, writes/reads a sentinel, verifies a second tab fails closed, and verifies lock recovery after controlled initialization failure.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f10">
+        <header><span class="badge medium">MEDIUM</span><h3>F10 — The manually bundled SQLite WASM has no repository-visible provenance check</h3><span class="confidence">Confidence: high on missing provenance; no mismatch proven</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>web/sqlite3.wasm</code> exists (706,316 bytes during this pass), and <code>pubspec.lock</code> pins <code>sqlite3 2.9.4</code> at lines 944-951. No script, manifest, comment, or test ties the binary's build/version/hash to the locked Dart package. The runtime loads the stable bare name at <code>connection_web.dart:10</code>; there is no content hash/version in the request URL.</dd>
+          <dt>Root cause</dt><dd>A required generated/vendor binary is checked in manually without an auditable refresh/verification procedure.</dd>
+          <dt>Impact</dt><dd>A future dependency upgrade can leave an old binary behind, replace it incorrectly, or serve a cached old response beside new Dart code when host cache headers are aggressive. Failures would occur at runtime before any notes load; because of F02, a failed tab may also retain the database lock.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Record the binary source/tool version and deterministic refresh command, plus a lightweight version/hash assertion in maintenance checks. Use an intentional cache-invalidation policy for deployment. Treat the current binary as unverified provenance, not as known-bad.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f11">
+        <header><span class="badge high">HIGH</span><h3>F11 — Web initialization failures collapse into a generic, non-recovering retry</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>Only the Library recognizes exact <code>StateError(databaseAlreadyOpenMessage)</code> (<code>database_exceptions.dart:1-5</code>; <code>library_page.dart:302-323</code>). Web deep links are preserved by go_router, so another tab can start directly on any branch. Canvas shows a generic Retry (<code>canvas_editor_page.dart:132-150,502-530</code>); Settings shows a generic provider invalidation (<code>settings_page.dart:50-57</code>); Focus and board pages render raw <code>$error</code> text (<code>focus_home_page.dart:144-150</code>; <code>goal_board_page.dart:84-117</code>; <code>revision_board_page.dart:95-128</code>). Every path still holds the same app-wide database.</dd>
+          <dt>Root cause</dt><dd>Infrastructure errors cross feature boundaries as raw objects, with one string-matched exception recognized in one feature. The locked Drift implementation's delayed executor memoizes its one open future, including failure; feature/query-provider invalidation does not replace the keep-alive <code>ZennoDatabase</code> at <code>lib/core/providers/database_provider.dart:8-14</code>.</dd>
+          <dt>Impact</dt><dd>The result depends on the starting route: the same second-tab or open-time failure is actionable in Library, generic in Canvas/Settings, and technical/raw in Focus/boards. For missing WASM, denied IndexedDB, or migration failure, “Try again” repeats work against the same failed delayed executor and cannot recover; a full page reload is required but not requested.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Map database-open failures into stable typed categories at the connection/provider boundary and expose one app-level readiness/error surface before feature routes build. Define which categories are retryable and make retry recreate the executor/database only when safe; keep raw details in logs, not user-facing text.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f12">
+        <header><span class="badge medium">MEDIUM</span><h3>F12 — Web performs native-file cleanup scans even though cleanup is a no-op</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>library_providers.dart:15-24</code> launches <code>cleanupOrphanedFiles()</code> whenever the library repository is created. That method reads every image path, PDF path, and canvas thumbnail path before calling the platform cleanup function (<code>library_repository.dart:28-45</code>). On web, the selected implementation does nothing (<code>library_file_cleanup_stub.dart:1-5</code>).</dd>
+          <dt>Root cause</dt><dd>The conditional boundary wraps only file deletion, not the expensive prerequisite database scan or the platform capability itself.</dd>
+          <dt>Impact</dt><dd>Web startup adds three full-table reads and allocations that cannot produce any cleanup. Because the direct WASM executor shares the browser UI isolate, the waste grows with a mature note library and competes with first library paint. It also complicates database-open errors by adding another concurrent query source.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Make cleanup capability explicit and skip the entire orchestration on platforms without owned files. Preserve native cleanup exactly; do not merely move the no-op later in the same query chain.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f13">
+        <header><span class="badge medium">MEDIUM, DEPLOYMENT-CONDITIONAL</span><h3>F13 — Fixed browser namespace can mix path-based deployments on one origin</h3><span class="confidence">Confidence: high on namespace; deployment incidence unknown</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>Web always opens <code>IndexedDbFileSystem(dbName: 'zenno')</code> with file path <code>/database</code> (<code>connection_web.dart:10-18</code>) and always acquires <code>zenno-drift-database</code> (<code>web_database_lock.dart:23-25</code>). Neither name includes base path, environment, app version, or deployment identity.</dd>
+          <dt>Root cause</dt><dd>Browser storage is scoped by origin, while the application treats it like a native app sandbox. URL paths do not create separate IndexedDB namespaces.</dd>
+          <dt>Impact</dt><dd>If preview, staging, or production builds are ever hosted under different paths on the same origin, they sequentially open and migrate the same note database. The lock prevents simultaneous access but does not prevent an older/newer build from mutating a shared schema in turn. This can become a data-integrity risk; separate ports or hostnames are separate origins and avoid it.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Document the one-origin/one-Zenno-database invariant now. If co-hosting is needed, derive a stable deployment namespace and design an explicit migration from the existing <code>zenno</code> store—changing the name without migration would appear to lose all existing web notes.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f14">
+        <header><span class="badge medium">MEDIUM</span><h3>F14 — Trackpad pan/pinch events are not handled by the canvas</h3><span class="confidence">Confidence: high on missing handlers; medium on device/browser manifestation</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>pointer_classifier.dart:26-46</code> classifies <code>PointerDeviceKind.trackpad</code> as mouse. The canvas <code>Listener</code> registers down/move/up/cancel/hover/signal only (<code>canvas_view.dart:1455-1469</code>); there are no <code>onPointerPanZoomStart</code>, <code>onPointerPanZoomUpdate</code>, or <code>onPointerPanZoomEnd</code> handlers anywhere in <code>lib/</code>. <code>_onPointerSignal</code> treats every vertical scroll as fixed-step zoom and ignores horizontal delta (<code>canvas_view.dart:1302-1314</code>). Tests exercise touch and mouse buttons but contain no trackpad/pan-zoom case.</dd>
+          <dt>Root cause</dt><dd>Tablet touch gestures and mouse wheel zoom were implemented, but Flutter's distinct trackpad pan/zoom event family was omitted.</dd>
+          <dt>Impact</dt><dd>On web/desktop hardware that emits <code>PointerPanZoom</code>, two-finger trackpad navigation can be ignored or reduced to coarse scroll zoom, making the infinite canvas feel materially less direct than on the Android tablet.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Add a dedicated trackpad gesture state that maps pan delta, scale, and rotation through the same viewport transform math as touch pinch, respecting rotation lock. Cover raw <code>PointerPanZoom</code> sequences in widget tests and manually verify browser behavior before changing scroll-wheel semantics.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f15">
+        <header><span class="badge medium">MEDIUM</span><h3>F15 — Browser tab close/reload can outrun the newest queued note write</h3><span class="confidence">Confidence: high on missing coordination; medium on browser timing incidence</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><ul class="evidence">
+            <li>Canvas mutations start asynchronous repository work and retain its future in <code>_pendingWrites</code> (<code>canvas_controller.dart:945-979,1099-1117</code>).</li>
+            <li><code>flush()</code> forces the debounced viewport write and awaits every tracked wave (<code>canvas_controller.dart:926-943</code>). The normal guarded editor close correctly awaits it before popping (<code>canvas_editor_page.dart:258-305</code>).</li>
+            <li>Unexpected widget disposal cannot await: it launches <code>controller.flush()</code> with <code>unawaited</code> and immediately returns (<code>canvas_editor_page.dart:207-214</code>). The app-wide provider similarly registers async <code>db.close</code> in a synchronous disposal callback (<code>lib/core/providers/database_provider.dart:8-14</code>).</li>
+            <li>No <code>pagehide</code>, <code>beforeunload</code>, visibility-change, or general app-lifecycle persistence coordinator exists in <code>lib/</code> or <code>web/</code>.</li>
+            <li>Locked Drift 2.31.0 documents/implements the IndexedDB guarantee when the request completes. This finding therefore concerns only in-flight work, not previously completed writes.</li>
+            <li>The installed Flutter service-worker cleanup template navigates all open clients during activation. A deployment upgrading from a legacy registered Flutter worker can therefore initiate an external page reload; the pre-existing ignored bundle contains this generated behavior at <code>build/web/flutter_service_worker.js:7-30</code>.</li>
+          </ul></dd>
+          <dt>Root cause</dt><dd>Persistence safety is attached to Flutter's guarded route-close path, while browser tab lifecycle is external to that path and cannot await arbitrary asynchronous cleanup during teardown.</dd>
+          <dt>Impact</dt><dd>An immediate reload, tab close, crash, browser process termination, or one-time legacy service-worker cleanup just after a stroke/transform can interrupt the latest transaction or a final debounced viewport save. The likely loss window is the newest unsatisfied future, not the existing library. Abrupt Android process death has an analogous asynchronous window, but reload/close is a routine web action and no web-specific state communicates whether the queue is drained.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Make pending/saved status observable and add a web page-lifecycle adapter that proactively drains on visibility loss/page hide and warns on an intentional unload while work remains. Do not claim that an async <code>beforeunload</code> callback can guarantee completion; minimize the pending window and prove behavior with a browser test that reloads immediately after a mutation.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f16">
+        <header><span class="badge medium">MEDIUM, DEPLOYMENT-CONDITIONAL</span><h3>F16 — Direct WASM startup depends on an undocumented HTTP/MIME contract</h3><span class="confidence">Confidence: high on loader behavior; incidence unknown</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>connection_web.dart:10</code> loads the bare relative <code>sqlite3.wasm</code>. The locked sqlite3 2.9.4 implementation resolves it against <code>Uri.base</code>, fetches the response, and passes it directly to <code>WebAssembly.instantiateStreaming</code>; that path does not check HTTP status or fall back to reading an array buffer. The repository has no production hosting/header configuration and README documents only <code>flutter run -d chrome</code> (<code>README.md:57-66</code>).</dd>
+          <dt>Root cause</dt><dd>The required native runtime binary is present, but delivery behavior is delegated entirely to whichever server hosts the generated web bundle.</dd>
+          <dt>Impact</dt><dd>A host that returns a 404/HTML response or does not serve <code>.wasm</code> as <code>application/wasm</code> prevents every database-backed screen from opening. F02 can then retain the acquired tab lock, and F11 presents a non-recovering generic retry. Flutter's development server is expected to meet the contract; no present failure is asserted.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Document the base-path and <code>application/wasm</code> requirements, verify the actual deployment response in a browser smoke lane, and classify fetch/status/MIME/instantiation failures before lock retention. Prefer correcting server headers; only add a slower byte-buffer fallback if supported deployment environments require it.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f17">
+        <header><span class="badge low">LOW</span><h3>F17 — Canvas keyboard shortcuts assume Ctrl/Delete conventions on every web host</h3><span class="confidence">Confidence: high</span></header>
+        <dl>
+          <dt>Evidence</dt><dd>The editor binds undo, redo, nudge, rotate, and scale only with <code>SingleActivator(..., control: true)</code>, and selection deletion only to <code>LogicalKeyboardKey.delete</code> (<code>canvas_editor_page.dart:550-608</code>). There are no <code>meta: true</code> or Backspace alternatives. Flutter's <code>SingleActivator</code> treats Control and Meta as distinct exact modifiers. The editor tests verify title-mode disabling and Escape, but do not exercise platform modifier variants (<code>test/canvas_editor_page_test.dart:53-72,147-188</code>).</dd>
+          <dt>Root cause</dt><dd>Shortcuts follow the Android/Windows hardware-keyboard convention even though the same editor is exposed to browsers on macOS and compact keyboards.</dd>
+          <dt>Impact</dt><dd>Mac web users' expected Command-Z/Command-Shift-Z do not reach undo/redo, and a keyboard whose labeled Delete maps to logical Backspace cannot delete a selection. Toolbar/touch/stylus alternatives remain, so this is a flow inconsistency rather than data loss.</dd>
+          <dt>Analysis-only recommendation</dt><dd>Add Meta equivalents for command shortcuts on Apple hosts and a carefully scoped Backspace selection action while text editing is inactive. Test real key events with both modifier families; preserve the existing guard that empties canvas shortcuts while the title field is active.</dd>
+        </dl>
+      </article>
+
+      <article class="finding" id="f18">
+        <header><span class="badge medium">MEDIUM IF WEB IS INSTALLED/OFFLINE</span><h3>F18 — The standalone web shell has no offline cold-start contract</h3><span class="confidence">Confidence: high for the observed toolchain/artifact; future build flags can change it</span></header>
+        <dl>
+          <dt>Evidence</dt><dd><code>web/manifest.json:4-10</code> advertises a standalone install and <code>web/index.html:23-44</code> uses the stock Flutter bootstrap. The checked-in <code>.metadata:6-20</code> identifies the Flutter toolchain lineage. In the existing ignored bundle inspected read-only, <code>build/web/flutter_bootstrap.js:36-41</code> has no local-CanvasKit flag, so its loader chooses the external <code>gstatic.com/flutter-canvaskit</code> base; <code>build/web/flutter_service_worker.js:3-30</code> unregisters itself and clears the old worker lifecycle. The bundle is pre-existing generated evidence, not a source-of-truth guarantee for future build flags.</dd>
+          <dt>Root cause</dt><dd>Installable PWA metadata is present, but web remains a development preview and therefore has no intentional offline app-shell/cache design. The current Flutter service-worker path is also deprecated.</dd>
+          <dt>Impact</dt><dd>A cold-started installed web app can require network access before it can reach locally stored IndexedDB notes. Offline users may see an unavailable app even though their data still exists; this is availability/flow harm, not data deletion. Android release has no main-manifest Internet permission and its runtime/database/media are local, so the behavior diverges sharply.</dd>
+          <dt>Analysis-only recommendation</dt><dd>If web remains preview-only, state that installation/offline use is unsupported and consider removing signals that imply a finished PWA. If web becomes a real local-first target, bundle/select CanvasKit locally, choose an explicit post-deprecation app-shell caching strategy, include <code>sqlite3.wasm</code>, and verify a clean-profile offline cold start plus upgrade behavior.</dd>
+        </dl>
+      </article>
+    </section>
+
+    <section id="positives">
+      <h2>Protective decisions worth preserving</h2>
+      <div class="grid">
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Correct database conditional import.</strong> <code>connection.dart:3-5</code> keeps <code>dart:js_interop</code>/<code>package:web</code> out of native builds and selects a distinct web executor.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Fail-closed multi-tab policy.</strong> <code>ifAvailable: true</code> refuses a second direct connection instead of risking concurrent mutation of the IndexedDB-backed SQLite file.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Direct connection matches the latest failure lesson.</strong> The source avoids the default shared-worker probe that previously hung in the in-app browser.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Shared schema protections.</strong> All platforms use schema version 13, text DateTimes, migrations, foreign keys, and seeding through the same <code>ZennoDatabase</code> (<code>database.dart:48-159</code>).</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Completed web writes flush to IndexedDB.</strong> The locked Drift 2.31.0 <code>WasmDatabase</code> implementation awaits the supplied IndexedDB filesystem after statements/transactions. F05 is about browser retention and recovery, not a claim that normal completed writes stay only in memory.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Shared values avoid obvious JS precision divergence.</strong> DateTimes are stored as ISO-8601 text (<code>database.dart:58-62</code>), while sqlite3's WASM bindings use JavaScript BigInt for SQLite 64-bit integers. No cross-platform numeric corruption is supported by the schema pass.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>First-open seed is atomic.</strong> <code>seed_data.dart:30-77</code> gates and writes settings/templates/boards/ritual data inside one Drift transaction, limiting partial-seed divergence across executors.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Correct cleanup boundary pattern.</strong> <code>library_file_cleanup.dart:1-13</code> is a small, readable conditional-import example to reuse.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Focus timer degrades safely.</strong> Wakelock errors are caught (<code>active_session_controller.dart:175-185,437-446</code>) and wall-clock timer state does not rely on a continuously firing browser timer (<code>active_session_controller.dart:82-93</code>).</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Normal browser Back uses the guarded save path.</strong> <code>canvas_editor_page.dart:481-485</code> intercepts route pops, and <code>:258-305</code> saves the title, drains controller writes, and warns on failures before navigation. F15 is limited to external tab/page teardown and unexpected disposal.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Android persistence stays app-owned.</strong> <code>connection_native.dart:1-4</code> and <code>canvas_import.dart:61-68,146-164</code> use the application documents directory for SQLite and copied media. <code>library_file_cleanup_io.dart:5-59</code> resolves paths and deletes only inside Zenno's <code>canvas_media</code>/<code>thumbnails</code> roots.</p></div>
+        <div class="note"><span class="badge good">GOOD</span><p><strong>Native database work is isolated from UI.</strong> Locked <code>drift_flutter 0.2.8</code> creates a background native connection for <code>driftDatabase</code>; the main-isolate concern is specific to the direct web executor in F04.</p></div>
+      </div>
+    </section>
+
+    <section id="priorities">
+      <h2>Recommended order of work (analysis only)</h2>
+      <ol>
+        <li><strong>Make lock lifetime failure-safe</strong> (F02), with typed initialization errors and real recovery behavior (F11).</li>
+        <li><strong>Add a web compile and real browser-database smoke lane</strong> (F09), including an immediate-reload durability case (F15), so every later change has evidence.</li>
+        <li><strong>Consolidate native file operations behind compile-time platform boundaries</strong> (F01). Do not change database architecture at the same time.</li>
+        <li><strong>Decide web's product contract:</strong> preview only, or real note storage. If real, solve durability/backup, media-store divergence, and offline shell availability before encouraging use (F05/F06/F18).</li>
+        <li><strong>Profile direct-WASM write latency</strong> before changing worker strategy (F04). Preserve the known no-hang behavior.</li>
+        <li><strong>Remove platform-specific startup waste and complete web lifecycle/input handling</strong> (F12/F14/F15/F17).</li>
+        <li><strong>Align capability/configuration, namespace policy, WASM delivery, and maintenance documentation</strong> (F03/F07/F08/F10/F13/F16).</li>
+      </ol>
+    </section>
+
+    <section id="coverage">
+      <h2>Coverage and limits</h2>
+      <p>Inspected areas include app/bootstrap/router, all repository <code>dart:io</code>/<code>dart:js_interop</code>/<code>kIsWeb</code> references, database connection/provider/schema setup, Web Lock implementation, canvas import/export/PDF/image reload, library thumbnails/cleanup, controller persistence cadence and teardown, focus wakelock behavior, Android manifests/Gradle settings, web manifest/index/WASM presence, dependency lock entries and relevant dependency runtime source, tests, README, AGENTS lessons, and relevant hidden project guidance.</p>
+      <p><strong>Not verified at runtime:</strong> whether the current checkout compiles for web; browser API availability in the intended in-app browser; actual IndexedDB migration behavior; WASM binary/package compatibility; frame timing; Android device behavior; PWA launch orientation; storage eviction. These require builds/tests/app execution, which this task explicitly forbids.</p>
+    </section>
+
+    <section id="iterations">
+      <h2>Iteration log</h2>
+      <div class="iteration">
+        <h3>Iteration 1 — 2026-07-18 05:03 PST</h3>
+        <p>Mapped the repository's platform entry graph and all explicit native/web branches. Traced Drift from provider to conditional executor to lock/WASM/IndexedDB, then traced canvas persistence into native file-backed media. Established F01-F11, explicitly marked unmeasured performance/browser claims, and recorded protective choices so later passes do not mistake intentional worker removal for a missing asset.</p>
+        <p><strong>Correction required by next pass:</strong> the initial F01 incorrectly treated direct <code>dart:io</code> imports as a guaranteed web compile blocker.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 2 — 2026-07-18 05:09 PST</h3>
+        <p>Challenged F01 against the installed SDK rather than relying on historical Dart behavior. The SDK's JS and Wasm library maps include <code>dart:io</code> patches whose filesystem operations throw <code>UnsupportedError</code>; Zenno's existing <code>kIsWeb</code> branches appear to avoid those calls in normal UI flow. Downgraded and rewrote F01 from a critical compile blocker to medium architectural/regression risk, corrected the executive summary, and reprioritized lock lifecycle as the leading supported defect.</p>
+        <p><strong>Next adversarial pass:</strong> inspect database shutdown/provider lifetime, base-path and routing assumptions for <code>sqlite3.wasm</code>, startup query concurrency, and web storage namespace behavior. Re-evaluate F02/F03/F10/F11 against dependency implementation details.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 3 — 2026-07-18 05:09 PST</h3>
+        <p>Read the locked Drift/sqlite3 implementations to challenge durability and retry claims. Confirmed completed direct-WASM writes await IndexedDB VFS flushes, so the report no longer implies ordinary successful writes are merely queued in memory. Confirmed the delayed executor memoizes open failure, promoting F11 to a non-recovering retry defect. Added origin namespace collision (F13), useless web cleanup scans (F12), and missing trackpad <code>PointerPanZoom</code> handling (F14). Reviewed generated plugin metadata and pdfrx's web implementation; no missing PDFium web asset defect is asserted because pdfrx declares its assets itself and media import is currently web-disabled.</p>
+        <p><strong>Next adversarial pass:</strong> trace close/unload semantics and every platform-only plugin call, inspect migration SQL for WASM parity assumptions, and review Android configuration/ABI behavior for claims that belong in this lens.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 4 — 2026-07-18 05:11 PST</h3>
+        <p>Traced mutation futures through controller flush, guarded route closure, widget disposal, provider disposal, Drift's direct-WASM delegate, and the absence of browser lifecycle hooks. Added F15 for the narrow in-flight write window while explicitly preserving the stronger conclusion that completed requests flush to IndexedDB. Re-read every migration: the SQL is ordinary SQLite and no WASM-specific incompatibility is statically established, but all migration verification executes native connections, so that evidence now strengthens F09 rather than becoming a duplicate finding.</p>
+        <p>Reviewed Android packaging and plugin boundaries. Debug signing in the release block is a release-engineering concern but does not materially alter Android/web note behavior, so it is not promoted into this lens's prioritized finding list. No ABI filter is present; no unsupported-ABI defect can be inferred without a forbidden build/artifact inspection.</p>
+        <p><strong>Next adversarial pass:</strong> inspect every persistence repository for platform-dependent types, serialization, date/time, ordering, and text/blob semantics; re-check web error surfaces outside the library page; challenge whether initialization concurrency or seeding can worsen lock/open failures.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 5 — 2026-07-18 05:14 PST</h3>
+        <p>Inspected every schema table, repository import boundary, seeding transaction, storage capability reference, and sqlite3 WASM integer/loader implementation. No supported JS integer-precision or partial-seed defect remains: DateTimes use text, SQLite int64 uses BigInt interop, and seeding is transactional. Expanded F05 to include quota observability while noting the existing canvas save-failure UI.</p>
+        <p>Added F16 for the deployment-conditional MIME/status contract. The dependency resolves <code>sqlite3.wasm</code> against <code>Uri.base</code>, so a root-vs-subpath bug is not asserted; the actual fragility is direct streaming instantiation without a repository-defined production server contract. Kept this below the verified lock/retry defects because the documented Flutter development server should deliver the asset correctly.</p>
+        <p><strong>Next adversarial pass:</strong> map database-open errors and second-tab handling across every top-level route, inspect initial parallel provider reads and navigation-shell behavior, and challenge input divergence for browser keyboard/context-menu/touch/stylus paths beyond trackpad.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 6 — 2026-07-18 05:16 PST</h3>
+        <p>Followed open failures through the root settings watch, all five shell branches, direct canvas deep links, and each retry control. Strengthened F11: Library alone understands the exclusive-lock error, while direct routes render the same failure generically or raw and all retry the memoized failed executor. Confirmed go_router preserves a non-root platform URL despite <code>initialLocation</code>, so this is reachable on web deep links.</p>
+        <p>Re-read canvas pointer and keyboard entry points against the installed Flutter definitions. Added F17 for Control/Delete-only desktop shortcuts. Right-click is deliberately ignored by canvas tool handling and Flutter web enables the browser context menu by default; because the source calls this a platform/context action, I record it as intentional divergence rather than a defect. Normal browser Back is protected by <code>PopScope</code> and the awaited editor-close path, narrowing F15 further.</p>
+        <p><strong>Next adversarial pass:</strong> inspect browser renderer/font/network dependencies and offline/PWA expectations, compare Android package permissions/storage with web origin storage, and revisit severity/deduplication across all findings.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 7 — 2026-07-18 05:17 PST</h3>
+        <p>Traced stock Flutter web bootstrap behavior, the checked-in manifest, Android release permissions, font/image references, the installed toolchain's CanvasKit selection, and the pre-existing ignored web bundle. Added F18 conditionally: the observed bundle reaches external CanvasKit and its generated service worker unregisters, so standalone/offline cold start is not a current contract. The existing bundle is treated as supporting generated evidence, not proof of what an unknown future build command will emit.</p>
+        <p>No application-owned network image/font/API dependency was found, and Android's release manifest does not request Internet access. The local CanvasKit files in the ignored bundle do not clear F18 because its loader build configuration does not select them. This does not affect ordinary online <code>flutter run -d chrome</code> preview use.</p>
+        <p><strong>Next adversarial pass:</strong> re-score every finding against the explicit preview-only README, verify native database/media directory semantics and Android backup/upgrade implications, then inspect dependency/platform metadata for unsupported browser or Android-version assumptions.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 8 — 2026-07-18 05:19 PST</h3>
+        <p>Re-scored the web findings against the explicit Chrome-preview contract. Downgraded F03 from high to medium because Chrome on localhost should supply Web Locks; kept the unprobed hard dependency visible for embedded or broader browser use. F02 remains high because a failure after successful acquisition has a statically proven lifetime mismatch independent of browser support.</p>
+        <p>Read locked Android path-provider/Drift/plugin implementations and manifests. Native SQLite and imported media share app-owned documents storage, Drift uses a background connection, file picking needs no broad storage permission, and cleanup resolves paths before restricting deletion to Zenno-owned directories. No min-SDK/ABI incompatibility is supported by the available metadata; package build outputs were not generated or tested.</p>
+        <p><strong>Next adversarial pass:</strong> inspect schema-version/asset upgrade behavior between cached web shells and IndexedDB, validate the Web Lock callback/error races at promise level, and consolidate overlapping lock/retry/WASM findings if their root causes are not truly distinct.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 9 — 2026-07-18 05:20 PST</h3>
+        <p>Read the generated Web Locks bindings, Drift <code>LazyDatabase</code>, and current Flutter service-worker cleanup template line by line. The lock request promise is specified to settle only after its callback completes; Zenno deliberately returns a never-completing future. No additional promise race is asserted. F02 remains the single lifecycle defect: the hold begins before open succeeds and has no database-close release signal. Drift's delayed opener definitively memoizes its failed completer, preserving F11.</p>
+        <p>Strengthened F10 with the stable, unhashed runtime request name and F15 with the toolchain's one-time legacy service-worker client reload. These are upgrade/deployment amplifiers of existing root causes, not independent findings. A stale old application sequentially opening a newer same-origin database remains covered by F13.</p>
+        <p><strong>Next adversarial pass:</strong> inventory all generated and hand-written conditional imports for target-selection asymmetry, inspect web-vs-native dependency registration, and verify that no VM-only library reaches the web graph through generated/provider files.</p>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

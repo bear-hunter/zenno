@@ -548,8 +548,98 @@ void main() {
     schema.close();
   });
 
-  for (var version = 1; version < 13; version++) {
-    test('v$version migrates to the exact v13 schema', () async {
+  test('v13 migrates to v14 with a clean paper texture', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(13);
+    schema.rawDatabase.execute(
+      '''
+        INSERT INTO canvases (id, title, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        ''',
+      [
+        'canvas-v13',
+        'Paper texture migration',
+        DateTime.utc(2026, 7, 15).toIso8601String(),
+        DateTime.utc(2026, 7, 15).toIso8601String(),
+      ],
+    );
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    final canvas = await migrated.select(migrated.canvases).getSingle();
+    final columns = await migrated
+        .customSelect('PRAGMA table_info(canvases)')
+        .get();
+    final columnNames = columns.map((row) => row.read<String>('name'));
+
+    expect(
+      columnNames,
+      containsAll(['paper_texture', 'paper_texture_opacity']),
+    );
+    expect(canvas.paperTexture, PaperTexture.clean);
+    expect(canvas.paperTextureOpacity, 0.06);
+
+    await migrated.close();
+    schema.close();
+  });
+
+  test('v14 migrates to v15 and indexes existing ritual snapshots', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(() {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+    });
+    final verifier = SchemaVerifier(GeneratedHelper());
+    final schema = await verifier.schemaAt(14);
+    schema.rawDatabase.execute(
+      '''
+      INSERT INTO focus_sessions (
+        id, started_at, goal_text, pre_energy, timer_kind,
+        planned_duration_secs, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ''',
+      [
+        'session-v14',
+        DateTime.utc(2026, 7, 20).toIso8601String(),
+        'Existing history',
+        4,
+        0,
+        1500,
+        1,
+      ],
+    );
+    schema.rawDatabase.execute(
+      '''
+      INSERT INTO focus_session_ritual_checks (
+        id, session_id, item_label_snapshot, was_checked
+      ) VALUES (?, ?, ?, ?)
+      ''',
+      ['check-v14', 'session-v14', 'Clear desk', 1],
+    );
+
+    final migrated = ZennoDatabase(schema.newConnection());
+    final checks = await migrated
+        .select(migrated.focusSessionRitualChecks)
+        .get();
+    final indexes = await migrated
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND name = 'idx_focus_session_ritual_checks_session_id'",
+        )
+        .get();
+
+    expect(checks.single.itemLabelSnapshot, 'Clear desk');
+    expect(checks.single.wasChecked, isTrue);
+    expect(indexes, hasLength(1));
+
+    await migrated.close();
+    schema.close();
+  });
+
+  for (var version = 1; version < 15; version++) {
+    test('v$version migrates to the exact v15 schema', () async {
       driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       addTearDown(() {
         driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
@@ -560,7 +650,7 @@ void main() {
 
       await verifier.migrateAndValidate(
         migrated,
-        13,
+        15,
         options: const ValidationOptions(validateDropped: true),
       );
 

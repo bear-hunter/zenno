@@ -189,6 +189,12 @@ void main() {
     expect(find.byTooltip('Size: 4 pt'), findsOneWidget);
     expect(find.byTooltip('Opacity: 100%'), findsOneWidget);
     expect(find.byTooltip('Smoothing: 35%'), findsOneWidget);
+    expect(find.byTooltip('Adaptive pen: On'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Adaptive pen: On'));
+    await tester.pump();
+    expect(controller.adaptivePenEnabled, isFalse);
+    expect(find.byTooltip('Adaptive pen: Off'), findsOneWidget);
 
     await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
     await tester.pumpAndSettle();
@@ -212,6 +218,35 @@ void main() {
     expect(controller.activeToolWheelPreset.kind, ToolWheelSlotKind.airbrush);
     expect(controller.penKind, StrokeToolKind.airbrush);
     expect(_swatch(0), findsOneWidget);
+  });
+
+  testWidgets('Adaptive pen can be toggled from contextual pen controls', (
+    tester,
+  ) async {
+    final controller = CanvasController();
+    final toolbarKey = GlobalKey<CanvasToolbarState>();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CanvasToolbar(
+            key: toolbarKey,
+            controller: controller,
+            onBack: () {},
+          ),
+        ),
+      ),
+    );
+
+    toolbarKey.currentState!.showFullControls();
+    await tester.pump();
+    expect(find.text('Adaptive pen'), findsOneWidget);
+    expect(controller.adaptivePenEnabled, isTrue);
+
+    await tester.tap(find.text('Adaptive pen'));
+    await tester.pump();
+
+    expect(controller.adaptivePenEnabled, isFalse);
   });
 
   testWidgets('utility favorites open context settings and can be replaced', (
@@ -815,8 +850,6 @@ void main() {
     await _pumpToolbar(tester, controller);
 
     await _openMore(tester);
-    await tester.tap(find.byTooltip('Appearance'));
-    await tester.pump();
     final Finder paper = find.byTooltip('Paper');
     await tester.tap(paper);
     await tester.pumpAndSettle();
@@ -825,27 +858,34 @@ void main() {
       tester.getRect(find.byKey(CanvasToolbar.paperSettingsPanelKey)).left,
       closeTo(18, 0.1),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperKindButtonKeyPrefix}-BackgroundKind.lined',
-        ),
+    final Finder lined = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperKindButtonKeyPrefix}-BackgroundKind.lined',
       ),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperBackgroundPresetButtonKeyPrefix}-5',
-        ),
+    await tester.ensureVisible(lined);
+    await tester.tap(lined);
+    final Finder background = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperBackgroundPresetButtonKeyPrefix}-5',
       ),
     );
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          '${CanvasToolbar.paperGridPresetButtonKeyPrefix}-1',
-        ),
+    await tester.ensureVisible(background);
+    await tester.tap(background);
+    final Finder grid = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperGridPresetButtonKeyPrefix}-1',
       ),
     );
+    await tester.ensureVisible(grid);
+    await tester.tap(grid);
+    final Finder texture = find.byKey(
+      const ValueKey<String>(
+        '${CanvasToolbar.paperTextureButtonKeyPrefix}-PaperTexture.crosshatch',
+      ),
+    );
+    await tester.ensureVisible(texture);
+    await tester.tap(texture);
     await tester.pump();
     final Finder save = find.widgetWithText(FilledButton, 'Save');
     await tester.ensureVisible(save);
@@ -856,6 +896,34 @@ void main() {
     expect(controller.paperStyle.kind, BackgroundKind.lined);
     expect(controller.paperStyle.backgroundColor, 0xFFF7F1DE);
     expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
+    expect(controller.paperStyle.texture, PaperTexture.crosshatch);
+  });
+
+  testWidgets('quick paper moods apply a complete canvas look', (tester) async {
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    await _openMore(tester);
+    await tester.tap(find.byTooltip('Paper'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('${CanvasToolbar.paperMoodButtonKeyPrefix}-2'),
+      ),
+    );
+    await tester.pump();
+    final Finder save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pump();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(controller.paperStyle.kind, BackgroundKind.grid);
+    expect(controller.paperStyle.backgroundColor, 0xFF0B3A5B);
+    expect(controller.paperStyle.gridColor, 0xFF8EC5FF);
+    expect(controller.paperStyle.texture, PaperTexture.grain);
+    expect(controller.paperStyle.textureOpacity, 0.05);
   });
 
   testWidgets('selection does not replace the eight favorite slots', (
@@ -887,6 +955,28 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Done selecting'), findsOneWidget);
+  });
+
+  testWidgets('selection keeps the top navigation compact', (tester) async {
+    final controller = CanvasController()
+      ..addElementToStore(
+        const TextElement(
+          id: 'note',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(-50, -10, 100, 20),
+          text: 'Select',
+          color: 0xFFFFFFFF,
+          fontSize: 18,
+        ),
+      )
+      ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    expect(find.byTooltip('Done selecting'), findsOneWidget);
+    expect(find.byTooltip('Copy selection'), findsNothing);
+    expect(find.byTooltip('Paste selection'), findsNothing);
+    expect(find.byTooltip('Delete selection'), findsNothing);
   });
 
   testWidgets('selection modes remain available from the Select favorite', (

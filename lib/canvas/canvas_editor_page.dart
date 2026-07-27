@@ -503,7 +503,7 @@ class _CanvasEditorPageState extends ConsumerState<CanvasEditorPage>
         // controller here would rebuild the canvas, the toolbar and the
         // shortcut map on every pen sample, pan frame and selection change.
         body: ListenableBuilder(
-          listenable: _controller.editorGateListenable,
+          listenable: _controller.editorStateListenable,
           builder: (context, _) {
             final importError = _controller.importErrorMessage;
             if (importError != null) {

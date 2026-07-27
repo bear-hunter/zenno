@@ -1,0 +1,1440 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+    name="description"
+    content="Source-backed implementation plan for Zenno performance optimization and an Adaptive pen toggle."
+  >
+  <title>Zenno Performance Optimization + Adaptive Pen Plan</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d151d;
+      --surface: #14202b;
+      --surface-2: #192936;
+      --surface-3: #203342;
+      --text: #f5f0e5;
+      --muted: #b6c2ca;
+      --faint: #82919c;
+      --accent: #e8b84b;
+      --accent-soft: rgba(232, 184, 75, 0.13);
+      --blue: #79b8ff;
+      --green: #71d69e;
+      --orange: #f1a766;
+      --red: #ef7b7b;
+      --border: rgba(255, 255, 255, 0.11);
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+      --radius: 18px;
+      --content: 1180px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 85% 0%, rgba(232, 184, 75, 0.08), transparent 28rem),
+        radial-gradient(circle at 0% 35%, rgba(121, 184, 255, 0.06), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--blue);
+      text-underline-offset: 3px;
+    }
+
+    code {
+      padding: 0.12rem 0.38rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.055);
+      color: #f8e7b9;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.88em;
+    }
+
+    .shell {
+      width: min(calc(100% - 32px), var(--content));
+      margin: 0 auto;
+      padding: 48px 0 80px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(28px, 5vw, 58px);
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      background:
+        linear-gradient(135deg, rgba(232, 184, 75, 0.10), transparent 46%),
+        var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      position: absolute;
+      right: -80px;
+      bottom: -115px;
+      width: 360px;
+      height: 360px;
+      border: 52px solid rgba(232, 184, 75, 0.05);
+      border-radius: 50%;
+      content: "";
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+      margin-top: 0;
+      line-height: 1.18;
+    }
+
+    h1 {
+      max-width: 850px;
+      margin-bottom: 18px;
+      font-size: clamp(2.2rem, 6vw, 4.6rem);
+      letter-spacing: -0.055em;
+    }
+
+    h2 {
+      margin-bottom: 18px;
+      font-size: clamp(1.55rem, 3vw, 2.35rem);
+      letter-spacing: -0.035em;
+    }
+
+    h3 {
+      margin-bottom: 11px;
+      font-size: 1.15rem;
+    }
+
+    h4 {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    ul,
+    ol {
+      margin: 10px 0 0;
+      padding-left: 1.25rem;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .lede {
+      max-width: 820px;
+      color: var(--muted);
+      font-size: clamp(1rem, 2vw, 1.18rem);
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 26px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 5px 11px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 650;
+    }
+
+    .chip strong {
+      margin-right: 0.4em;
+      color: var(--text);
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin: 22px 0 0;
+    }
+
+    .toc a {
+      padding: 11px 9px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 750;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    .toc a:hover,
+    .toc a:focus-visible {
+      border-color: rgba(232, 184, 75, 0.45);
+      background: var(--accent-soft);
+      color: var(--text);
+    }
+
+    section {
+      margin-top: 26px;
+      padding: clamp(22px, 4vw, 38px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(20, 32, 43, 0.93);
+    }
+
+    .section-intro {
+      max-width: 860px;
+      color: var(--muted);
+    }
+
+    .callout {
+      margin-top: 20px;
+      padding: 18px 20px;
+      border: 1px solid rgba(232, 184, 75, 0.30);
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      background: var(--accent-soft);
+    }
+
+    .callout strong {
+      color: var(--accent);
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface-2);
+    }
+
+    .card p:last-child,
+    .card ul:last-child {
+      margin-bottom: 0;
+    }
+
+    .card-number {
+      display: inline-grid;
+      width: 34px;
+      height: 34px;
+      margin-bottom: 14px;
+      place-items: center;
+      border: 1px solid rgba(232, 184, 75, 0.35);
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 850;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      color: var(--faint);
+      font-size: 0.82rem;
+    }
+
+    .priority {
+      display: inline-block;
+      margin-bottom: 9px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .priority.p0 {
+      background: rgba(239, 123, 123, 0.13);
+      color: #ffabab;
+    }
+
+    .priority.p1 {
+      background: rgba(241, 167, 102, 0.13);
+      color: #ffc18a;
+    }
+
+    .priority.p2 {
+      background: rgba(113, 214, 158, 0.12);
+      color: #9be8bb;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .phase {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--surface-2);
+    }
+
+    .phase-index {
+      display: grid;
+      place-items: center;
+      border-right: 1px solid var(--border);
+      background: rgba(232, 184, 75, 0.075);
+      color: var(--accent);
+      font-size: 1.35rem;
+      font-weight: 900;
+    }
+
+    .phase-body {
+      padding: 20px;
+    }
+
+    .phase-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    .phase-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .phase-meta span {
+      color: var(--faint);
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      background: var(--surface-2);
+    }
+
+    th,
+    td {
+      padding: 14px 15px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-size: 0.74rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .yes {
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .no {
+      color: var(--orange);
+      font-weight: 800;
+    }
+
+    details {
+      margin-top: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface-2);
+    }
+
+    summary {
+      padding: 17px 19px;
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    details[open] summary {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .details-body {
+      padding: 18px 20px 20px;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 8px;
+      margin-top: 16px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .checklist li {
+      position: relative;
+      margin: 0;
+      padding: 11px 12px 11px 42px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .checklist li::before {
+      position: absolute;
+      top: 12px;
+      left: 13px;
+      display: grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      border: 1px solid rgba(232, 184, 75, 0.55);
+      border-radius: 5px;
+      color: var(--accent);
+      content: "✓";
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .risk {
+      border-left: 3px solid var(--orange);
+    }
+
+    .guardrail {
+      border-left: 3px solid var(--green);
+    }
+
+    .decision {
+      border-left: 3px solid var(--blue);
+    }
+
+    footer {
+      padding: 28px 8px 0;
+      color: var(--faint);
+      font-size: 0.82rem;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .toc {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid-3,
+      .grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 650px) {
+      .shell {
+        width: min(calc(100% - 20px), var(--content));
+        padding-top: 10px;
+      }
+
+      .hero,
+      section {
+        border-radius: 15px;
+      }
+
+      .toc,
+      .grid-2,
+      .grid-3,
+      .grid-4 {
+        grid-template-columns: 1fr;
+      }
+
+      .phase {
+        grid-template-columns: 1fr;
+      }
+
+      .phase-index {
+        min-height: 48px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+    }
+
+    @media print {
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --surface-2: #f7f7f7;
+        --surface-3: #eeeeee;
+        --text: #1c242b;
+        --muted: #46535d;
+        --faint: #63717c;
+        --border: rgba(0, 0, 0, 0.15);
+        --accent-soft: rgba(180, 125, 0, 0.08);
+      }
+
+      body {
+        background: #fff;
+      }
+
+      .shell {
+        width: 100%;
+        padding: 0;
+      }
+
+      .hero,
+      section,
+      .card,
+      .phase,
+      details {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+
+      .toc {
+        display: none;
+      }
+
+      details > .details-body {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">Zenno implementation plan</p>
+      <h1>Performance optimization + Adaptive pen</h1>
+      <p class="lede">
+        A staged, source-backed plan to make the infinite canvas scale with what
+        is visible, reduce high-frequency rebuilds and persistence work, protect
+        long drawing sessions, and expose the existing zoom-aware pen behavior
+        as an intuitive on/off option.
+      </p>
+      <div class="meta">
+        <span class="chip"><strong>Date</strong> 2026-07-27</span>
+        <span class="chip"><strong>Baseline</strong> <code>origin/staging@51db0ba</code></span>
+        <span class="chip"><strong>Target</strong> Galaxy Tab S9 FE / Android arm64-v8a</span>
+        <span class="chip"><strong>Method</strong> Pure source review</span>
+        <span class="chip"><strong>Data rule</strong> Existing notes are never rewritten</span>
+      </div>
+      <nav class="toc" aria-label="Plan sections">
+        <a href="#outcome">Outcome</a>
+        <a href="#evidence">Evidence</a>
+        <a href="#adaptive-pen">Adaptive pen</a>
+        <a href="#sequence">Sequence</a>
+        <a href="#verification">Verification</a>
+        <a href="#decisions">Decisions</a>
+      </nav>
+    </header>
+
+    <section id="outcome">
+      <p class="eyebrow">01 · Intended outcome</p>
+      <h2>Make frequent actions proportional to visible work</h2>
+      <p class="section-intro">
+        Zenno already has strong low-level primitives: a spatial index,
+        separate repaint layers, tile and stroke caches, bounded raster
+        concurrency, a decoded-raster budget, frame-coalesced live ink, and
+        capped PDF rendering. The next gains come from stopping small events
+        from triggering whole-editor, whole-canvas, or whole-history work.
+      </p>
+      <div class="grid-4">
+        <article class="card">
+          <span class="card-number">A</span>
+          <h3>Ink stays immediate</h3>
+          <p class="muted">
+            Pen samples update the live ink layer without rebuilding the
+            toolbar, editor shell, or unrelated committed content.
+          </p>
+        </article>
+        <article class="card">
+          <span class="card-number">B</span>
+          <h3>Canvas cost follows visibility</h3>
+          <p class="muted">
+            Painting and raster scheduling operate on viewport hits, not every
+            element stored in the document.
+          </p>
+        </article>
+        <article class="card">
+          <span class="card-number">C</span>
+          <h3>Large notes open predictably</h3>
+          <p class="muted">
+            Hydration is bulk and linear, caches are invalidated locally, and
+            image memory is sized for the current view.
+          </p>
+        </article>
+        <article class="card">
+          <span class="card-number">D</span>
+          <h3>Pen behavior is obvious</h3>
+          <p class="muted">
+            “Adaptive pen” clearly communicates whether brush size remains
+            stable under the hand while zooming.
+          </p>
+        </article>
+      </div>
+      <div class="callout">
+        <strong>Guiding constraint:</strong> optimize runtime representations
+        and event delivery without changing durable note geometry, deleting
+        source media, or rewriting previously committed strokes.
+      </div>
+    </section>
+
+    <section id="evidence">
+      <p class="eyebrow">02 · Source evidence</p>
+      <h2>Work is already culled at the bottom, but not at the top</h2>
+      <p class="section-intro">
+        The following findings define the implementation order. They are
+        algorithmic observations from the source, not measured timing claims.
+      </p>
+      <div class="grid-2">
+        <article class="card">
+          <span class="priority p0">Priority 0</span>
+          <h3>Controller notification fan-out</h3>
+          <p class="muted">
+            <code>CanvasController</code> is one broad
+            <code>ChangeNotifier</code>. The editor page, canvas view, toolbar,
+            bookmarks, and sheets listen to it, so ink, hover, viewport, tool,
+            and raster events share one rebuild channel.
+          </p>
+          <p class="small">
+            Sources:
+            <a href="../lib/canvas/canvas_editor_page.dart">canvas_editor_page.dart</a>,
+            <a href="../lib/canvas/render/canvas_view.dart">canvas_view.dart</a>,
+            <a href="../lib/canvas/widgets/canvas_toolbar.dart">canvas_toolbar.dart</a>
+          </p>
+        </article>
+        <article class="card">
+          <span class="priority p0">Priority 0</span>
+          <h3>Culling still scans all elements</h3>
+          <p class="muted">
+            <code>ElementsPainter</code> obtains visible IDs from the spatial
+            index, then iterates the complete z-ordered list. Tile painting
+            rebuilds full ID/order maps, and raster scheduling scans the full
+            element list after its viewport query.
+          </p>
+          <p class="small">
+            Sources:
+            <a href="../lib/canvas/render/elements_painter.dart">elements_painter.dart</a>,
+            <a href="../lib/canvas/canvas_controller.dart">canvas_controller.dart</a>
+          </p>
+        </article>
+        <article class="card">
+          <span class="priority p0">Priority 0</span>
+          <h3>Continuous settings cause write bursts</h3>
+          <p class="muted">
+            Brush size, opacity, smoothing, and eraser controls update on every
+            drag delta. Their setters immediately notify the broad controller
+            and persist tool settings.
+          </p>
+          <p class="small">
+            Sources:
+            <a href="../lib/canvas/widgets/canvas_toolbar.dart">canvas_toolbar.dart</a>,
+            <a href="../lib/canvas/persistence/canvas_repository.dart">canvas_repository.dart</a>
+          </p>
+        </article>
+        <article class="card">
+          <span class="priority p1">Priority 1</span>
+          <h3>Hydration and cache churn grow with document size</h3>
+          <p class="muted">
+            Already sorted elements are added one at a time through duplicate
+            and insertion scans. A global element revision clears every tile
+            picture and the stroke path cache.
+          </p>
+          <p class="small">
+            Sources:
+            <a href="../lib/canvas/canvas_controller.dart">canvas_controller.dart</a>,
+            <a href="../lib/canvas/render/elements_painter.dart">elements_painter.dart</a>
+          </p>
+        </article>
+        <article class="card">
+          <span class="priority p1">Priority 1</span>
+          <h3>Live stroke work grows during the gesture</h3>
+          <p class="muted">
+            Each new sample invalidates a snapshot containing all prior points,
+            and the preview outline is rebuilt from the full point set.
+          </p>
+          <p class="small">
+            Sources:
+            <a href="../lib/canvas/render/live_stroke_painter.dart">live_stroke_painter.dart</a>,
+            <a href="../lib/canvas/engine/stroke_builder.dart">stroke_builder.dart</a>
+          </p>
+        </article>
+        <article class="card">
+          <span class="priority p1">Priority 1</span>
+          <h3>Background features repeat broad data work</h3>
+          <p class="muted">
+            Focus history resolves two child queries per session, live runtime
+            checkpoints update the watched session table, goal reflections fan
+            out joined rows, and library cleanup begins with provider creation.
+          </p>
+          <p class="small">
+            Sources:
+            <a href="../lib/features/focus/data/focus_repository.dart">focus_repository.dart</a>,
+            <a href="../lib/features/goal_cycle/data/goal_repository.dart">goal_repository.dart</a>,
+            <a href="../lib/features/library/application/library_providers.dart">library_providers.dart</a>
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="adaptive-pen">
+      <p class="eyebrow">03 · Adaptive pen decision</p>
+      <h2>Expose the behavior that already exists</h2>
+      <p class="section-intro">
+        The staging source already supports both behaviors through
+        <code>PenWidthMode.screen</code> and <code>PenWidthMode.canvas</code>.
+        It persists the mode in the canvas row and in each ink tool-wheel
+        preset, snapshots the resolved width at stroke start, and has baseline
+        repository and controller tests. The implementation should improve the
+        product language and control—not create another data field.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>User control</th>
+              <th>Existing model</th>
+              <th>Drawing behavior</th>
+              <th>Hover behavior</th>
+              <th>Existing strokes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="yes">Adaptive pen · On</span></td>
+              <td><code>PenWidthMode.screen</code></td>
+              <td>
+                The selected width is divided by zoom when the stroke begins,
+                so it appears the same size under the hand at any zoom level.
+              </td>
+              <td>Indicator remains the selected diameter in screen pixels.</td>
+              <td>Never changed.</td>
+            </tr>
+            <tr>
+              <td><span class="no">Adaptive pen · Off</span></td>
+              <td><code>PenWidthMode.canvas</code></td>
+              <td>
+                The selected width is stored directly in canvas units, so it
+                visually grows and shrinks with the canvas.
+              </td>
+              <td>Indicator scales with the current viewport.</td>
+              <td>Never changed.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid-2">
+        <article class="card decision">
+          <h3>Recommended UX contract</h3>
+          <ul>
+            <li>Label the control <strong>Adaptive pen</strong>.</li>
+            <li>Use an explicit switch rather than “Screen / Canvas” jargon.</li>
+            <li>
+              Supporting text: “Keeps this brush the same visual size while
+              zooming.”
+            </li>
+            <li>
+              Keep the default on, matching the current
+              <code>PenWidthMode.screen</code> default.
+            </li>
+            <li>
+              Apply a mode change only to strokes created after the toggle.
+            </li>
+          </ul>
+        </article>
+        <article class="card guardrail">
+          <h3>Compatibility contract</h3>
+          <ul>
+            <li>No database migration and no new settings column.</li>
+            <li>Do not reorder or rename enum values in persistence.</li>
+            <li>Continue decoding older tool-wheel JSON exactly as today.</li>
+            <li>Keep hover radius and committed width derived from one mode.</li>
+            <li>Persist the final toggle immediately; it is not a drag stream.</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>Scope assumption:</strong> Adaptive pen remains per ink preset,
+        because <code>ToolWheelPreset.widthMode</code> already stores it that
+        way. Each brush can therefore remember its own preference. If the
+        desired product behavior is one global switch for every brush, decide
+        that before implementation; it changes preset-switching semantics even
+        though it still does not require rewriting notes.
+      </div>
+
+      <details>
+        <summary>Adaptive pen implementation checklist</summary>
+        <div class="details-body">
+          <ul class="checklist">
+            <li>
+              Replace or augment the current width-mode picker with an explicit
+              Adaptive pen switch in the active brush property UI.
+            </li>
+            <li>
+              Rename the radial-wheel action label to “Adaptive pen” and make
+              its selected state mean on.
+            </li>
+            <li>
+              Map switch on/off to <code>screen</code>/<code>canvas</code>
+              through the existing <code>setPenWidthMode</code> method.
+            </li>
+            <li>
+              Ensure switching brush presets immediately restores that preset’s
+              saved adaptive setting.
+            </li>
+            <li>
+              Verify zoom changes after stroke start do not mutate the live or
+              committed stroke width.
+            </li>
+            <li>
+              Add accessible semantics, tooltip text, widget keys, and tests for
+              both states.
+            </li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <section id="sequence">
+      <p class="eyebrow">04 · Recommended implementation sequence</p>
+      <h2>Six gates, each independently reviewable</h2>
+      <p class="section-intro">
+        The phases deliberately establish measurement and event boundaries
+        before changing cache or data-loading behavior. Each implementation PR
+        targets <code>staging</code>, contains only its task-owned changes, and
+        must leave the app usable before the next phase begins.
+      </p>
+
+      <div class="timeline">
+        <article class="phase">
+          <div class="phase-index">0</div>
+          <div class="phase-body">
+            <h3>Baseline and regression harness</h3>
+            <p class="muted">
+              Build deterministic large-canvas fixtures and counters before
+              changing architecture. Record build, paint, query, write, memory,
+              and load behavior in profile mode on the target tablet.
+            </p>
+            <div class="phase-meta">
+              <span>Risk: Low</span>
+              <span>Dependency: None</span>
+              <span>Output: Reproducible evidence</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="phase">
+          <div class="phase-index">1</div>
+          <div class="phase-body">
+            <h3>Canvas event isolation + Adaptive pen UX</h3>
+            <p class="muted">
+              Split controller observation into narrow channels, remove the
+              redundant whole-editor listener, prevent toolbar rebuilds during
+              live ink, add equality guards, coalesce continuous tool-setting
+              persistence, and expose the adaptive switch over the existing
+              width mode.
+            </p>
+            <div class="phase-meta">
+              <span>Risk: Medium</span>
+              <span>Dependency: Phase 0</span>
+              <span>Expected payoff: Highest</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="phase">
+          <div class="phase-index">2</div>
+          <div class="phase-body">
+            <h3>True visible-set processing + linear hydration</h3>
+            <p class="muted">
+              Add O(1) element lookup and stable paint order, use spatial hits
+              directly for painting and raster scheduling, combine canvas
+              metadata reads, and bulk-build the element store and spatial
+              index during load.
+            </p>
+            <div class="phase-meta">
+              <span>Risk: Medium</span>
+              <span>Dependency: Phase 1 event channels</span>
+              <span>Expected payoff: Large canvases</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="phase">
+          <div class="phase-index">3</div>
+          <div class="phase-body">
+            <h3>Cache longevity + incremental live ink</h3>
+            <p class="muted">
+              Dirty only affected tiles, separate tile and stroke-path
+              invalidation, cache the stable prefix of an active stroke, and
+              preserve only a small recomputed tail for live feedback.
+            </p>
+            <div class="phase-meta">
+              <span>Risk: Medium–High</span>
+              <span>Dependency: Phase 2 ID/bounds tracking</span>
+              <span>Expected payoff: Long sessions</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="phase">
+          <div class="phase-index">4</div>
+          <div class="phase-body">
+            <h3>Zoom-aware image memory</h3>
+            <p class="muted">
+              Preserve original image files while decoding bounded,
+              viewport-appropriate raster buckets. Track access recency for
+              eviction and keep visible raster memory behavior explicit.
+            </p>
+            <div class="phase-meta">
+              <span>Risk: Medium</span>
+              <span>Dependency: Phase 2 scheduler</span>
+              <span>Expected payoff: Media-heavy canvases</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="phase">
+          <div class="phase-index">5</div>
+          <div class="phase-body">
+            <h3>Background data and retained-screen work</h3>
+            <p class="muted">
+              Batch focus-history children, add the missing ritual-check index,
+              decouple live runtime writes from broad history work, narrow 1 Hz
+              subscriptions, aggregate reflection counts, and schedule library
+              cleanup once after startup settles.
+            </p>
+            <div class="phase-meta">
+              <span>Risk: Low–Medium</span>
+              <span>Dependency: Independent after Phase 1</span>
+              <span>Expected payoff: Battery and data growth</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <details open>
+        <summary>Phase 0 · Baseline and performance fixtures</summary>
+        <div class="details-body">
+          <h4>Implement</h4>
+          <ul>
+            <li>
+              Add deterministic fixture builders for 100, 1,000, and 10,000
+              mixed canvas elements, including sparse off-screen content.
+            </li>
+            <li>
+              Add a long-stroke scenario with enough points to expose
+              per-frame full-path rebuilding.
+            </li>
+            <li>
+              Add a media scenario with several large images and PDFs.
+            </li>
+            <li>
+              Add a focus-history fixture with hundreds of sessions,
+              distractions, and ritual checks.
+            </li>
+            <li>
+              Record controller notifications, widget builds, element lookups,
+              paint candidates, persistence calls, SQL statement counts, frame
+              timings, and decoded raster bytes.
+            </li>
+          </ul>
+          <h4>Gate</h4>
+          <ul class="checklist">
+            <li>Fixtures are deterministic and never use production note data.</li>
+            <li>Baseline results identify revision, device, build mode, and scenario.</li>
+            <li>Performance instrumentation is excluded or inert in release builds.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Phase 1 · Event isolation, write coalescing, and Adaptive pen</summary>
+        <div class="details-body">
+          <h4>Implement</h4>
+          <ul>
+            <li>
+              Introduce narrow listenables/revision channels for load state,
+              viewport, committed elements, live stroke, selection/overlay, and
+              toolbar/tool state.
+            </li>
+            <li>
+              Keep mutation ownership in <code>CanvasController</code>; do not
+              migrate the editor to a second state architecture.
+            </li>
+            <li>
+              Remove the full-controller <code>ListenableBuilder</code> around
+              the loaded editor. Route import errors through a targeted event or
+              error channel.
+            </li>
+            <li>
+              Give each painter only the revision values that can change its
+              output. Ensure toolbar and radial-wheel painters do not observe
+              live-stroke or hover revisions.
+            </li>
+            <li>
+              Add equality guards to continuous setters. Update UI state
+              immediately, debounce intermediate repository writes, and force
+              the exact final value on gesture end.
+            </li>
+            <li>
+              Implement the Adaptive pen UX contract using the existing
+              <code>PenWidthMode</code>, persistence column, and preset JSON.
+            </li>
+          </ul>
+          <h4>Gate</h4>
+          <ul class="checklist">
+            <li>A pen-move frame does not rebuild the toolbar or editor shell.</li>
+            <li>A hover-only change does not rebuild committed elements.</li>
+            <li>A tool-only change does not repaint the grid or committed layer.</li>
+            <li>A slider drag updates immediately and produces a bounded write count.</li>
+            <li>Adaptive on/off survives canvas close, reopen, and preset switching.</li>
+            <li>Existing strokes retain identical point data and stored width.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Phase 2 · Visible-set processing and bulk load</summary>
+        <div class="details-body">
+          <h4>Implement</h4>
+          <ul>
+            <li>
+              Maintain an element ID map and a stable z/layer paint-order map
+              alongside the ordered list.
+            </li>
+            <li>
+              Update list, maps, spatial index, revisions, and raster ownership
+              through one invariant-preserving mutation boundary.
+            </li>
+            <li>
+              Resolve spatial-query IDs through the map and sort only visible
+              hits. Add selected preview elements only when required.
+            </li>
+            <li>
+              Schedule image/PDF work from visible element hits rather than
+              scanning the complete store.
+            </li>
+            <li>
+              Replace repeated canvas-row reads with one metadata snapshot.
+            </li>
+            <li>
+              Hydrate already sorted elements in bulk, rebuild the spatial index
+              once, compute the next z-index once, and emit one final loaded
+              notification.
+            </li>
+          </ul>
+          <h4>Gate</h4>
+          <ul class="checklist">
+            <li>
+              A viewport containing K elements performs lookups and ordering for
+              K hits, independent of total N except when intentionally rebuilding.
+            </li>
+            <li>Add, remove, undo, redo, reorder, layer change, and raster swap keep all stores consistent.</li>
+            <li>Opening a canvas produces the same element order, bounds, layers, and viewport as before.</li>
+            <li>Malformed or missing detail rows retain current safe behavior.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Phase 3 · Local cache invalidation and incremental live stroke</summary>
+        <div class="details-body">
+          <h4>Implement</h4>
+          <ul>
+            <li>
+              Derive dirty tile keys from old and new world bounds for add,
+              remove, edit, transform, layer, and raster changes.
+            </li>
+            <li>
+              Preserve unaffected tile pictures and per-element stroke paths.
+            </li>
+            <li>
+              Keep a global clear for schema-level, ordering-wide, or defensive
+              recovery events only.
+            </li>
+            <li>
+              Split live ink into a cached stable prefix plus a small recomputed
+              tail. Reconcile both into the complete stroke on commit.
+            </li>
+            <li>
+              Preserve the original point stream exactly; preview simplification
+              must never become persisted data.
+            </li>
+          </ul>
+          <h4>Gate</h4>
+          <ul class="checklist">
+            <li>Editing one element retains cache entries outside its dirty bounds.</li>
+            <li>Moving an element invalidates both its old and new regions.</li>
+            <li>A long-stroke preview does not rebuild geometry from point zero every frame.</li>
+            <li>Committed stroke points, pressure, tilt, timestamps, and velocity are unchanged.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Phase 4 · View-sized image rasters and memory policy</summary>
+        <div class="details-body">
+          <h4>Implement</h4>
+          <ul>
+            <li>
+              Decode imports from <code>ImmutableBuffer.fromFilePath</code>
+              rather than first copying the full encoded file into a Dart byte
+              array.
+            </li>
+            <li>
+              Select target pixel dimensions from element bounds, viewport
+              scale, device pixel ratio, and a capped image scale ladder.
+            </li>
+            <li>
+              Request a sharper raster only after crossing a bucket threshold;
+              do not re-decode on every pinch frame.
+            </li>
+            <li>
+              Track raster access recency and evict least-recently-used
+              off-screen rasters first.
+            </li>
+            <li>
+              Keep the original file path authoritative for export and future
+              higher-resolution decoding.
+            </li>
+          </ul>
+          <h4>Gate</h4>
+          <ul class="checklist">
+            <li>No imported source file is resized, replaced, or deleted.</li>
+            <li>Decoded image dimensions obey the configured maximum side.</li>
+            <li>Zooming in eventually improves visible sharpness without per-frame decode churn.</li>
+            <li>Eviction never disposes a raster still used by a visible element.</li>
+            <li>Export continues to use durable media and preserves expected fidelity.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Phase 5 · Focus, goal, library, and retained branch work</summary>
+        <div class="details-body">
+          <h4>Implement</h4>
+          <ul>
+            <li>
+              Replace focus history’s per-session child reads with one session
+              query plus batched distraction and ritual-check queries.
+            </li>
+            <li>
+              Add an index for <code>focus_session_ritual_checks.session_id</code>
+              through the normal Drift migration and schema-snapshot workflow.
+            </li>
+            <li>
+              Prevent 15-second runtime checkpoint updates from reconstructing
+              full history details unless displayed history data actually changed.
+            </li>
+            <li>
+              Use Riverpod selection so Focus Home observes only restoring,
+              session-present, and review-pending flags. Isolate 1 Hz rebuilding
+              to the timer display and phase-dependent controls.
+            </li>
+            <li>
+              Replace reflection row fan-out with an aggregate count per card.
+            </li>
+            <li>
+              Run orphan cleanup once per process after the first useful frame
+              or during idle, while keeping its path ownership protections.
+            </li>
+            <li>
+              Confirm whether the library’s explicit initial read is necessary
+              before removing it.
+            </li>
+          </ul>
+          <h4>Gate</h4>
+          <ul class="checklist">
+            <li>Focus history refresh uses a bounded query count independent of session count.</li>
+            <li>Migration tests prove the new index upgrades existing databases safely.</li>
+            <li>The focus engine remains wall-clock correct while its UI is hidden.</li>
+            <li>Reflection badges remain exact after create, edit, move, and delete.</li>
+            <li>Cleanup never removes a referenced media or thumbnail file.</li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <section id="verification">
+      <p class="eyebrow">05 · Verification contract</p>
+      <h2>Prove less work without weakening correctness</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Automated proof</th>
+              <th>Profile/device proof</th>
+              <th>Regression guard</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Notifications</td>
+              <td>Build counters and targeted notifier tests</td>
+              <td>Ink, hover, pan, selection, and settings traces</td>
+              <td>Unrelated subtree build count remains zero</td>
+            </tr>
+            <tr>
+              <td>Visible processing</td>
+              <td>10,000 total elements with a small visible K</td>
+              <td>Pan and zoom across dense/sparse regions</td>
+              <td>Candidate work follows K, not N</td>
+            </tr>
+            <tr>
+              <td>Hydration</td>
+              <td>Store/index invariant and one-notification tests</td>
+              <td>Cold-open timing for 100/1,000/10,000 elements</td>
+              <td>Identical durable document snapshot</td>
+            </tr>
+            <tr>
+              <td>Live ink</td>
+              <td>Long-stroke tail/prefix and final-point equality tests</td>
+              <td>10-second continuous stylus stroke</td>
+              <td>No lost pressure, tilt, time, or velocity data</td>
+            </tr>
+            <tr>
+              <td>Adaptive pen</td>
+              <td>Mode mapping, persistence, preset, hover, and widget tests</td>
+              <td>Draw at multiple zoom levels with switch on and off</td>
+              <td>Old strokes never change</td>
+            </tr>
+            <tr>
+              <td>Raster memory</td>
+              <td>Bucket, cap, eviction, and disposal tests</td>
+              <td>Several large images and PDFs visible/off-screen</td>
+              <td>Original files and export fidelity remain intact</td>
+            </tr>
+            <tr>
+              <td>Feature data</td>
+              <td>Query-count, migration, aggregate, and cleanup tests</td>
+              <td>Active focus timer while navigating every retained branch</td>
+              <td>Timer and counts remain exact</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid-2">
+        <article class="card guardrail">
+          <h3>Per-PR verification</h3>
+          <ul>
+            <li>Focused unit/widget/database tests for changed paths</li>
+            <li><code>flutter analyze</code></li>
+            <li>Relevant full test suite before publication</li>
+            <li><code>git diff --check</code></li>
+            <li>Task-owned staged diff review</li>
+            <li>Profile comparison against the Phase 0 baseline</li>
+          </ul>
+        </article>
+        <article class="card guardrail">
+          <h3>Final Android gate</h3>
+          <ul>
+            <li>Build release for Android arm64-v8a.</li>
+            <li>Name the handoff APK <code>zenno.apk</code>.</li>
+            <li>Install and test on the target Galaxy Tab S9 FE.</li>
+            <li>Exercise pen, zoom, long stroke, large canvas, media, and focus timer.</li>
+            <li>
+              After the feature sequence is complete, ask whether to use
+              Computer Use with the authenticated Helium browser to upload the
+              APK to Google Drive.
+            </li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>Frame target:</strong> use the Phase 0 device baseline to set
+        enforceable thresholds. The intended steady-state target is 60 Hz
+        interaction on the Galaxy Tab S9 FE, but a PR must demonstrate which
+        frame-time percentile and scenario improved rather than claiming
+        performance from code shape alone.
+      </div>
+    </section>
+
+    <section id="decisions">
+      <p class="eyebrow">06 · Risks, non-goals, and decisions</p>
+      <h2>Protect flow by keeping each change narrow</h2>
+      <div class="grid-3">
+        <article class="card risk">
+          <h3>Store divergence</h3>
+          <p class="muted">
+            Adding ID/order maps can create multiple sources of truth.
+          </p>
+          <p>
+            <strong>Mitigation:</strong> one mutation boundary, invariant tests,
+            and defensive rebuild only as recovery—not normal flow.
+          </p>
+        </article>
+        <article class="card risk">
+          <h3>Stale cache regions</h3>
+          <p class="muted">
+            Local invalidation can leave visual ghosts if old bounds are lost.
+          </p>
+          <p>
+            <strong>Mitigation:</strong> commands supply before/after bounds;
+            transformations dirty both; global clear remains available.
+          </p>
+        </article>
+        <article class="card risk">
+          <h3>Settings persistence gap</h3>
+          <p class="muted">
+            Debouncing continuous controls can lose the final value if only a
+            timer is used.
+          </p>
+          <p>
+            <strong>Mitigation:</strong> persist exactly on gesture end and use
+            debounce only for intermediate safety checkpoints.
+          </p>
+        </article>
+        <article class="card risk">
+          <h3>Preview/data coupling</h3>
+          <p class="muted">
+            Optimizing live ink must not simplify the stored point stream.
+          </p>
+          <p>
+            <strong>Mitigation:</strong> separate preview geometry from the
+            authoritative point buffer and assert byte-level round trips.
+          </p>
+        </article>
+        <article class="card risk">
+          <h3>Image quality thrash</h3>
+          <p class="muted">
+            Too many raster buckets can trade memory savings for repeated decode.
+          </p>
+          <p>
+            <strong>Mitigation:</strong> a small scale ladder, hysteresis, capped
+            concurrency, and visible-priority scheduling.
+          </p>
+        </article>
+        <article class="card risk">
+          <h3>Hidden timer correctness</h3>
+          <p class="muted">
+            Pausing UI work must not pause the focus engine.
+          </p>
+          <p>
+            <strong>Mitigation:</strong> keep wall-clock transitions and durable
+            checkpoints active; narrow only presentation emissions.
+          </p>
+        </article>
+      </div>
+
+      <div class="grid-2">
+        <article class="card">
+          <h3>Explicit non-goals</h3>
+          <ul>
+            <li>No replacement of Drift, Riverpod, or GoRouter.</li>
+            <li>No rewrite of the canvas command architecture.</li>
+            <li>No lazy stroke persistence or destructive media compression.</li>
+            <li>No arbitrary SQLite pragma tuning before query work is fixed.</li>
+            <li>No speculative visual simplification or removal of useful UI.</li>
+            <li>No dependency-upgrade campaign inside performance PRs.</li>
+          </ul>
+        </article>
+        <article class="card decision">
+          <h3>One product decision to confirm</h3>
+          <p class="muted">
+            Should Adaptive pen be remembered independently by each brush
+            preset, or should one switch control every brush?
+          </p>
+          <p>
+            <strong>Recommended:</strong> per preset. It matches the current
+            source model, preserves existing saved behavior, and lets a
+            highlighter remain canvas-scaled while a pen remains screen-adaptive.
+          </p>
+        </article>
+      </div>
+
+      <details>
+        <summary>Definition of done for the full optimization program</summary>
+        <div class="details-body">
+          <ul class="checklist">
+            <li>Every high-frequency controller event has a documented narrow consumer set.</li>
+            <li>Visible paint and raster scheduling avoid full-element scans.</li>
+            <li>Canvas hydration is linear and emits one completed-load update.</li>
+            <li>Tile/path caches survive unrelated element changes.</li>
+            <li>Long live strokes reuse stable geometry without losing source points.</li>
+            <li>Large image rasters are view-sized while source media remains untouched.</li>
+            <li>Focus history has bounded query count and hidden branches avoid unnecessary rebuilds.</li>
+            <li>Adaptive pen is discoverable, persisted, preset-correct, and non-destructive.</li>
+            <li>Profile results are recorded against the original baseline on the target device.</li>
+            <li>The arm64-v8a release APK is built as <code>zenno.apk</code> and manually verified.</li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <footer>
+      Prepared from Zenno source at <code>origin/staging@51db0ba</code>.
+      This document is an implementation plan; it does not claim measured
+      performance improvements until the Phase 0 baseline and later profile
+      comparisons are recorded.
+    </footer>
+  </main>
+</body>
+</html>

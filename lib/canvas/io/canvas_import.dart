@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/pdf/pdf_raster_service.dart';
+import 'package:zenno/canvas/raster/image_raster_decoder.dart';
 import 'package:zenno/core/util/id.dart';
 
 /// A picked-and-prepared image, ready to become an [ImageElement].
@@ -21,6 +22,7 @@ class ImportedImage {
     required this.storedPath,
     required this.intrinsicSize,
     required this.raster,
+    this.rasterScaleBucket = 0,
   });
 
   /// Absolute path of the app-local copy of the picture.
@@ -32,6 +34,9 @@ class ImportedImage {
   /// The decoded bitmap, handed straight to the first [ImageElement] so the
   /// picture is visible the instant it lands on the canvas.
   final ui.Image raster;
+
+  /// Resolution-ladder bucket used for [raster].
+  final int rasterScaleBucket;
 }
 
 /// A picked-and-prepared PDF, ready to become one [PdfElement] per page.
@@ -94,16 +99,19 @@ class CanvasImporter {
     }
 
     final String storedPath = await _copyIntoMediaDir(sourcePath);
-    final Uint8List bytes = await File(storedPath).readAsBytes();
-    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-    final ui.FrameInfo frame = await codec.getNextFrame();
-    codec.dispose();
-    final ui.Image image = frame.image;
+    final DecodedImageRaster? decoded = await ImageRasterDecoder.decodeFile(
+      storedPath,
+      scaleBucket: RasterScalePolicy.importBucket,
+    );
+    if (decoded == null) {
+      throw StateError('Could not decode imported image.');
+    }
 
     return ImportedImage(
       storedPath: storedPath,
-      intrinsicSize: ui.Size(image.width.toDouble(), image.height.toDouble()),
-      raster: image,
+      intrinsicSize: decoded.intrinsicSize,
+      raster: decoded.image,
+      rasterScaleBucket: decoded.scaleBucket,
     );
   }
 

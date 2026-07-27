@@ -1,11 +1,12 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:perfect_freehand/perfect_freehand.dart' hide StrokePoint;
 
 import 'package:zenno/canvas/engine/stroke_builder.dart';
 import 'package:zenno/canvas/engine/stroke_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
-import 'package:zenno/canvas/render/live_stroke_painter.dart';
 
 List<StrokePoint> _line({
   int count = 40,
@@ -19,6 +20,77 @@ List<StrokePoint> _line({
 }
 
 void main() {
+  test('stroke outline uses continuous curves between outline samples', () {
+    const points = <StrokePoint>[
+      StrokePoint(0, 0, 0.35),
+      StrokePoint(16, 6, 0.5),
+      StrokePoint(28, 22, 0.75),
+      StrokePoint(44, 15, 0.6),
+      StrokePoint(60, 32, 0.45),
+    ];
+    final StrokeToolStyle style = strokeStyleFor(StrokeToolKind.pen);
+    final options = StrokeOptions(
+      size: 8,
+      thinning: style.thinning,
+      smoothing: style.smoothing,
+      streamline: 0,
+      simulatePressure: false,
+      isComplete: true,
+      start: StrokeEndOptions.start(
+        cap: style.cap,
+        taperEnabled: style.tapers,
+        customTaper: style.taperLengthFactor * 8,
+      ),
+      end: StrokeEndOptions.end(
+        cap: style.cap,
+        taperEnabled: style.tapers,
+        customTaper: style.taperLengthFactor * 8,
+      ),
+    );
+    final List<Offset> outline = getStroke(<PointVector>[
+      for (final point in points) PointVector(point.x, point.y, point.pressure),
+    ], options: options);
+    final Path path = buildStrokeOutline(
+      points,
+      size: options.size,
+      isComplete: options.isComplete,
+    );
+
+    final PathMetric metric = path.computeMetrics().single;
+    final Set<int> tangentAngles = <int>{};
+    final int sampleCount = outline.length * 8;
+    for (var i = 0; i < sampleCount; i += 1) {
+      final Tangent? tangent = metric.getTangentForOffset(
+        metric.length * i / sampleCount,
+      );
+      if (tangent != null) {
+        tangentAngles.add((tangent.angle * 10000 / math.pi).round());
+      }
+    }
+
+    expect(tangentAngles.length, greaterThan(outline.length));
+  });
+
+  test('a thin stroke stays inside its sampled centerline bounds', () {
+    const points = <StrokePoint>[
+      StrokePoint(0, 0, 0.5),
+      StrokePoint(10, 0, 0.5),
+      StrokePoint(20, 0, 0.5),
+      StrokePoint(30, -40, 0.5),
+    ];
+
+    // The highlighter is the constant-width, untapered tool, so the outline
+    // can only be as wide as `size` around the centerline.
+    final Path path = buildStrokeOutline(
+      points,
+      size: 0.1,
+      tool: StrokeToolKind.highlighter,
+      isComplete: true,
+    );
+
+    expect(path.getBounds().bottom, lessThanOrEqualTo(0.1));
+  });
+
   group('buildStrokeOutline', () {
     test('empty input yields an empty path', () {
       expect(buildStrokeOutline(const <StrokePoint>[], size: 4).computeMetrics(),
@@ -136,165 +208,6 @@ void main() {
         ]),
         isTrue,
       );
-    });
-  });
-
-  group('LiveStrokePathCache', () {
-    Stroke strokeOf(int count) => Stroke(
-      id: 'live',
-      points: <StrokePoint>[
-        for (int i = 0; i < count; i++) StrokePoint(i * 2.0, 0, 0.5),
-      ],
-      color: 0xFFFFFFFF,
-      width: 6,
-    );
-
-    test('a short stroke is rebuilt whole', () {
-      final cache = LiveStrokePathCache();
-      final geometry = cache.geometryFor(
-        stroke: strokeOf(20),
-        revision: 1,
-        blockPaint: Paint(),
-      );
-      expect(geometry.prefix, isNull);
-      expect(geometry.tail.getBounds().width, greaterThan(0));
-    });
-
-    test('a long stroke freezes a prefix and keeps a short tail', () {
-      final cache = LiveStrokePathCache();
-      final geometry = cache.geometryFor(
-        stroke: strokeOf(400),
-        revision: 1,
-        blockPaint: Paint(),
-      );
-      expect(geometry.prefix, isNotNull);
-
-      // The tail covers only the unfrozen end of the stroke, so it spans a
-      // small fraction of the stroke's total length.
-      final double tailWidth = geometry.tail.getBounds().width;
-      expect(tailWidth, lessThan(400));
-    });
-
-    test('per-sample cost stays flat as the stroke grows', () {
-      final cache = LiveStrokePathCache();
-      final paint = Paint();
-
-      double timeAround(int from, int to) {
-        final watch = Stopwatch()..start();
-        for (int n = from; n <= to; n++) {
-          cache.geometryFor(
-            stroke: strokeOf(n),
-            revision: n,
-            blockPaint: paint,
-          );
-        }
-        watch.stop();
-        return watch.elapsedMicroseconds / (to - from + 1);
-      }
-
-      final double early = timeAround(200, 260);
-      final double late = timeAround(1200, 1260);
-
-      // Without a frozen prefix this ratio grows linearly with stroke length.
-      expect(late, lessThan(early * 6));
-    });
-
-    test('switching strokes discards the previous prefix', () {
-      final cache = LiveStrokePathCache();
-      cache.geometryFor(
-        stroke: strokeOf(400),
-        revision: 1,
-        blockPaint: Paint(),
-      );
-      final next = cache.geometryFor(
-        stroke: const Stroke(
-          id: 'other',
-          points: <StrokePoint>[
-            StrokePoint(0, 0, 0.5),
-            StrokePoint(10, 0, 0.5),
-          ],
-          color: 0xFFFFFFFF,
-          width: 6,
-        ),
-        revision: 2,
-        blockPaint: Paint(),
-      );
-      expect(next.prefix, isNull);
-    });
-  });
-
-  group('live tail prediction', () {
-    Stroke straight(int count) => Stroke(
-      id: 'live',
-      points: <StrokePoint>[
-        for (int i = 0; i < count; i++) StrokePoint(i * 6.0, 0, 0.5),
-      ],
-      color: 0xFFFFFFFF,
-      width: 4,
-    );
-
-    test('a straight stroke is drawn slightly ahead of the last sample', () {
-      final cache = LiveStrokePathCache();
-      final Stroke stroke = straight(6);
-      final double lastSampleX = stroke.points.last.x;
-
-      final geometry = cache.geometryFor(
-        stroke: stroke,
-        revision: 1,
-        blockPaint: Paint(),
-      );
-
-      // The painted tail reaches past the newest sample, closing part of the
-      // frame of latency between the nib and the ink.
-      expect(geometry.tail.getBounds().right, greaterThan(lastSampleX));
-    });
-
-    test('a sharp corner is not extrapolated through', () {
-      final cache = LiveStrokePathCache();
-      // Travels right, then turns hard downward.
-      const corner = Stroke(
-        id: 'corner',
-        points: <StrokePoint>[
-          StrokePoint(0, 0, 0.5),
-          StrokePoint(20, 0, 0.5),
-          StrokePoint(40, 0, 0.5),
-          StrokePoint(40, 20, 0.5),
-        ],
-        color: 0xFFFFFFFF,
-        width: 4,
-      );
-
-      final geometry = cache.geometryFor(
-        stroke: corner,
-        revision: 1,
-        blockPaint: Paint(),
-      );
-
-      // Predicting through the turn would spike the stroke past the corner.
-      expect(geometry.tail.getBounds().bottom, lessThan(40));
-    });
-
-    test('the predicted step is capped', () {
-      final cache = LiveStrokePathCache();
-      // A huge jump between samples must not produce a huge prediction.
-      const jump = Stroke(
-        id: 'jump',
-        points: <StrokePoint>[
-          StrokePoint(0, 0, 0.5),
-          StrokePoint(400, 0, 0.5),
-          StrokePoint(800, 0, 0.5),
-        ],
-        color: 0xFFFFFFFF,
-        width: 4,
-      );
-
-      final geometry = cache.geometryFor(
-        stroke: jump,
-        revision: 1,
-        blockPaint: Paint(),
-      );
-
-      expect(geometry.tail.getBounds().right, lessThan(800 + 20));
     });
   });
 

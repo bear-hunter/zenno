@@ -8,20 +8,9 @@ part of 'library_providers.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Provides the singleton [LibraryRepository], wired to the app database.
-///
-/// Kept alive deliberately: this repository owns orphaned-file housekeeping,
-/// and an autoDispose rebuild would re-run that scan every time the library
-/// screen is re-entered.
 
 @ProviderFor(libraryRepository)
 final libraryRepositoryProvider = LibraryRepositoryProvider._();
-
-/// Provides the singleton [LibraryRepository], wired to the app database.
-///
-/// Kept alive deliberately: this repository owns orphaned-file housekeeping,
-/// and an autoDispose rebuild would re-run that scan every time the library
-/// screen is re-entered.
 
 final class LibraryRepositoryProvider
     extends
@@ -31,11 +20,6 @@ final class LibraryRepositoryProvider
           LibraryRepository
         >
     with $Provider<LibraryRepository> {
-  /// Provides the singleton [LibraryRepository], wired to the app database.
-  ///
-  /// Kept alive deliberately: this repository owns orphaned-file housekeeping,
-  /// and an autoDispose rebuild would re-run that scan every time the library
-  /// screen is re-entered.
   LibraryRepositoryProvider._()
     : super(
         from: null,
@@ -70,4 +54,4 @@ final class LibraryRepositoryProvider
   }
 }
 
-String _$libraryRepositoryHash() => r'e93f1a20594d02648fb3da64fd15f596dad574a0';
+String _$libraryRepositoryHash() => r'649e6300c99b2d9129bfa0e8a40f8ac17388190d';

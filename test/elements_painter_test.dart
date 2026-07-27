@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/stroke.dart';
@@ -35,14 +36,26 @@ void _paint({
   required ElementsTileCache cache,
   required List<CanvasElement> elements,
   required ViewportState viewport,
+  int? revision,
+  CanvasElementDamage? damage,
 }) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
+  final Map<String, CanvasElement> elementsById = <String, CanvasElement>{
+    for (final CanvasElement element in elements) element.id: element,
+  };
   ElementsPainter(
     elements: elements,
     spatialIndex: _index(elements),
+    allElementsById: elementsById,
+    paintOrderById: <String, int>{
+      for (var index = 0; index < elements.length; index += 1)
+        elements[index].id: index,
+    },
     viewport: viewport,
     tileCache: cache,
+    elementsRevision: revision,
+    elementDamage: damage,
   ).paint(canvas, const Size(256, 256));
   recorder.endRecording().dispose();
 }
@@ -84,6 +97,63 @@ void main() {
       viewport: const ViewportState(translation: Offset(-3000, 0)),
     );
     expect(cache.tileCount, 1);
+
+    cache.dispose();
+  });
+
+  test('local damage preserves cached pictures outside changed bounds', () {
+    final cache = ElementsTileCache();
+    final initial = <CanvasElement>[
+      _ink('near', const Rect.fromLTWH(20, 20, 100, 100)),
+      _ink('far', const Rect.fromLTWH(3000, 20, 100, 100), zIndex: 1),
+    ];
+
+    _paint(
+      cache: cache,
+      elements: initial,
+      viewport: ViewportState.initial,
+      revision: 1,
+      damage: const CanvasElementDamage(
+        fromRevision: 0,
+        toRevision: 1,
+        isFull: true,
+      ),
+    );
+    _paint(
+      cache: cache,
+      elements: initial,
+      viewport: const ViewportState(translation: Offset(-3000, 0)),
+      revision: 1,
+    );
+    final int buildsBeforeEdit = cache.pictureBuildCount;
+
+    final updated = <CanvasElement>[
+      _ink('near', const Rect.fromLTWH(40, 20, 100, 100)),
+      initial[1],
+    ];
+    const damage = CanvasElementDamage(
+      fromRevision: 1,
+      toRevision: 2,
+      isFull: false,
+      bounds: Rect.fromLTWH(20, 20, 120, 100),
+    );
+    _paint(
+      cache: cache,
+      elements: updated,
+      viewport: ViewportState.initial,
+      revision: 2,
+      damage: damage,
+    );
+    final int buildsAfterLocalEdit = cache.pictureBuildCount;
+    expect(buildsAfterLocalEdit, greaterThan(buildsBeforeEdit));
+
+    _paint(
+      cache: cache,
+      elements: updated,
+      viewport: const ViewportState(translation: Offset(-3000, 0)),
+      revision: 2,
+    );
+    expect(cache.pictureBuildCount, buildsAfterLocalEdit);
 
     cache.dispose();
   });

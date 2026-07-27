@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyzer 07 — Zenno input and gesture safety audit</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101116;
+      --panel: #181a22;
+      --panel-2: #20232d;
+      --text: #f1f2f6;
+      --muted: #aeb3c2;
+      --line: #343846;
+      --critical: #ff6074;
+      --high: #ff9b54;
+      --medium: #ffd166;
+      --low: #74c0fc;
+      --good: #72d6a0;
+      --accent: #a9b8ff;
+      --code: #d7dcff;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    code { color: var(--code); overflow-wrap: anywhere; }
+    .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 22px 18px;
+      border-right: 1px solid var(--line);
+      background: #13151b;
+    }
+    nav strong { display: block; margin-bottom: 12px; font-size: 16px; }
+    nav a { display: block; padding: 5px 0; color: var(--muted); text-decoration: none; }
+    nav a:hover { color: var(--text); }
+    main { width: min(1120px, 100%); padding: 38px 42px 80px; }
+    h1 { margin: 0 0 6px; font-size: clamp(27px, 4vw, 42px); line-height: 1.12; }
+    h2 { margin: 48px 0 16px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h3 { margin: 0; font-size: 19px; }
+    p { margin: 10px 0; }
+    ul, ol { padding-left: 22px; }
+    .subtitle, .muted { color: var(--muted); }
+    .notice, .summary, .finding, .iteration, .coverage {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin: 14px 0;
+    }
+    .notice { border-left: 4px solid var(--accent); }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .metric { background: var(--panel-2); border-radius: 9px; padding: 12px; }
+    .metric b { display: block; font-size: 24px; }
+    .finding { scroll-margin-top: 20px; }
+    .finding.critical { border-left: 5px solid var(--critical); }
+    .finding.high { border-left: 5px solid var(--high); }
+    .finding.medium { border-left: 5px solid var(--medium); }
+    .finding.low { border-left: 5px solid var(--low); }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 9px 0 13px; }
+    .tag { padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; }
+    .sev-critical { color: var(--critical); }
+    .sev-high { color: var(--high); }
+    .sev-medium { color: var(--medium); }
+    .sev-low { color: var(--low); }
+    .evidence { background: #11131a; border-radius: 8px; padding: 11px 13px; margin: 10px 0; }
+    .evidence li { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel-2); }
+    .status-supported { color: var(--good); }
+    .status-gap { color: var(--medium); }
+    .status-corrected { color: var(--low); }
+    .small { font-size: 13px; }
+    @media (max-width: 820px) {
+      .layout { display: block; }
+      nav { position: static; width: auto; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      nav a { display: inline-block; margin-right: 14px; }
+      main { padding: 26px 18px 60px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="Report navigation">
+    <strong>Analyzer 07</strong>
+    <a href="#summary">Executive summary</a>
+    <a href="#ownership">Input ownership map</a>
+    <a href="#method">Method and limits</a>
+    <a href="#findings">Findings</a>
+    <a href="#f-01">F-01 Touch-chord history loss</a>
+    <a href="#f-02">F-02 Palm moves selections</a>
+    <a href="#f-03">F-03 Toolbar bypasses arbitration</a>
+    <a href="#f-04">F-04 Pre-pen palm pan</a>
+    <a href="#f-05">F-05 Stale pinch baseline</a>
+    <a href="#f-06">F-06 Long-press steals dots</a>
+    <a href="#f-07">F-07 Button transitions ignored</a>
+    <a href="#f-08">F-08 Trackpad route incomplete</a>
+    <a href="#f-09">F-09 Third-touch dual transform</a>
+    <a href="#f-10">F-10 “Temporary” tap is persistent</a>
+    <a href="#f-11">F-11 Touch lasso runs concurrently</a>
+    <a href="#f-12">F-12 Pinch and shortcut both win</a>
+    <a href="#f-13">F-13 Painted ring draws through</a>
+    <a href="#f-14">F-14 Wheel lies after tool toggle</a>
+    <a href="#f-15">F-15 Radial trigger cannot mark-select</a>
+    <a href="#f-16">F-16 Temporary pan follows links</a>
+    <a href="#f-17">F-17 Library whole-card drag</a>
+    <a href="#f-18">F-18 Kanban whole-card drag</a>
+    <a href="#f-19">F-19 Selection gesture splits ownership</a>
+    <a href="#f-20">F-20 Drag cannot reach off-screen targets</a>
+    <a href="#f-21">F-21 Column drop slot is 4–8 px</a>
+    <a href="#tests">Coverage and gaps</a>
+    <a href="#corrections">Challenged claims</a>
+    <a href="#iterations">Iteration log</a>
+  </nav>
+  <main>
+    <header>
+      <h1>Zenno touch, stylus, palm, and gesture safety audit</h1>
+      <p class="subtitle">Analyzer 07 · analysis-only · current worktree · continuously revised</p>
+      <div class="notice">
+        <strong>Safety boundary.</strong> This report is the only file written. No source, configuration,
+        dependency, test, Git, branch, remote, PR, or external-service state was changed. No build, test,
+        install, app run, or destructive command was performed.
+      </div>
+    </header>
+
+    <section id="summary">
+      <h2>Executive summary</h2>
+      <div class="summary-grid">
+        <div class="metric"><b class="sev-critical">1</b>critical</div>
+        <div class="metric"><b class="sev-high">6</b>high</div>
+        <div class="metric"><b class="sev-medium">12</b>medium</div>
+        <div class="metric"><b class="sev-low">2</b>low</div>
+      </div>
+      <div class="summary">
+        <p><strong>Primary conclusion:</strong> Zenno rejects touch-driven viewport changes only after a
+        tool pointer is active inside <code>CanvasView</code>. That protection is too local and starts too
+        late. Touch contacts recorded before the pen can still invoke history shortcuts, a palm on selected
+        content can capture the sole tool-pointer slot and commit a move, and the separate toolbar subtree can
+        accept palm taps while the stylus is drawing.</p>
+        <p>The worst sequence is recoverability-destroying: an unintended undo occurs while a stroke is live,
+        then the pen-up commit clears the redo stack. The previously undone note mutation is no longer
+        recoverable through Zenno's history. The relevant chain is directly supported by
+        <code>canvas_view.dart:980-997</code>, <code>canvas_controller.dart:1140-1166</code>, and
+        <code>canvas_controller.dart:1123-1134</code>.</p>
+        <p>A repository-wide gesture scan also found organizational-integrity risks outside the editor:
+        Library canvases and Kanban cards make their entire visual card a generic long-press drag source.
+        A held stylus or palm-origin contact can therefore arm a persistent move without an explicit handle.
+        These are rated medium because they reorder or refile content rather than deleting note content.</p>
+      </div>
+    </section>
+
+    <section id="ownership">
+      <h2>Input ownership map</h2>
+      <p>The core architectural issue is not one bad threshold; it is that six interaction trackers and a
+      sibling toolbar can be active without one authoritative arbiter.</p>
+      <table>
+        <thead><tr><th>State owner</th><th>Starts from</th><th>What it can mutate</th><th>Exclusivity gap</th></tr></thead>
+        <tbody>
+          <tr><td><code>_toolPointerId / _toolGesture</code></td><td>Stylus, primary mouse, or selected-content touch</td><td>Ink, erase, shape, selection move, pan, dialogs</td><td>Does not own touch long-press; cannot suppress sibling toolbar pointers</td></tr>
+          <tr><td><code>_longPressLassoPointerId</code></td><td>520 ms single touch</td><td>Selection state</td><td>Does not take the tool-pointer slot, so stylus can start concurrently</td></tr>
+          <tr><td><code>_selectionTransformTouchPointers</code></td><td>Second touch after selected-content touch</td><td>Persisted selected-element geometry</td><td>Extra touches still enter global pinch state</td></tr>
+          <tr><td><code>_touchDownPositions</code> + shortcut count</td><td>Unselected canvas touches</td><td>Undo/redo history</td><td>No duration or active-stylus guard; shares motion with pinch</td></tr>
+          <tr><td>Pinch baseline fields</td><td>Two or more total touch pointers</td><td>Persisted viewport</td><td>No transform slop/minimum span; baseline can survive a stylus gesture</td></tr>
+          <tr><td>Toolbar <code>GestureDetector</code>s</td><td>Any pointer hit on overlay control</td><td>Tools, brush settings, history, selection deletion/transforms, viewport</td><td>Outside <code>CanvasView</code>'s modality state</td></tr>
+          <tr><td>Library/Kanban <code>LongPressDraggable</code>s</td><td>Primary-button pointer held over a whole card</td><td>Persisted folder, lane, or order position</td><td>No pointer-kind filter or explicit drag handle on cards; no move undo</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Design direction.</strong> A single editor-level modality coordinator should decide which
+      pointer set owns the interaction before any controller mutation. Controller previews already make most
+      content gestures cancelable; the missing layer is intent/arbitration before those previews and history
+      commands begin.</p>
+    </section>
+
+    <section id="method">
+      <h2>Method and limits</h2>
+      <p>This pass read the repository instructions and inventoried tracked and relevant untracked material.
+      It performed a repository-wide scan for listeners, gesture detectors, ink responses, draggables, drop
+      targets, and reorderables, then traced raw editor input from <code>CanvasEditorPage</code> through
+      <code>CanvasView</code>, pointer
+      classification, stylus mapping, pen processing, <code>CanvasController</code> commit/cancel/history
+      paths, the persistent and modal tool wheels, settings persistence, focused tests, prior reviews, and
+      input-related plans. Generated database code was used only to confirm persisted fields; generated build
+      output and binary assets were not treated as implementation authority.</p>
+      <p><strong>Revision inspected:</strong> branch <code>feat/intuitive-tool-wheel</code> at
+      <code>7e5335734a5456fc89862f8ce3896ecd6a30177c</code>, plus relevant untracked plans/reviews/instructions visible
+      in this worktree. Pre-existing untracked material was read only and left untouched.</p>
+      <p><strong>Limits:</strong> conclusions are static-analysis results. The task explicitly forbids running
+      tests or the app. Hardware behavior remains device-dependent; the repository itself requires a real S
+      Pen for pressure, hover, palm rejection, and latency verification (<code>README.md:104-111</code>).
+      Severity therefore reflects the consequence if Android delivers the touch/button sequence, while
+      confidence separates code certainty from hardware likelihood.</p>
+    </section>
+
+    <section id="findings">
+      <h2>Findings</h2>
+
+      <article class="finding critical" id="f-01">
+        <h3>F-01 · A stationary palm chord can permanently strand an undone note change</h3>
+        <div class="meta"><span class="tag sev-critical">Critical</span><span class="tag">Confidence: high</span><span class="tag">Data integrity</span><span class="tag">Palm rejection</span></div>
+        <p><strong>Root cause.</strong> The two-/three-touch shortcut is a maximum concurrent-contact counter,
+        not a bounded tap recognizer. It has no elapsed-time, common-down-window, common-up-window, stylus
+        proximity, or active-stroke check. Movement beyond 8 px and cancellation disqualify it, but a long
+        stationary two-contact palm still calls <code>undo()</code>; three contacts call <code>redo()</code>.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:317-327</code> records touch contacts and only tracks the maximum count.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:511-517</code> disqualifies only movement beyond <code>tapSlop</code>; there is no duration criterion.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:780-797, 980-997</code> resolves the chord after the final tracked touch lifts and invokes history with no <code>_toolPointerId</code> guard.</li>
+          <li><code>lib/canvas/canvas_controller.dart:1140-1166</code> applies undo/redo to the persisted element store.</li>
+          <li><code>lib/canvas/canvas_controller.dart:1123-1134</code> clears redo whenever a new command is committed.</li>
+          <li><code>test/canvas_view_input_test.dart:86-174</code> covers immediate chords, movement, and cancellation, but not duration, palm-shaped contacts, pre-pen contacts, or a chord released during a live stroke.</li>
+        </ul></div>
+        <p><strong>Failure sequence.</strong> Two palm contacts land first and remain within 8 px; the stylus
+        starts a stroke; the palm lifts while the stylus is still down, causing undo; pen-up commits the new
+        stroke and clears redo. The prior command is now absent from both the visible canvas and redo history.</p>
+        <p><strong>Impact.</strong> Existing note content can be removed from application history by accidental
+        input during handwriting. This violates the project's absolute data-integrity priority and interrupts
+        thinking with an action that may not be noticed immediately.</p>
+        <p><strong>Analysis-only recommendation.</strong> Replace contact counting with an explicit, short
+        two-/three-finger tap recognizer. Disqualify on stylus down/hover, any live tool gesture, excessive
+        down/up spread, duration, or palm-like contact metadata when available. Add a test for the exact
+        pre-touch → stylus-down → touch-up → stylus-up sequence and assert both element state and redo history.
+        Consider making multi-touch history shortcuts opt-in on the S Pen-first surface.</p>
+      </article>
+
+      <article class="finding high" id="f-02">
+        <h3>F-02 · A palm inside the selected frame captures input, blocks the pen, and commits a move</h3>
+        <div class="meta"><span class="tag sev-high">High</span><span class="tag">Confidence: high</span><span class="tag">Data integrity</span><span class="tag">Gesture arbitration</span></div>
+        <p><strong>Root cause.</strong> Any touch beginning inside the selected frame—including blank space
+        between sparsely selected items—becomes the global
+        <code>_toolPointerId</code> immediately and calls <code>beginSelectionDrag()</code>. Unlike the deferred
+        stylus/mouse selection session, the touch path does not wait for tap slop before applying deltas. A
+        later stylus down is ignored because the one tool-pointer slot is occupied.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:303-316, 400-412</code> gives a selected-content touch ownership of <code>_toolPointerId</code> and starts drag immediately.</li>
+          <li><code>lib/canvas/canvas_controller.dart:2954-2970</code> defines selection hit testing over the whole visible selection box, explicitly including blank group interior.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:337-341</code> ignores the stylus when any tool pointer already exists.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:529-547, 719-722</code> routes every matching touch move into selection translation.</li>
+          <li><code>lib/canvas/canvas_controller.dart:3055-3072</code> commits any non-zero accumulated delta as an undoable, persisted command.</li>
+          <li><code>test/canvas_view_input_test.dart:392-465</code> proves direct touch move/scale is intended, but there is no concurrent palm-first/stylus-second arbitration test.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A resting palm can move handwritten notes, images, PDFs, links, shapes, or
+        text; the intended pen stroke is silently absent. The mutation is undoable in isolation, but F-01 and
+        F-03 show that history itself can be perturbed concurrently.</p>
+        <p><strong>Analysis-only recommendation.</strong> Do not grant selection ownership on touch-down.
+        Defer until movement and intent are established; cancel the candidate if stylus proximity/down arrives.
+        For an S Pen-first mode, require two fingers or an explicit manipulation mode for touch transforms of
+        selected content. Keep preview-before-commit semantics already present in the controller.</p>
+      </article>
+
+      <article class="finding high" id="f-12">
+        <h3>F-12 · Sub-slop two-touch jitter can both transform the viewport and invoke undo</h3>
+        <div class="meta"><span class="tag sev-high">High</span><span class="tag">Confidence: high</span><span class="tag">Gesture arbitration</span><span class="tag">History + viewport</span></div>
+        <p><strong>Root cause.</strong> The shortcut and pinch paths do not compete for ownership. Movement up
+        to and including 8 logical px remains shortcut-eligible, while any two-touch move—without its own slop
+        or minimum meaningful span—immediately applies pan/zoom/rotation. The same touch chord can therefore
+        complete both interpretations.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:511-517</code> disqualifies the shortcut only when movement is strictly greater than <code>CanvasController.tapSlop</code> (8 px at <code>canvas_controller.dart:478-479</code>).</li>
+          <li><code>lib/canvas/render/canvas_view.dart:550-558</code> applies pinch on every move whenever at least two touches exist, independently of shortcut eligibility.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1382-1410</code> accepts any non-zero starting distance and applies pan, scale, and rotation immediately.</li>
+          <li><code>lib/canvas/engine/canvas_transform.dart:18-22, 138-155</code> permits an exceptionally wide scale range from 1/65536× to 65536×.</li>
+          <li><code>test/canvas_view_input_test.dart:143-174</code> disqualifies the test chord with a 40 px move; no sub-slop movement case asserts that history and viewport are mutually exclusive.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Normal finger jitter or a multi-contact palm can shift/rotate/zoom the
+        spatial workspace and then undo note content on lift. Close initial contacts amplify scale sensitivity.
+        Both outcomes persist through independent controller write paths.</p>
+        <p><strong>Analysis-only recommendation.</strong> Resolve one recognizer outcome per pointer set. Keep
+        the viewport frozen while a multi-finger tap remains possible; once movement/scale/rotation crosses a
+        deliberate threshold, permanently disqualify the shortcut and start a re-baselined transform. Require
+        a sensible minimum pinch span and bound the tap duration.</p>
+      </article>
+
+      <article class="finding high" id="f-03">
+        <h3>F-03 · The persistent tool wheel bypasses CanvasView's stylus/touch arbitration</h3>
+        <div class="meta"><span class="tag sev-high">High</span><span class="tag">Confidence: high for code path; medium for OS palm delivery</span><span class="tag">Tool wheel</span><span class="tag">Accidental destructive action</span></div>
+        <p><strong>Root cause.</strong> <code>CanvasView</code> and <code>CanvasToolbar</code> are sibling,
+        full-screen layers sharing one controller. Each new pointer is hit-tested independently. The
+        <code>_toolPointerId</code> guard exists only inside <code>CanvasView</code>, so it cannot suppress a touch
+        delivered to wheel wedges, property controls, the 34 px undo/redo buttons, palette, or selection actions.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/canvas_editor_page.dart:624-674</code> stacks a full-screen toolbar above the full-screen canvas.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:534-643</code> keeps the wheel, undo/redo, more button, and palette persistently interactive.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:2733-2786</code> gives every wheel wedge tap, long-press, and pan handlers.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:905-943</code> lets 34 px property targets change size, opacity, and smoothing by drag.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:1051-1095</code> exposes one-tap delete, rotate, and scale operations when the wheel is on its selection page.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:3089-3125</code> implements side actions as 34 px circular controls; no pointer-kind or stylus-active filter is present.</li>
+          <li><code>android/app/src/main/kotlin/com/bearhunter/zenno/MainActivity.kt:1-5</code> is an unmodified <code>FlutterActivity</code>; no app-level Android touch/stylus mediator exists outside the Flutter widgets.</li>
+          <li><code>test/canvas_toolbar_test.dart:279-327</code> verifies drawing through wheel gaps, but no test combines a live stylus pointer with a second touch on toolbar controls.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A palm can switch the next tool to eraser, alter brush opacity/size, move the
+        wheel, invoke undo/redo, or—on the selection page—delete or transform selected notes. An undo during a
+        live stroke has the same redo-clearing sequence as F-01 after pen-up.</p>
+        <p><strong>Analysis-only recommendation.</strong> Centralize input modality state above both siblings.
+        While stylus hover/down is active (plus a short release grace period), reject touch activation on
+        destructive/history/tool controls or require deliberate confirmation for delete. Preserve mouse and
+        accessibility semantics. Add cross-layer tests that hold a stylus on the canvas while touching each
+        mutating toolbar category.</p>
+      </article>
+
+      <article class="finding medium" id="f-04">
+        <h3>F-04 · A single pre-pen palm pans immediately, even below tap slop</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Flow interruption</span><span class="tag">Viewport persistence</span></div>
+        <p><strong>Root cause.</strong> One touch directly calls <code>panBy()</code> for every move. Tap slop is
+        used only to disqualify shortcuts/long-press; it does not defer panning. Touch is ignored once the
+        stylus owns the tool slot, but a palm that arrives first can already move and persist the viewport.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:504-517, 550-558</code> records slop state but still pans the one-touch viewport on the same move path.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:306-312</code> only ignores touch after <code>_toolPointerId</code> is set.</li>
+          <li><code>lib/canvas/canvas_controller.dart:1358-1366</code> persists every non-zero pan through the debounced viewport save.</li>
+          <li><code>reviews/02-canvas.md:147-149</code> previously identified this race; current source still supports it.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> The paper shifts under the intended stroke origin, making writing jump and
+        storing the accidental camera position. Note elements are not directly changed, but thinking flow and
+        spatial recall are disturbed.</p>
+        <p><strong>Analysis-only recommendation.</strong> Defer one-finger pan until touch intent crosses a
+        platform-appropriate threshold, and cancel the candidate if stylus hover/down arrives. A stricter,
+        simpler S Pen-first policy is two-finger viewport transform plus explicit pan tool for one-pointer pan.</p>
+      </article>
+
+      <article class="finding medium" id="f-05">
+        <h3>F-05 · Pre-existing two-touch state can apply a stale pinch after the stylus lifts</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Gesture state machine</span></div>
+        <p><strong>Root cause.</strong> Pinch baselines are captured when touch counts change. Touch positions
+        continue updating while a stylus is active, but pinch application is skipped. Ending the stylus does
+        not re-baseline the still-down touches. Their next move compares current palm positions with the old
+        pre-stylus midpoint/distance/angle and can apply the whole suppressed delta at once.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:504-510</code> updates every active pointer position before arbitration.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:550-553</code> skips touch transforms while a tool pointer is active.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:771-779</code> clears tool state without calling <code>_syncTouchGesture()</code>.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1361-1410</code> computes live pinch from the captured baseline.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> The first post-pen palm/finger move can jump pan, zoom, and rotation and then
+        persist that viewport. This is especially disruptive when the paper is spatially organized.</p>
+        <p><strong>Analysis-only recommendation.</strong> On tool-gesture start, quarantine/cancel active touch
+        gestures; on tool-gesture end, re-baseline any touches still down before accepting further transforms.
+        Track pinch pointer IDs explicitly to make ownership auditable.</p>
+      </article>
+
+      <article class="finding medium" id="f-06">
+        <h3>F-06 · The default pen long-press cancels a legitimate dot and changes modality</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Stylus flow</span><span class="tag">Default mapping</span></div>
+        <p><strong>Root cause.</strong> The default no-button pen long-press is temporary lasso. Pen-down starts
+        a real live stroke immediately; remaining within 8 px for 520 ms cancels that stroke and starts the
+        mapped action. A deliberately held period, dot, diagram node, or brief pause on the glass is therefore
+        interpreted as mode input rather than ink.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/input/stylus_button_mapping.dart:18-29</code> defaults <code>penLongPress</code> to <code>temporaryLasso</code>.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:364-367</code> starts the active tool gesture and schedules long-press concurrently.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:818-858</code> cancels the pending tool gesture at 520 ms and begins the mapped action.</li>
+          <li><code>test/canvas_view_input_test.dart:825-876, 1520-1546</code> validates mode takeover, but not legitimate long-duration dot retention.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Intended ink disappears and the next movement lassos instead of writes. No
+        committed prior data is lost, but the core handwriting bridge becomes surprising.</p>
+        <p><strong>Analysis-only recommendation.</strong> Make no-button pen long-press disabled by default, or
+        require hover/button/chord intent for modality changes. If retained, use pressure/lift behavior and a
+        visible pre-activation cue, and verify dots and pauses on the target S Pen hardware.</p>
+      </article>
+
+      <article class="finding high" id="f-09">
+        <h3>F-09 · A third touch can transform the viewport during a two-touch selection transform</h3>
+        <div class="meta"><span class="tag sev-high">High</span><span class="tag">Confidence: high</span><span class="tag">Gesture arbitration</span><span class="tag">Selection integrity</span></div>
+        <p><strong>Root cause.</strong> Selection-transform pointers are tracked in a dedicated set, but a
+        third touch is admitted to the separate global touch pipeline. Its move is not recognized as a
+        selection-transform move, sees at least two total touches, and calls <code>_applyPinch()</code> using
+        the first two touch positions—the same two contacts currently transforming the selection. A third-
+        touch move immediately after landing is a no-op because that pair also established the baseline; the
+        failure appears when a selection-owned finger moves and the next third-touch event applies the stale
+        global baseline. The two state machines are active at once rather than mutually exclusive.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:306-328</code> admits a new touch to global shortcut/pinch state when <code>_selectionTransformTouchPointers</code> is active and <code>_toolPointerId</code> has been cleared.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:519-558</code> routes the first two pointers to selection updates but routes the third pointer to global pinch.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:906-935</code> clears <code>_toolPointerId</code> when promoting the first two touches to a selection transform.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:938-968</code> calculates selection translation using <code>_toWorld()</code>, so a simultaneous camera change also changes the coordinate mapping used by the content transform.</li>
+          <li><code>test/canvas_view_input_test.dart:426-465</code> covers exactly two selection touches only; no third-contact/palm case is present.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A third finger or palm contact can pan/zoom/rotate the paper while the
+        selected notes are also being scaled/rotated. Because selection transforms commit as commands and the
+        viewport persists separately, one accidental contact can leave both content geometry and spatial
+        framing changed.</p>
+        <p><strong>Analysis-only recommendation.</strong> Make selection transform exclusive: while its fixed
+        pointer pair is active, ignore or explicitly cancel all extra touches and suspend global
+        pan/pinch/shortcut recognition. Decide and document whether a third contact cancels or is ignored, then
+        test both the live preview and final persisted command.</p>
+      </article>
+
+      <article class="finding medium" id="f-13">
+        <h3>F-13 · The visually solid property ring can pass stylus input through and draw underneath</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Tool-wheel hit testing</span><span class="tag">Accidental ink</span></div>
+        <p><strong>Root cause.</strong> When an ink preset is active, the wheel painter fills the complete inner
+        property ring. That paint layer is wrapped in <code>IgnorePointer</code>. Only three 34×34 property
+        controls and the center disk are hittable; the visibly filled areas between them have no hit-test
+        target, so the sibling stack can route a fresh pen-down to the canvas below.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:2719-2731</code> wraps all wheel background paint in <code>IgnorePointer</code>.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:2857-2909</code> provides only 34×34 hit targets for the sparse property controls.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:2910-2957</code> separately covers only the center disk.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:2983-3003</code> paints the entire inner radius as an opaque-looking surface when properties exist.</li>
+          <li><code>test/canvas_toolbar_test.dart:279-327</code> deliberately covers transparent outer-wheel gaps, but no test probes the visually filled property-ring gaps.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A user aiming at the visible wheel can leave an ink dot or stroke on the note
+        beneath it. This is especially likely with a stylus near the small property targets, and the mark may
+        remain hidden by the persistent wheel until it is moved.</p>
+        <p><strong>Analysis-only recommendation.</strong> Make visual and hit-test geometry agree. Either make
+        the noninteractive ring areas visibly transparent, or add an annular hit surface that consumes input
+        and deliberately chooses between property adjustment and wheel movement. Add hit-map tests for center,
+        each property, filled gaps, outer wedge, and transparent wedge gap.</p>
+      </article>
+
+      <article class="finding medium" id="f-07">
+        <h3>F-07 · Stylus-button state is sampled only on pointer-down</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: medium</span><span class="tag">Hardware-dependent</span><span class="tag">Stylus button</span></div>
+        <p><strong>Root cause.</strong> The mapping decision is made from <code>event.buttons</code> on down.
+        Move events never compare current button bits with prior bits. A button pressed after contact is
+        ignored; a button released during a mapped drag does not end the temporary action before pen-up.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/input/pointer_classifier.dart:3, 64-65</code> exposes a bitmask check, not a transition state machine.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:344-367</code> resolves side-button mappings only during pointer-down.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:504-560</code> routes move events without re-reading button transitions.</li>
+          <li><code>.plans/plan-canvas-evolution.html:982, 996-1011</code> explicitly warns that Android reporting varies and recommends hardware diagnostics; no diagnostic/transition layer was found in current source.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Depending on Galaxy Tab event delivery, temporary erase/lasso/pan can fail
+        to engage or remain active longer than the physical hold, creating unexpected edits.</p>
+        <p><strong>Analysis-only recommendation.</strong> Record prior button bits and resolve down/up
+        transitions during the pointer stream, with cancel-safe restoration. First capture actual S Pen event
+        traces on the target device; do not guess hardware semantics.</p>
+      </article>
+
+      <article class="finding medium" id="f-10">
+        <h3>F-10 · “Temporary eraser/lasso/pan” becomes persistent when assigned to tap</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Stylus mapping semantics</span><span class="tag">Accidental next action</span></div>
+        <p><strong>Root cause.</strong> Settings reuse one action list and one label set for side-button hold,
+        tap, and drag. The UI calls three actions “Temporary,” but the tap dispatcher handles them by calling
+        <code>setTool()</code>, permanently changing the active tool rather than pushing and restoring a
+        temporary tool.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/features/settings/presentation/pages/settings_page.dart:12-24, 125-160</code> offers the same action list for hold, tap, and drag.</li>
+          <li><code>lib/features/settings/presentation/pages/settings_page.dart:481-495</code> labels the actions “Temporary eraser,” “Temporary lasso,” and “Temporary pan.”</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1194-1226</code> handles those tap actions with persistent <code>setTool()</code> calls.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A user who chooses the literally described tap mapping can believe the tool
+        was momentary, then erase or select on the next pen contact instead of drawing. The wheel updates, but
+        the mapping contract itself is misleading.</p>
+        <p><strong>Analysis-only recommendation.</strong> Use trigger-specific choices and language. Either
+        remove temporary actions from tap, label them “Switch to eraser/lasso/pan,” or define a clear tap
+        lifetime such as “until next stroke.” Do not silently conflate temporary and persistent modes.</p>
+      </article>
+
+      <article class="finding high" id="f-14">
+        <h3>F-14 · The default side-button tap can activate eraser while the wheel still says Pen</h3>
+        <div class="meta"><span class="tag sev-high">High</span><span class="tag">Confidence: high</span><span class="tag">Tool-state desynchronization</span><span class="tag">Accidental erasure</span></div>
+        <p><strong>Root cause.</strong> The default side-button tap calls <code>togglePreviousTool()</code>.
+        Unlike every explicit wheel/tool selection path, that method swaps only <code>activeTool</code>; it does
+        not synchronize <code>activeToolWheelIndex</code>, apply the corresponding preset, or save tool settings.
+        The wheel renders its selected wedge, center icon, label, and settings from the stale preset index.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/input/stylus_button_mapping.dart:18-29</code> makes <code>togglePreviousTool</code> the default tap mapping.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1194-1226</code> dispatches the tap directly to <code>controller.togglePreviousTool()</code>.</li>
+          <li><code>lib/canvas/canvas_controller.dart:1520-1551</code> synchronizes the wheel index for <code>setTool()</code>/<code>selectToolWheelPreset()</code>.</li>
+          <li><code>lib/canvas/canvas_controller.dart:1596-1603</code> toggles only <code>activeTool</code> and previous tool.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:833-900</code> derives visible wheel identity and selection exclusively from <code>activeToolWheelPreset</code>/<code>activeToolWheelIndex</code>.</li>
+          <li><code>test/canvas_view_input_test.dart:1041-1070, 1340-1356</code> asserts the toggled active tool but never asserts wheel index or visible label; <code>test/tool_wheel_preset_test.dart</code> has no toggle case.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> After Pen was selected from Eraser, the default button tap can make the next
+        stroke erase while the persistent wheel continues to highlight and label Pen. This is the precise kind
+        of invisible-mode failure that can remove notes before the user realizes the tool changed.</p>
+        <p><strong>Analysis-only recommendation.</strong> Establish one atomic tool-selection method that owns
+        <code>activeTool</code>, previous tool, active preset index, preset values, persistence, and notification.
+        Route toggle through it. Add a regression test covering eraser → pen → default side-button tap and
+        assert controller tool, wheel selection, center label/tooltip, hover mode, and next gesture behavior.</p>
+      </article>
+
+      <article class="finding medium" id="f-11">
+        <h3>F-11 · A touch long-press lasso can remain active when a stylus gesture begins</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Palm-first race</span><span class="tag">Concurrent gesture state</span></div>
+        <p><strong>Root cause.</strong> A one-touch long press starts lasso via
+        <code>_longPressLassoPointerId</code> without taking <code>_toolPointerId</code>. If the 520 ms timer fires
+        before stylus-down, the later stylus is allowed to begin its own tool gesture. Touch lasso updates are
+        prioritized separately on move, so both streams can mutate controller interaction state.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:800-815</code> starts the touch lasso but never assigns tool-pointer ownership.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:337-367</code> allows a later stylus because <code>_toolPointerId</code> is still null.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:524-547</code> routes the touch lasso and stylus tool through independent early-return branches.</li>
+          <li><code>test/canvas_view_input_test.dart:1507-1517</code> verifies touch long-press lasso cleanup only; it does not introduce a stylus after activation.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> With pen active, palm lasso selection can change while handwriting is in
+        progress. With lasso active, both pointers append/finish the same controller lasso lifecycle, so one
+        pointer can end the path while the other still believes it owns it. This creates surprising selection
+        state and can prime destructive selection-wheel actions.</p>
+        <p><strong>Analysis-only recommendation.</strong> Represent touch long-press lasso in the same exclusive
+        gesture owner state as every other tool gesture. Stylus-down should cancel a palm-origin candidate or
+        already-active touch lasso before starting ink.</p>
+      </article>
+
+      <article class="finding low" id="f-08">
+        <h3>F-08 · Trackpad and unknown-pointer routing is incomplete</h3>
+        <div class="meta"><span class="tag sev-low">Low</span><span class="tag">Confidence: high</span><span class="tag">Non-primary device</span></div>
+        <p><strong>Root cause.</strong> Trackpad maps to mouse, unknown pointers become a silent no-op, and
+        <code>CanvasView</code> does not register <code>PointerPanZoom*</code> handlers. Scroll zoom uses a fixed
+        1.15 factor based only on vertical direction, ignoring magnitude; a zero vertical delta takes the
+        zoom-out branch.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/input/pointer_classifier.dart:34-46</code> maps trackpad to <code>CanvasInputKind.mouse</code> and preserves unknown as <code>unknown</code>.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:337-341</code> follows tools only for stylus/mouse, leaving unknown input inert.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1302-1314</code> reduces every scroll event to fixed-step zoom.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1455-1467</code> registers pointer and signal handlers but no pan/zoom handlers.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Trackpad gestures can feel jumpy, do nothing, or follow the active drawing
+        tool instead of the expected navigation model; an unrecognized digitizer is silently dead. This is
+        lower severity because the documented target is a Galaxy Tab with S Pen.</p>
+        <p><strong>Analysis-only recommendation.</strong> Define a trackpad-specific navigation contract and
+        route <code>PointerPanZoom</code> deltas continuously; scale scroll zoom by magnitude; choose a safe,
+        visible fallback policy for unknown devices.</p>
+      </article>
+
+      <article class="finding low" id="f-15">
+        <h3>F-15 · Hold/drag radial-menu triggers cannot select a wedge with the triggering contact</h3>
+        <div class="meta"><span class="tag sev-low">Low</span><span class="tag">Confidence: high</span><span class="tag">Tool-wheel flow</span><span class="tag">Framework-confirmed</span></div>
+        <p><strong>Root cause.</strong> Hold, drag, and pen-long-press callbacks insert the modal wheel after the
+        pen is already down. Flutter caches the hit-test path on pointer-down and routes subsequent move/up
+        events to that original path. The new overlay therefore cannot receive the triggering pen stream; its
+        wedges expose tap handlers only, requiring lift and a second tap.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:818-903, 1229-1248</code> can open quick tools from timers or an in-progress drag.</li>
+          <li><code>lib/canvas/canvas_editor_page.dart:445-473</code> inserts the quick-menu dialog asynchronously.</li>
+          <li><code>lib/canvas/widgets/canvas_toolbar.dart:2056-2144</code> gives modal wedges <code>onTap</code> actions; it has no marking-menu hover/drag selection API.</li>
+          <li><code>/opt/homebrew/share/flutter/packages/flutter/lib/src/gestures/binding.dart:359-370, 397-429</code> documents and implements cached hit tests from down through up/cancel.</li>
+          <li><code>test/canvas_view_input_test.dart:1009-1103, 1520-1546</code> checks only that the open callback fires, not end-to-end wedge selection from the triggering gesture.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A side-button hold/drag that visually suggests a radial shortcut becomes a
+        two-step modal interaction, breaking handwriting flow and increasing the chance that the next tap
+        dismisses the transparent barrier instead of selecting a tool.</p>
+        <p><strong>Analysis-only recommendation.</strong> Either describe and design it explicitly as “open
+        menu, then tap,” or implement a true marking menu that receives pointer-router/global position updates
+        from the original stream and commits the highlighted wedge on release.</p>
+      </article>
+
+      <article class="finding medium" id="f-16">
+        <h3>F-16 · Releasing an activated temporary-pan hold over a link follows the link</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Stylus mapping composition</span><span class="tag">Unexpected navigation</span></div>
+        <p><strong>Root cause.</strong> Temporary pan is available for both side-button hold and pen
+        long-press. After the 520 ms activation, the state marks the action as long-press-active, resets
+        <code>_toolPointerMoved</code>, and begins an ordinary <code>pan</code> tool gesture. Releasing without
+        subsequent movement bypasses the provisional side-button tap branch and reaches the normal rule that
+        an unmoved pan gesture follows a link.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/features/settings/presentation/pages/settings_page.dart:12-24, 161-170</code> offers temporary pan for side-button triggers and pen long press.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:818-903</code> activates the temporary tool, marks long-press state, resets movement, and begins the new gesture.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1006-1013</code> suppresses release-tap dispatch only for a side-button drag that has not become long-press-active.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:1075-1080, 1271-1282</code> follows a link for any uncancelled, unmoved pan gesture.</li>
+          <li><code>test/canvas_view_input_test.dart:304-331, 1256-1296</code> tests normal pan link-follow and temporary-pan jitter separately, but never composes hold activation with release over a link.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Holding for a temporary viewport tool over a link chip can navigate to a
+        different canvas on release even though no link-follow tap was intended. The editor flushes through its
+        guarded navigation path, so this is primarily a severe flow interruption rather than direct data loss.</p>
+        <p><strong>Analysis-only recommendation.</strong> Track the gesture's activation origin. A hold-derived
+        temporary pan should never inherit ordinary tap-to-follow behavior; require post-activation movement
+        for pan, and reserve link following for an explicit non-temporary pan tap.</p>
+      </article>
+
+      <article class="finding medium" id="f-17">
+        <h3>F-17 · Every Library canvas card is a stylus-capable long-press drag source</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high for routing; medium for accidental-drop likelihood</span><span class="tag">Organizational integrity</span><span class="tag">Whole-card gesture</span></div>
+        <p><strong>Root cause.</strong> The Library wraps the complete <code>CanvasCard</code> in
+        <code>LongPressDraggable</code>, while the same card is also the tap target for opening a canvas. The
+        draggable supplies neither a device-kind restriction nor a dedicated handle. Flutter's delayed
+        multi-drag defaults to primary-button input and preserves the event's pointer kind, so stylus input is
+        not excluded. Lifting the armed drag over any broad folder header immediately persists a folder move.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/features/library/presentation/pages/library_page.dart:773-789</code> wraps each whole card in an unfiltered <code>LongPressDraggable&lt;Canvase&gt;</code>.</li>
+          <li><code>lib/features/library/presentation/widgets/canvas_card.dart:226-273, 322-351</code> makes the card body an open-on-tap ink response, so open and move intent share the same surface.</li>
+          <li><code>lib/features/library/presentation/pages/library_page.dart:629-655</code> makes the complete folder header a drop target, and lines 213-226 persist the accepted folder change.</li>
+          <li><code>/opt/homebrew/share/flutter/packages/flutter/lib/src/widgets/drag_target.dart:404-444</code> builds <code>LongPressDraggable</code> with a delayed recognizer but no supported-device filter; <code>multidrag.dart:218-231, 574-597</code> defaults only to primary-button filtering and carries the pointer kind through.</li>
+          <li><code>test/library_page_test.dart:88-180, 208-227</code> validates deliberate touch drops and failure handling, but has no slow stylus tap, palm contact, drag-cancel, or accidental-header-drop case.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Resting the pen or palm long enough, then shifting toward a folder header,
+        can refile a canvas without confirmation or an in-app undo. The notes remain intact and the move emits
+        a snackbar, so this is organizational corruption and flow disruption rather than note deletion.</p>
+        <p><strong>Analysis-only recommendation.</strong> Restrict refile drag initiation to a visible,
+        touch-sized handle and define which pointer kinds may start it; keep the rest of the card exclusively
+        for opening. Consider an undo action on the move snackbar. Add slow stylus/palm-shaped and cancelled
+        drag tests alongside the existing successful touch-drag test.</p>
+      </article>
+
+      <article class="finding medium" id="f-18">
+        <h3>F-18 · Kanban cards arm persistent moves from a long press anywhere on the card</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high for routing; medium for accidental-drop likelihood</span><span class="tag">Organizational integrity</span><span class="tag">Gesture arbitration</span></div>
+        <p><strong>Root cause.</strong> Each Kanban card is also a whole-surface, unfiltered
+        <code>LongPressDraggable</code> wrapped around an <code>InkWell</code> tap target. Unlike column reorder,
+        which correctly confines the gesture to a 44 px handle, card move has no separate owner. Once armed,
+        a drop into an empty column, the 160 px trailing area, or an inter-card zone writes the card's column
+        and fractional position. The controller contract exposes no move undo.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:492-535</code> wraps the entire card surface in <code>LongPressDraggable&lt;KanbanCardData&gt;</code>; lines 539-600 put the open action inside that same surface.</li>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:279-299</code> demonstrates the safer contrasting pattern: column reorder has an explicit 44 px handle.</li>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:177-247, 633-679</code> defines full empty-column, 160 px trailing, and inter-card drop targets.</li>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:68-110</code> translates an accepted drop into <code>controller.moveCard()</code>; <code>lib/shared/kanban/kanban_controller.dart:19-24</code> defines the persisted move contract with no inverse/undo API.</li>
+          <li><code>test/kanban_board_view_test.dart:110-161</code> covers tap and menu-driven move, but does not exercise long-press card dragging, pointer kinds, drag cancellation, or accidental drop acceptance.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A slow stylus tap intended to open a learning/revision card can become a
+        drag, and a small subsequent motion plus release over a valid zone can silently reorder it or move it
+        to another learning stage. Content is preserved, but workflow state and study order can change.</p>
+        <p><strong>Analysis-only recommendation.</strong> Apply the already-used column pattern to cards: make
+        the visible drag indicator the only long-press/drag source and keep the body a tap-only open target.
+        Add a move snackbar with undo if the domain permits it, and cover stylus slow-tap, cancellation, same-
+        slot, and cross-column drop behavior in widget tests.</p>
+      </article>
+
+      <article class="finding medium" id="f-19">
+        <h3>F-19 · A selection gesture changes owner mid-contact, splitting undo and then panning the viewport</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Gesture atomicity</span><span class="tag">Selection + viewport</span></div>
+        <p><strong>Root cause.</strong> Touch selection manipulation is not one gesture transaction. If the
+        first finger has already moved the selection, landing a second finger calls
+        <code>endSelectionDrag()</code> immediately, committing that translation as a command, and then starts
+        a new selection-transform snapshot. Lifting either transform finger commits the second command and
+        clears both transform owners even though the other finger remains down; that surviving contact is
+        instantly reinterpreted as ordinary one-finger viewport pan.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/canvas/render/canvas_view.dart:303-315, 400-411</code> gives the first selected-content touch the move-selection owner; lines 306-312 promote a second touch.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:906-935</code> calls <code>endSelectionDrag()</code> before <code>beginSelectionTransform()</code>, dividing one continuous contact sequence into two controller transactions.</li>
+          <li><code>lib/canvas/canvas_controller.dart:3049-3072, 3081-3100, 3127-3175</code> shows that promotion persists the move command, the transform snapshots the already-moved elements, and cancellation can discard only the second preview—not the first committed move.</li>
+          <li><code>lib/canvas/render/canvas_view.dart:758-769, 971-977</code> ends the transform when either owned finger lifts and clears both owner IDs; lines 550-558 then route a move of the still-down contact to viewport pan.</li>
+          <li><code>test/canvas_view_input_test.dart:426-465</code> starts with both fingers down before movement and lifts them without an intervening one-finger move; it does not assert undo depth, promotion cancellation, or post-transform owner switching.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A natural “move, add finger to scale, lift one finger” sequence produces two
+        history entries, so one undo leaves the initial translation behind. If the transform is cancelled,
+        the pre-promotion move still persists. Continuing to move the remaining finger shifts and persists the
+        viewport instead of continuing—or cleanly ending—the selection interaction.</p>
+        <p><strong>Analysis-only recommendation.</strong> Treat promotion and demotion as one gesture session.
+        Snapshot original element geometry on the first touch, preview move/scale/rotation against that single
+        snapshot, and commit one command only after all owning contacts lift. A cancellation should restore the
+        pre-first-touch state. Do not rearm viewport gestures until every contact from the selection session is
+        up; add assertions for command count, two-step undo, cancel after promotion, and remaining-finger motion.</p>
+      </article>
+
+      <article class="finding high" id="f-20">
+        <h3>F-20 · Library and Kanban drags cannot reach off-screen destinations</h3>
+        <div class="meta"><span class="tag sev-high">High</span><span class="tag">Confidence: high</span><span class="tag">Gesture completeness</span><span class="tag">Organization flow</span></div>
+        <p><strong>Root cause.</strong> Zenno implements Library, Kanban-card, and Kanban-column movement with
+        generic <code>LongPressDraggable</code> widgets, but none reports <code>onDragUpdate</code> into an edge
+        scroller. Kanban has an explicit horizontal <code>ScrollController</code> and each populated lane has a
+        vertical <code>ListView</code>, while Library uses a vertical <code>CustomScrollView</code>; holding a
+        drag near any edge does not advance those scroll positions.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/shared/kanban/kanban_board_view.dart:128-184</code> places all columns in a horizontally scrolling view with <code>_horizontalController</code>, but the controller is used only by the scroll view/scrollbar.</li>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:212-249</code> puts populated cards in a vertical <code>ListView.builder</code>.</li>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:279-299, 512-535</code> creates the column/card draggables with no <code>onDragUpdate</code>, pointer-global position callback, or edge-scroll coordinator.</li>
+          <li><code>lib/features/library/presentation/pages/library_page.dart:566-600, 770-790</code> likewise combines a vertical <code>CustomScrollView</code> with a draggable that exposes no drag-update route.</li>
+          <li>A repository-wide search finds no <code>EdgeDraggingAutoScroller</code>, autoscroll helper, or drag-update callback outside wheel repositioning. <code>test/library_page_test.dart:88-180</code> keeps both folders visible, and <code>test/kanban_board_view_test.dart</code> has no draggable widget path.</li>
+          <li><code>reviews/06-kanban-and-attachments.md:15-17</code> previously identified Kanban edge reachability; current source still has the same missing path.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> A card cannot be dragged to an off-screen lane or vertical position, a column
+        cannot be reordered beyond the visible board, and a canvas cannot be refiled to an off-screen folder
+        in one gesture. On a non-trivial knowledge base, the core organization gesture becomes impossible or
+        forces risky intermediate drops and manual scrolling.</p>
+        <p><strong>Analysis-only recommendation.</strong> Introduce one explicit drag-session coordinator that
+        receives global pointer position, scrolls the relevant horizontal and vertical controllers inside
+        stable edge bands, and pauses scrolling when no compatible target exists. Cover both axes and repeated
+        cross-column/folder moves with deterministic controller-level tests plus real tablet validation.</p>
+      </article>
+
+      <article class="finding medium" id="f-21">
+        <h3>F-21 · Column reorder depends on a 4 px drop slot that grows only after acquisition</h3>
+        <div class="meta"><span class="tag sev-medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Target acquisition</span><span class="tag">Stylus drag</span></div>
+        <p><strong>Root cause.</strong> Each inter-column <code>DragTarget</code> renders at
+        <code>AppSpacing.xs</code>—4 logical px—before hover and widens to only 8 px after the pointer has already
+        hit it. The visual indicator and the acquisition region are the same narrow object. The source handle
+        is a much healthier 44 px square, so the gesture begins reliably but is exceptionally difficult to
+        finish at the intended insertion point.</p>
+        <div class="evidence"><strong>Evidence</strong><ul>
+          <li><code>lib/shared/kanban/kanban_board_view.dart:208-237</code> sets the target width to <code>xs</code> normally and <code>sm</code> only while hovering.</li>
+          <li><code>lib/config/theme/app_spacing.dart:8-12</code> defines those tokens as 4 and 8 logical px.</li>
+          <li><code>lib/shared/kanban/kanban_column_view.dart:279-299</code> provides a 44 px drag handle, showing the mismatch between source acquisition and destination acquisition.</li>
+          <li><code>test/kanban_board_view_test.dart:1-180</code> checks position arithmetic and non-drag UI flows, but never acquires a column slot through a real pointer drag.</li>
+          <li><code>reviews/06-kanban-and-attachments.md:23-25</code> reported the same usability defect before the current branch; current dimensions remain unchanged.</li>
+        </ul></div>
+        <p><strong>Impact.</strong> Stylus users can miss the intended slot, release with no reorder, or land in
+        an adjacent target. Repeated precise attempts break flow; combined with F-20, off-screen reorder is not
+        merely difficult but unreachable.</p>
+        <p><strong>Analysis-only recommendation.</strong> Separate hit geometry from paint geometry. Keep a thin
+        insertion line, but give each slot a 24–48 px transparent acquisition band or divide neighboring
+        column bodies into before/after halves. Add pointer-driven tests for each slot and near-boundary drops.</p>
+      </article>
+    </section>
+
+    <section id="tests">
+      <h2>Coverage and evidence gaps</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Current evidence</th><th>Gap relevant to this audit</th></tr></thead>
+        <tbody>
+          <tr><td>Touch shortcuts</td><td class="status-supported">Immediate 3-finger redo; moved/cancelled chords</td><td class="status-gap">No duration, pre-pen palm, live-stroke release ordering, or redo-clearing assertion</td></tr>
+          <tr><td>Palm during pen</td><td class="status-supported">One touch pan is ignored after stylus-down</td><td class="status-gap">No palm-first ordering, selected-content palm, two-touch stale baseline, or toolbar sibling touch</td></tr>
+          <tr><td>Selection transforms</td><td class="status-supported">Touch move/scale and stylus handles; isolated cancellation paths</td><td class="status-gap">No touch intent delay, stylus takeover, third-contact interleaving, one-to-two-finger promotion, undo-depth, or remaining-finger case</td></tr>
+          <tr><td>Stylus mappings</td><td class="status-supported">Tap/hold/drag/long-press and cancellation with synthetic down-time button bits</td><td class="status-gap">No mid-stream button transition, trigger-label contract, or hardware event trace</td></tr>
+          <tr><td>Tool wheel</td><td class="status-supported">Layout, transparent gaps, drag persistence, property/actions</td><td class="status-gap">No pointer-kind filtering, painted property-gap hit map, tool-toggle visual sync, concurrent canvas stylus + toolbar touch, or trigger-to-wedge radial test</td></tr>
+          <tr><td>Library drag/drop</td><td class="status-supported">Deliberate touch move, same-folder rejection, and repository failure</td><td class="status-gap">No stylus/palm long press, slow open tap, cancellation, accidental folder-header drop, or off-screen target</td></tr>
+          <tr><td>Kanban drag/drop</td><td class="status-supported">Card tap and menu move; drop-position arithmetic at unit level</td><td class="status-gap">No long-press drag widget path, pointer kinds, cancellation, hover/drop acquisition, edge autoscroll, off-screen target, or move undo</td></tr>
+          <tr><td>Pressure/pen processing</td><td class="status-supported">Mapping, smoothing, velocity, profile persistence</td><td class="status-gap">Static evidence cannot validate real pressure/hover/coalescing behavior</td></tr>
+        </tbody>
+      </table>
+      <p class="small muted">No tests were executed by Analyzer 07; descriptions above come from source review only.</p>
+    </section>
+
+    <section id="corrections">
+      <h2>Challenged and corrected prior claims</h2>
+      <div class="coverage">
+        <p><strong class="status-corrected">Not carried forward:</strong> the prior review claim that adding a
+        third touch can reorder the first two pinch points “between moves without a touch-count change”
+        (<code>reviews/02-canvas.md:143-145</code>) is weak against the current implementation. Dart's normal
+        map iteration preserves insertion order; adding a third entry does not itself reorder the existing
+        first two, and touch-up calls <code>_syncTouchGesture()</code> to re-baseline. Explicit pointer IDs would
+        still make the state machine clearer, but the specific third-finger reorder failure is not reported as
+        a supported finding here.</p>
+        <p><strong class="status-corrected">Narrowed:</strong> “touch is ignored while stylus drawing” is true
+        only for canvas touches arriving after tool ownership is established. It does not cover pre-existing
+        touches, selection ownership, toolbar touches, or touch-shortcut resolution.</p>
+        <p><strong class="status-corrected">Refined:</strong> F-09 does not claim that the third contact changes
+        the viewport merely by moving immediately after landing. That event uses an unchanged first-two-
+        pointer baseline. The supported failure requires an interleaving selection-pointer move followed by a
+        third-pointer event, which applies the global baseline against the now-changed first two positions.</p>
+        <p><strong class="status-corrected">Stale invariant:</strong>
+        <code>pointer_classifier.dart:15-16</code> says a palm “can only ever pan,” but current routing also lets
+        touch move/transform selections, start lasso, and invoke undo/redo. The comment should not be relied on
+        as evidence of safety.</p>
+      </div>
+    </section>
+
+    <section id="iterations">
+      <h2>Iteration log</h2>
+      <div class="iteration">
+        <h3>Iteration 1 · 2026-07-18 05:03:50 PST (+0800)</h3>
+        <p>Established the end-to-end pointer and mutation paths; added eight supported findings. Elevated
+        touch-chord history behavior to critical after tracing the ordering from accidental undo through
+        pen-up command commit and redo-stack clearing. Rejected the older third-touch reorder claim as
+        insufficiently supported by current map behavior.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 2 · 2026-07-18 05:08:25 PST (+0800)</h3>
+        <p>Confirmed that command undo/delete/transform mutations write through to repository batches. Added
+        the third-contact dual-transform path, the trigger-specific “temporary” mapping mismatch, and the
+        palm-first touch-lasso/stylus concurrency path. Checked Android integration and found no native input
+        mediator beyond the default <code>FlutterActivity</code>. Expanded test-gap accounting accordingly.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 3 · 2026-07-18 05:10:10 PST (+0800)</h3>
+        <p>Added the shortcut-versus-pinch dual interpretation and traced its unusually broad zoom bounds.
+        Expanded low-severity device routing to include horizontal/zero-delta scroll and unknown digitizers.
+        Added an ownership map covering the six independent input state holders plus toolbar siblings, and
+        marked the source comment claiming palms can only pan as a stale invariant.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 4 · 2026-07-18 05:12:11 PST (+0800)</h3>
+        <p>Audited wheel hit geometry and Flutter's local pointer routing. Added accidental drawing through the
+        painted property ring and confirmed that an already-down radial trigger cannot transfer into the newly
+        inserted overlay. More importantly, traced the default “toggle previous tool” path and found that it
+        can activate Eraser while the wheel remains visibly selected as Pen; elevated that state split to high.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 5 · 2026-07-18 05:13:32 PST (+0800)</h3>
+        <p>Recorded the exact branch/HEAD scope, expanded the palm-selection finding to the full sparse group
+        frame rather than only painted content, and composed long-press activation with pan-tap completion.
+        Added the supported path where temporary pan released over a link unexpectedly navigates.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 6 · 2026-07-18 05:16:13 PST (+0800)</h3>
+        <p>Expanded the audit from editor internals to every gesture-bearing repository surface. Added
+        medium-severity Library and Kanban findings after tracing whole-card long-press sources through their
+        drop targets and persistent folder/lane/order writes. Kept them below canvas data-loss findings because
+        they preserve card/note content, and recorded the absence of stylus, palm, cancellation, and accidental-
+        drop coverage.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 7 · 2026-07-18 05:18:39 PST (+0800)</h3>
+        <p>Challenged the third-touch conclusion event by event and narrowed it to the supported interleaving
+        sequence instead of claiming immediate movement on contact. Added the selection promotion/demotion
+        atomicity finding after tracing one continuous touch sequence into two history commands, incomplete
+        cancellation, and an automatic switch of the remaining finger to persisted viewport pan.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 8 · 2026-07-18 05:20:22 PST (+0800)</h3>
+        <p>Rechecked current Kanban and Library drag implementations against older review claims. Carried
+        forward only defects still present: no edge-driven scroll route for any long drag, and a 4 px column
+        insertion target that widens to 8 px only after acquisition. Added current source, token, framework,
+        and test-gap evidence and kept target-acquisition severity below direct note-integrity failures.</p>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

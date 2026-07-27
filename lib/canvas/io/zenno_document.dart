@@ -91,6 +91,8 @@ abstract final class ZennoDocumentCodec {
       'gridSpacing': style.gridSpacing,
       'gridOpacity': style.gridOpacity,
       'graphMajorInterval': style.graphMajorInterval,
+      'texture': style.texture.name,
+      'textureOpacity': style.textureOpacity,
     };
   }
 
@@ -106,6 +108,12 @@ abstract final class ZennoDocumentCodec {
       gridSpacing: _double(json['gridSpacing'], 48),
       gridOpacity: _double(json['gridOpacity'], 0.14),
       graphMajorInterval: _int(json['graphMajorInterval'], 4),
+      texture: _enumByName(
+        PaperTexture.values,
+        json['texture'],
+        PaperTexture.clean,
+      ),
+      textureOpacity: _double(json['textureOpacity'], 0.06),
     );
   }
 

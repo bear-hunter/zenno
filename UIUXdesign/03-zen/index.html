@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zenno — Zen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&family=Inter:wght@300;400;500;600&family=Caveat:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     ZENNO — "ZEN" DIRECTION
+     Ultra-minimal, calm, focus-first. Soft off-white, near-black
+     ink, a single muted sage accent. Huge whitespace, hairline
+     dividers, almost no card chrome. iA Writer + Things 3 + a
+     meditation app.
+     ============================================================ */
+
+  :root {
+    /* Palette — committed: soft off-white, near-black ink, muted sage */
+    --paper:        #FAFAF8;
+    --paper-raised: #FFFFFF;
+    --paper-sunk:   #F4F4F0;
+    --ink:          #1A1A1A;
+    --ink-soft:     #4A4A46;
+    --ink-faint:    #8A8A82;
+    --ink-ghost:    #B6B6AE;
+    --hairline:     #E7E7E1;
+    --hairline-soft:#EFEFEA;
+
+    /* Single quiet accent — muted sage */
+    --sage:         #7C9070;
+    --sage-deep:    #5F7256;
+    --sage-tint:    #EEF2EB;
+    --sage-wash:    #F5F7F3;
+
+    /* Functional status hues — desaturated to stay calm */
+    --confident:    #7C9070;  /* green  */
+    --shaky:        #C9A04E;  /* yellow */
+    --weak:         #C06E5C;  /* red    */
+
+    --rail-w: 76px;
+
+    --t-fast: 160ms cubic-bezier(.4,0,.2,1);
+    --t-med:  280ms cubic-bezier(.4,0,.2,1);
+    --t-slow: 520ms cubic-bezier(.4,0,.2,1);
+
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-serif:'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-hand: 'Caveat', cursive;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: #DEDED7;
+    font-family: var(--font-sans);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 26px;
+    background:
+      radial-gradient(1200px 800px at 20% -10%, #E9E9E2 0%, transparent 60%),
+      radial-gradient(1100px 760px at 110% 120%, #E6E6DE 0%, transparent 55%),
+      #DCDCD4;
+    overflow: hidden;
+  }
+
+  ::selection { background: var(--sage-tint); color: var(--sage-deep); }
+
+  /* ---------- Tablet frame ---------- */
+  .tablet {
+    position: relative;
+    width: min(1280px, calc(100vw - 52px));
+    height: min(800px, calc(100vh - 52px));
+    background: var(--paper);
+    border-radius: 26px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.6) inset,
+      0 40px 80px -28px rgba(40,42,36,.42),
+      0 14px 36px -18px rgba(40,42,36,.30);
+    display: flex;
+    isolation: isolate;
+  }
+  /* On very wide screens, let it breathe a bit larger */
+  @media (min-width: 1500px) {
+    .tablet { width: min(1480px, calc(100vw - 52px)); height: min(880px, calc(100vh - 52px)); }
+  }
+
+  /* ============================================================
+     NAVIGATION RAIL — slim, icon-only, labels on hover
+     ============================================================ */
+  .rail {
+    width: var(--rail-w);
+    flex: 0 0 var(--rail-w);
+    background: var(--paper);
+    border-right: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 22px 0 18px;
+    z-index: 40;
+    position: relative;
+  }
+  .rail__mark {
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 30px;
+    color: var(--ink);
+    cursor: default;
+    flex: 0 0 auto;
+  }
+  .rail__mark svg { width: 26px; height: 26px; }
+
+  .rail__nav { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; }
+
+  .nav-btn {
+    position: relative;
+    width: 46px; height: 46px;
+    border-radius: 13px;
+    border: none;
+    background: transparent;
+    color: var(--ink-faint);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: color var(--t-fast), background var(--t-fast);
+  }
+  .nav-btn svg { width: 21px; height: 21px; stroke-width: 1.6; }
+  .nav-btn:hover { color: var(--ink); background: var(--paper-sunk); }
+  .nav-btn.is-active { color: var(--ink); }
+  .nav-btn.is-active::before {
+    content: "";
+    position: absolute;
+    left: -22px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 20px;
+    border-radius: 0 3px 3px 0;
+    background: var(--sage);
+    transition: height var(--t-med);
+  }
+  /* hover label */
+  .nav-btn .nav-label {
+    position: absolute;
+    left: calc(100% + 14px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-6px);
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 12px;
+    letter-spacing: .03em;
+    padding: 6px 11px;
+    border-radius: 8px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-fast), transform var(--t-fast);
+    z-index: 60;
+    box-shadow: 0 8px 22px -10px rgba(0,0,0,.4);
+  }
+  .nav-btn .nav-label::before {
+    content: "";
+    position: absolute;
+    left: -4px; top: 50%;
+    transform: translateY(-50%) rotate(45deg);
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 1px;
+  }
+  .nav-btn:hover .nav-label { opacity: 1; transform: translateY(-50%) translateX(0); }
+
+  .rail__foot { display:flex; flex-direction: column; gap: 6px; align-items:center; }
+
+  /* ============================================================
+     STAGE — screens
+     ============================================================ */
+  .stage { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; background: var(--paper); }
+
+  .screen {
+    position: absolute; inset: 0;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(8px);
+    transition: opacity var(--t-med), transform var(--t-med), visibility var(--t-med);
+  }
+  .screen.is-active { opacity: 1; visibility: visible; transform: none; }
+  .screen::-webkit-scrollbar { width: 9px; }
+  .screen::-webkit-scrollbar-thumb { background: #E0E0D9; border-radius: 9px; border: 2px solid var(--paper); }
+  .screen::-webkit-scrollbar-track { background: transparent; }
+
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 56px; }
+  @media (min-width: 1500px){ .wrap { max-width: 1140px; } }
+
+  /* ---------- shared header ---------- */
+  .head { padding-top: 56px; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: .26em; text-transform: uppercase;
+    color: var(--ink-ghost); font-weight: 500;
+  }
+  .title {
+    font-family: var(--font-serif);
+    font-weight: 300;
+    font-size: 40px;
+    line-height: 1.06;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin-top: 12px;
+  }
+  .subtitle {
+    font-size: 15px; color: var(--ink-faint);
+    margin-top: 12px; font-weight: 400; line-height: 1.6;
+    max-width: 56ch;
+  }
+
+  .hairline { height: 1px; background: var(--hairline); border: 0; }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    font-family: var(--font-sans);
+    font-size: 13.5px; font-weight: 500; letter-spacing: .01em;
+    border: 1px solid var(--hairline);
+    background: var(--paper-raised);
+    color: var(--ink);
+    border-radius: 11px;
+    padding: 10px 16px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: border-color var(--t-fast), background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+  }
+  .btn svg { width: 16px; height: 16px; stroke-width: 1.7; }
+  .btn:hover { border-color: var(--ink-ghost); }
+  .btn:active { transform: translateY(1px); }
+  .btn--ghost { background: transparent; border-color: transparent; color: var(--ink-soft); padding: 10px 12px; }
+  .btn--ghost:hover { color: var(--ink); background: var(--paper-sunk); }
+  .btn--sage {
+    background: var(--ink); color: var(--paper); border-color: var(--ink);
+  }
+  .btn--sage:hover { background: #000; border-color: #000; }
+  .btn--accent {
+    background: var(--sage); color: #fff; border-color: var(--sage);
+  }
+  .btn--accent:hover { background: var(--sage-deep); border-color: var(--sage-deep); }
+
+  /* ============================================================
+     LIBRARY
+     ============================================================ */
+  .lib-bar {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-top: 30px;
+    gap: 24px;
+  }
+  .sortgroup { display: inline-flex; align-items: center; gap: 2px; }
+  .sortgroup .sortlabel { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-ghost); margin-right: 12px; }
+  .seg {
+    display: inline-flex; background: transparent; border-radius: 10px;
+    padding: 2px; gap: 2px;
+  }
+  .seg button {
+    border: none; background: transparent; cursor: pointer;
+    font-family: var(--font-sans); font-size: 13px; font-weight: 400;
+    color: var(--ink-faint);
+    padding: 6px 12px; border-radius: 8px;
+    transition: color var(--t-fast), background var(--t-fast);
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button.is-active { color: var(--ink); background: var(--paper-sunk); font-weight: 500; }
+
+  .lib-actions { display: flex; gap: 10px; align-items: center; }
+
+  .folder { margin-top: 46px; }
+  .folder__head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+  .folder__name {
+    font-family: var(--font-serif); font-weight: 400; font-size: 20px;
+    letter-spacing: -0.005em; color: var(--ink);
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .folder__name svg { width: 17px; height: 17px; color: var(--sage); stroke-width: 1.6; }
+  .folder__count { font-size: 12.5px; color: var(--ink-ghost); letter-spacing: .04em; }
+  .folder__line { flex: 1 1 auto; height: 1px; background: var(--hairline-soft); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 26px 24px;
+  }
+  @media (max-width: 1180px){ .grid { grid-template-columns: repeat(3, 1fr); } }
+
+  .canvas-card { cursor: pointer; display: block; transition: transform var(--t-med); }
+  .canvas-card:hover { transform: translateY(-3px); }
+  .thumb {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    background: var(--paper-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color var(--t-fast), box-shadow var(--t-med);
+  }
+  .canvas-card:hover .thumb {
+    border-color: var(--ink-ghost);
+    box-shadow: 0 18px 34px -22px rgba(40,42,36,.34);
+  }
+  .thumb svg.thumb-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .thumb .dotpaper {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(var(--hairline) 1px, transparent 1.1px);
+    background-size: 15px 15px;
+    opacity: .8;
+  }
+  .cc-meta { padding: 13px 4px 0; }
+  .cc-title {
+    font-size: 14.5px; font-weight: 500; color: var(--ink); letter-spacing: -0.002em;
+    line-height: 1.3;
+  }
+  .cc-time { font-size: 12px; color: var(--ink-ghost); margin-top: 5px; letter-spacing: .01em; }
+
+  .lib-new {
+    aspect-ratio: 4 / 3;
+    border: 1px dashed var(--hairline);
+    border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    color: var(--ink-ghost);
+    cursor: pointer;
+    transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+  }
+  .lib-new:hover { border-color: var(--sage); color: var(--sage-deep); background: var(--sage-wash); }
+  .lib-new svg { width: 22px; height: 22px; stroke-width: 1.5; }
+  .lib-new span { font-size: 12.5px; letter-spacing: .03em; }
+
+  /* ============================================================
+     FOCUS HUB
+     ============================================================ */
+  .focus-hero {
+    margin-top: 38px;
+    border: 1px solid var(--hairline);
+    border-radius: 22px;
+    padding: 44px 46px;
+    background:
+      radial-gradient(420px 220px at 88% -10%, var(--sage-wash) 0%, transparent 70%),
+      var(--paper-raised);
+    display: flex; align-items: center; justify-content: space-between; gap: 30px;
+    position: relative; overflow: hidden;
+  }
+  .focus-hero__txt { max-width: 50ch; }
+  .focus-hero h2 {
+    font-family: var(--font-serif); font-weight: 300; font-size: 30px; letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .focus-hero p { color: var(--ink-faint); font-size: 14.5px; margin-top: 12px; line-height: 1.6; }
+  .focus-hero__cta { margin-top: 26px; display: flex; gap: 12px; align-items: center; }
+  .timer-kinds { display: inline-flex; gap: 8px; }
+  .chip {
+    font-size: 12.5px; color: var(--ink-soft); border: 1px solid var(--hairline);
+    background: var(--paper); border-radius: 999px; padding: 7px 14px; cursor: pointer;
+    transition: all var(--t-fast); display:inline-flex; align-items:center; gap:7px;
+  }
+  .chip:hover { border-color: var(--ink-ghost); }
+  .chip.is-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); }
+  .chip.is-active .dot { background: var(--paper); }
+
+  .focus-ring-deco { flex: 0 0 auto; }
+  .focus-ring-deco svg { width: 132px; height: 132px; }
+
+  .stats {
+    margin-top: 40px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .stat { padding: 26px 6px 26px 0; position: relative; }
+  .stat + .stat { padding-left: 30px; }
+  .stat + .stat::before { content:""; position:absolute; left:0; top:24px; bottom:24px; width:1px; background:var(--hairline); }
+  .stat__num {
+    font-family: var(--font-serif); font-weight: 300; font-size: 32px; letter-spacing: -0.01em; color: var(--ink);
+  }
+  .stat__num small { font-size: 17px; color: var(--ink-faint); font-family: var(--font-sans); font-weight: 400; }
+  .stat__label { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-ghost); margin-top: 8px; }
+
+  .recent { margin-top: 44px; padding-bottom: 60px; }
+  .section-h {
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-faint);
+    font-weight: 500; margin-bottom: 6px;
+  }
+  .session-row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto auto;
+    align-items: center;
+    gap: 18px;
+    padding: 19px 6px;
+    border-bottom: 1px solid var(--hairline-soft);
+    cursor: pointer;
+    transition: background var(--t-fast), padding-left var(--t-fast);
+  }
+  .session-row:hover { background: var(--paper-sunk); padding-left: 12px; border-radius: 10px; }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .status-dot.green { background: var(--confident); }
+  .status-dot.red { background: var(--weak); }
+  .s-title { font-size: 14.5px; font-weight: 500; color: var(--ink); }
+  .s-sub { font-size: 12.5px; color: var(--ink-ghost); margin-top: 3px; }
+  .s-cycles { font-size: 13px; color: var(--ink-faint); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+  .s-state { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .s-state.green { color: var(--sage-deep); }
+  .s-state.red { color: var(--weak); }
+
+  /* ============================================================
+     ACTIVE TIMER — serene, near full-screen
+     ============================================================ */
+  .timer-screen {
+    background:
+      radial-gradient(900px 700px at 50% 36%, #FFFFFF 0%, var(--paper) 70%);
+  }
+  .timer-stage {
+    min-height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 40px 30px 56px;
+    position: relative;
+  }
+  .timer-top {
+    position: absolute; top: 30px; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px;
+  }
+  .timer-goal-pill {
+    font-size: 12.5px; letter-spacing: .04em; color: var(--ink-soft);
+    display: inline-flex; align-items: center; gap: 9px;
+  }
+  .timer-goal-pill .gp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sage); }
+  .timer-leave {
+    border: none; background: transparent; cursor: pointer; color: var(--ink-ghost);
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 8px;
+    transition: color var(--t-fast);
+  }
+  .timer-leave:hover { color: var(--ink); }
+  .timer-leave svg { width: 16px; height: 16px; }
+
+  .breathe-wrap { position: relative; width: 392px; height: 392px; display: flex; align-items: center; justify-content: center; }
+  .breathe-glow {
+    position: absolute; inset: 22px; border-radius: 50%;
+    background: radial-gradient(circle, var(--sage-wash) 0%, transparent 68%);
+    animation: breathe 7s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(.92); opacity: .55; }
+    50%      { transform: scale(1.06); opacity: .95; }
+  }
+  .ring-svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-track { fill: none; stroke: var(--hairline); stroke-width: 1.5; }
+  .ring-prog  { fill: none; stroke: var(--sage); stroke-width: 2.5; stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear; }
+
+  .timer-center { position: relative; z-index: 2; }
+  .timer-label { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--ink-ghost); }
+  .timer-time {
+    font-family: var(--font-serif); font-weight: 300;
+    font-size: 94px; line-height: 1; letter-spacing: -0.02em; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    margin-top: 14px;
+  }
+  .timer-phase { font-size: 13px; color: var(--ink-faint); margin-top: 16px; letter-spacing: .04em; }
+
+  .cycle-dots { display: flex; gap: 11px; margin-top: 34px; }
+  .cycle-dots .cd { width: 8px; height: 8px; border-radius: 50%; background: var(--hairline); transition: background var(--t-med), transform var(--t-med); }
+  .cycle-dots .cd.done { background: var(--sage); }
+  .cycle-dots .cd.now { background: var(--sage); transform: scale(1.4); box-shadow: 0 0 0 4px var(--sage-wash); }
+
+  .timer-controls { display: flex; align-items: center; gap: 16px; margin-top: 50px; }
+  .tctl {
+    border: 1px solid var(--hairline); background: var(--paper-raised);
+    color: var(--ink-soft); cursor: pointer;
+    border-radius: 14px; padding: 13px 22px; font-size: 13.5px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 9px;
+    transition: all var(--t-fast);
+  }
+  .tctl svg { width: 17px; height: 17px; stroke-width: 1.7; }
+  .tctl:hover { border-color: var(--ink-ghost); color: var(--ink); }
+  .tctl--primary {
+    background: var(--ink); color: var(--paper); border-color: var(--ink);
+    padding: 13px 30px;
+  }
+  .tctl--primary:hover { background: #000; color: var(--paper); }
+  .tctl--danger:hover { border-color: var(--weak); color: var(--weak); }
+
+  .distraction-count {
+    margin-top: 30px; font-size: 12.5px; color: var(--ink-ghost); letter-spacing: .04em;
+  }
+  .distraction-count b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ============================================================
+     KANBAN (Revision + Goals)
+     ============================================================ */
+  .board {
+    margin-top: 34px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 40px;
+    padding-bottom: 56px;
+    align-items: start;
+  }
+  .col__head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px; }
+  .col__name { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+  .col__count {
+    font-size: 11px; color: var(--ink-ghost);
+    background: var(--paper-sunk); border-radius: 999px; padding: 2px 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .col__rule { height: 1px; background: var(--hairline); margin-bottom: 18px; }
+
+  .kcard {
+    border: 1px solid var(--hairline);
+    background: var(--paper-raised);
+    border-radius: 14px;
+    padding: 16px 16px 15px;
+    margin-bottom: 14px;
+    cursor: grab;
+    position: relative;
+    transition: border-color var(--t-fast), box-shadow var(--t-med), transform var(--t-med);
+  }
+  .kcard:hover {
+    border-color: var(--ink-ghost);
+    box-shadow: 0 16px 30px -22px rgba(40,42,36,.32);
+    transform: translateY(-2px);
+  }
+  .kcard__flag { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+  .flag-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .flag-dot.green { background: var(--confident); }
+  .flag-dot.yellow { background: var(--shaky); }
+  .flag-dot.red { background: var(--weak); }
+  .flag-label { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-ghost); }
+  .kcard__title { font-size: 15px; font-weight: 500; color: var(--ink); line-height: 1.3; letter-spacing: -0.003em; }
+  .kcard__foot { display: flex; align-items: center; justify-content: space-between; margin-top: 13px; }
+  .due-hint { font-size: 12px; color: var(--ink-faint); display: inline-flex; align-items: center; gap: 6px; }
+  .due-hint svg { width: 13px; height: 13px; stroke-width: 1.7; color: var(--ink-ghost); }
+  .due-hint.urgent { color: var(--weak); }
+  .due-hint.urgent svg { color: var(--weak); }
+  .refl { font-size: 12px; color: var(--ink-faint); display: inline-flex; align-items: center; gap: 6px; }
+  .refl svg { width: 13px; height: 13px; stroke-width: 1.7; color: var(--ink-ghost); }
+
+  .kcard--done { opacity: .62; }
+  .kcard--done .kcard__title { text-decoration: line-through; text-decoration-color: var(--ink-ghost); text-decoration-thickness: 1px; }
+
+  .col-add {
+    width: 100%; border: 1px dashed var(--hairline); background: transparent;
+    border-radius: 12px; padding: 11px; color: var(--ink-ghost); cursor: pointer;
+    font-size: 12.5px; letter-spacing: .03em;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    transition: all var(--t-fast); margin-top: 2px;
+  }
+  .col-add svg { width: 14px; height: 14px; }
+  .col-add:hover { border-color: var(--sage); color: var(--sage-deep); background: var(--sage-wash); }
+
+  /* ============================================================
+     SETTINGS
+     ============================================================ */
+  .settings-body { padding-bottom: 72px; }
+  .set-section { margin-top: 50px; }
+  .set-section__h {
+    font-family: var(--font-serif); font-weight: 400; font-size: 19px; letter-spacing: -0.005em;
+    color: var(--ink); margin-bottom: 4px;
+  }
+  .set-section__sub { font-size: 12.5px; color: var(--ink-ghost); margin-bottom: 14px; }
+  .set-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    padding: 18px 2px;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+  .set-row:first-of-type { border-top: 1px solid var(--hairline); }
+  .set-label { font-size: 14.5px; color: var(--ink); font-weight: 400; }
+  .set-help { font-size: 12.5px; color: var(--ink-ghost); margin-top: 3px; }
+  .set-control { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; }
+
+  /* segmented (settings) */
+  .seg-pill {
+    display: inline-flex; border: 1px solid var(--hairline); border-radius: 11px; overflow: hidden; background: var(--paper-raised);
+  }
+  .seg-pill button {
+    border: none; background: transparent; cursor: pointer;
+    font-family: var(--font-sans); font-size: 13px; color: var(--ink-faint); font-weight: 400;
+    padding: 8px 15px; transition: all var(--t-fast); position: relative;
+  }
+  .seg-pill button + button { border-left: 1px solid var(--hairline); }
+  .seg-pill button:hover { color: var(--ink); }
+  .seg-pill button.is-active { background: var(--ink); color: var(--paper); }
+
+  /* swatches */
+  .swatches { display: inline-flex; gap: 9px; align-items: center; }
+  .swatch {
+    width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 1px solid rgba(0,0,0,.08);
+    transition: transform var(--t-fast), box-shadow var(--t-fast);
+    position: relative;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.is-active { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--ink); }
+
+  /* toggle */
+  .toggle {
+    width: 46px; height: 27px; border-radius: 999px; background: var(--paper-sunk);
+    border: 1px solid var(--hairline); cursor: pointer; position: relative;
+    transition: background var(--t-med), border-color var(--t-med);
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 21px; height: 21px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: transform var(--t-med);
+  }
+  .toggle.on { background: var(--sage); border-color: var(--sage); }
+  .toggle.on::after { transform: translateX(19px); }
+
+  /* stepper */
+  .stepper { display: inline-flex; align-items: center; border: 1px solid var(--hairline); border-radius: 11px; overflow: hidden; }
+  .stepper button {
+    border: none; background: var(--paper-raised); width: 34px; height: 34px; cursor: pointer; color: var(--ink-soft);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .stepper button:hover { background: var(--paper-sunk); color: var(--ink); }
+  .stepper button svg { width: 14px; height: 14px; stroke-width: 2; }
+  .stepper .val { min-width: 64px; text-align: center; font-size: 13.5px; font-variant-numeric: tabular-nums; color: var(--ink); border-left: 1px solid var(--hairline); border-right: 1px solid var(--hairline); padding: 0 6px; line-height: 34px; }
+
+  /* slider */
+  .slider-row { display: flex; align-items: center; gap: 14px; }
+  .slider {
+    -webkit-appearance: none; appearance: none;
+    width: 180px; height: 2px; border-radius: 2px; background: var(--hairline);
+    outline: none; cursor: pointer;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%; background: var(--paper-raised);
+    border: 1.5px solid var(--sage); cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+    transition: transform var(--t-fast);
+  }
+  .slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
+  .slider::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%; background: var(--paper-raised);
+    border: 1.5px solid var(--sage); cursor: pointer;
+  }
+  .slider-val { font-size: 13px; color: var(--ink-faint); min-width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .about-card {
+    margin-top: 18px; padding: 22px 24px; border: 1px solid var(--hairline); border-radius: 14px;
+    background: var(--sage-wash); color: var(--ink-soft); font-size: 14px; line-height: 1.6;
+    display: flex; gap: 16px; align-items: flex-start;
+  }
+  .about-card svg { width: 26px; height: 26px; color: var(--sage); flex: 0 0 auto; margin-top: 2px; }
+  .about-card b { color: var(--ink); font-weight: 500; }
+  .about-ver { font-size: 12px; color: var(--ink-ghost); margin-top: 4px; }
+
+  /* ============================================================
+     CANVAS EDITOR
+     ============================================================ */
+  #screen-canvas { overflow: hidden; }
+  .editor {
+    position: absolute; inset: 0;
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .editor__paper {
+    position: absolute; inset: 0;
+    background-color: #FCFCFA;
+    background-image: radial-gradient(#E3E3DC 1.1px, transparent 1.2px);
+    background-size: 26px 26px;
+  }
+  .editor__content { position: absolute; inset: 0; }
+  .editor__content svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* top-left: title + back, fades */
+  .ed-topbar {
+    position: absolute; top: 18px; left: 20px; right: 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    z-index: 20; pointer-events: none;
+  }
+  .ed-topbar > * { pointer-events: auto; }
+  .ed-title-group { display: flex; align-items: center; gap: 12px;
+    background: rgba(250,250,248,.82); backdrop-filter: blur(8px);
+    border: 1px solid var(--hairline); border-radius: 13px; padding: 8px 8px 8px 10px; }
+  .ed-back { border: none; background: transparent; cursor: pointer; color: var(--ink-soft); padding: 6px; border-radius: 8px; display: inline-flex; transition: background var(--t-fast), color var(--t-fast); }
+  .ed-back:hover { background: var(--paper-sunk); color: var(--ink); }
+  .ed-back svg { width: 18px; height: 18px; }
+  .ed-titles .t1 { font-size: 13.5px; font-weight: 500; color: var(--ink); line-height: 1.2; }
+  .ed-titles .t2 { font-size: 11px; color: var(--ink-ghost); }
+  .ed-saved { font-size: 11px; color: var(--ink-ghost); display: inline-flex; align-items: center; gap: 6px; padding-right: 8px; }
+  .ed-saved .sv-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); }
+
+  .ed-topright { display: flex; align-items: center; gap: 8px;
+    background: rgba(250,250,248,.82); backdrop-filter: blur(8px);
+    border: 1px solid var(--hairline); border-radius: 13px; padding: 6px; }
+  .ed-icon-btn { border: none; background: transparent; cursor: pointer; color: var(--ink-faint); width: 34px; height: 34px; border-radius: 9px; display:inline-flex; align-items:center; justify-content:center; transition: all var(--t-fast); }
+  .ed-icon-btn svg { width: 17px; height: 17px; stroke-width: 1.7; }
+  .ed-icon-btn:hover { background: var(--paper-sunk); color: var(--ink); }
+  .ed-divider-v { width: 1px; height: 22px; background: var(--hairline); }
+
+  /* ===== Floating HUD (left, vertical) — primary tools ===== */
+  .hud {
+    position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
+    z-index: 25;
+    background: rgba(255,255,255,.78);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    padding: 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    box-shadow: 0 24px 48px -30px rgba(40,42,36,.34);
+    opacity: .92;
+    transition: opacity var(--t-med);
+  }
+  .hud:hover { opacity: 1; }
+  .tool {
+    width: 42px; height: 42px; border-radius: 12px; border: none; background: transparent;
+    color: var(--ink-faint); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    position: relative; transition: all var(--t-fast);
+  }
+  .tool svg { width: 20px; height: 20px; stroke-width: 1.6; }
+  .tool:hover { background: var(--paper-sunk); color: var(--ink); }
+  .tool.is-active { background: var(--ink); color: var(--paper); }
+  .tool .tip {
+    position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%) translateX(-4px);
+    background: var(--ink); color: var(--paper); font-size: 11.5px; padding: 5px 10px; border-radius: 7px;
+    white-space: nowrap; opacity: 0; pointer-events: none; transition: all var(--t-fast); z-index: 40;
+  }
+  .tool:hover .tip { opacity: 1; transform: translateY(-50%) translateX(0); }
+  .hud-sep { height: 1px; background: var(--hairline); margin: 4px 6px; }
+
+  /* ===== Bottom HUD — pen kinds, widths, colors ===== */
+  .hud-bottom {
+    position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+    z-index: 25;
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,.80);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    padding: 8px 10px;
+    box-shadow: 0 24px 48px -30px rgba(40,42,36,.34);
+    opacity: .94;
+    transition: opacity var(--t-med);
+    max-width: calc(100% - 220px);
+    flex-wrap: nowrap;
+  }
+  .hud-bottom:hover { opacity: 1; }
+
+  .penkinds { display: flex; gap: 3px; }
+  .penkind {
+    border: none; background: transparent; cursor: pointer; color: var(--ink-faint);
+    font-size: 12px; padding: 8px 11px; border-radius: 10px; transition: all var(--t-fast);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .penkind svg { width: 15px; height: 15px; stroke-width: 1.6; }
+  .penkind:hover { background: var(--paper-sunk); color: var(--ink); }
+  .penkind.is-active { background: var(--ink); color: var(--paper); }
+
+  .hud-vsep { width: 1px; height: 26px; background: var(--hairline); margin: 0 4px; }
+
+  .widths { display: flex; align-items: center; gap: 2px; }
+  .width-btn {
+    width: 32px; height: 36px; border: none; background: transparent; cursor: pointer; border-radius: 9px;
+    display: inline-flex; align-items: center; justify-content: center; transition: all var(--t-fast);
+  }
+  .width-btn:hover { background: var(--paper-sunk); }
+  .width-btn .wd { background: var(--ink-faint); border-radius: 999px; transition: background var(--t-fast); }
+  .width-btn.is-active { background: var(--paper-sunk); }
+  .width-btn.is-active .wd { background: var(--ink); }
+
+  .colors { display: flex; align-items: center; gap: 6px; }
+  .color-btn {
+    width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 1.5px solid rgba(0,0,0,.10);
+    transition: transform var(--t-fast), box-shadow var(--t-fast); position: relative;
+  }
+  .color-btn:hover { transform: scale(1.15); }
+  .color-btn.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--ink); }
+
+  /* zoom widget bottom-right */
+  .zoom-widget {
+    position: absolute; right: 22px; bottom: 22px; z-index: 25;
+    display: flex; align-items: center; gap: 2px;
+    background: rgba(255,255,255,.80); backdrop-filter: blur(14px);
+    border: 1px solid var(--hairline); border-radius: 14px; padding: 5px;
+    box-shadow: 0 24px 48px -30px rgba(40,42,36,.34);
+    opacity: .92; transition: opacity var(--t-med);
+  }
+  .zoom-widget:hover { opacity: 1; }
+  .zoom-btn { border: none; background: transparent; cursor: pointer; color: var(--ink-faint); width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; transition: all var(--t-fast); }
+  .zoom-btn svg { width: 16px; height: 16px; stroke-width: 1.8; }
+  .zoom-btn:hover { background: var(--paper-sunk); color: var(--ink); }
+  .zoom-val { font-size: 12.5px; color: var(--ink-soft); min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; }
+
+  /* paper-style popover (left bottom) */
+  .paper-styles {
+    position: absolute; right: 22px; bottom: 70px; z-index: 26;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(14px);
+    border: 1px solid var(--hairline); border-radius: 14px; padding: 6px;
+    box-shadow: 0 24px 48px -22px rgba(40,42,36,.34);
+    display: none; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 196px;
+  }
+  .paper-styles.open { display: grid; }
+  .ps-opt { border: 1px solid var(--hairline); background: var(--paper); border-radius: 9px; cursor: pointer; padding: 7px 4px 5px; text-align: center; transition: all var(--t-fast); }
+  .ps-opt:hover { border-color: var(--ink-ghost); }
+  .ps-opt.is-active { border-color: var(--sage); background: var(--sage-wash); }
+  .ps-opt .ps-art { width: 100%; height: 30px; border-radius: 5px; background: #fff; border: 1px solid var(--hairline-soft); margin-bottom: 5px; }
+  .ps-opt .ps-name { font-size: 10.5px; color: var(--ink-faint); letter-spacing: .02em; }
+
+  /* badge */
+  .badge {
+    position: absolute; right: 18px; bottom: 16px; z-index: 80;
+    display: flex; align-items: center; gap: 9px;
+    background: rgba(26,26,26,.86); backdrop-filter: blur(6px);
+    color: var(--paper); border-radius: 999px; padding: 7px 14px 7px 11px;
+    font-size: 11.5px; letter-spacing: .02em;
+    box-shadow: 0 10px 30px -12px rgba(0,0,0,.5);
+    pointer-events: none;
+  }
+  .badge .badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 0 3px rgba(124,144,112,.28); }
+  .badge b { font-weight: 600; font-family: var(--font-serif); letter-spacing: .01em; }
+  .badge span { color: rgba(250,250,248,.6); }
+  /* hide badge on the canvas editor so HUD stays clean */
+  #screen-canvas .badge { display: none; }
+
+  /* utility */
+  .spacer-sm { height: 8px; }
+  .fade-edge-l { position: absolute; left:0; top:0; bottom:0; width: 80px; background: linear-gradient(90deg, var(--paper), transparent); z-index: 22; pointer-events:none; }
+  .fade-edge-r { position: absolute; right:0; top:0; bottom:0; width: 80px; background: linear-gradient(270deg, var(--paper), transparent); z-index: 22; pointer-events:none; }
+</style>
+</head>
+<body>
+  <div class="tablet" id="tablet">
+
+    <!-- ============================ RAIL ============================ -->
+    <nav class="rail">
+      <div class="rail__mark" title="Zenno">
+        <!-- enso-like mark -->
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M16.5 4.8a8.2 8.2 0 1 0 3.2 5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="12" cy="12" r="2.4" fill="var(--sage)"/>
+        </svg>
+      </div>
+
+      <div class="rail__nav">
+        <button class="nav-btn is-active" data-screen="library" aria-label="Library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 10h16M4 14h10M4 18h10" stroke-linecap="round"/></svg>
+          <span class="nav-label">Library</span>
+        </button>
+        <button class="nav-btn" data-screen="focus" aria-label="Focus">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+          <span class="nav-label">Focus</span>
+        </button>
+        <button class="nav-btn" data-screen="revision" aria-label="Revision">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-2.64-6.36" stroke-linecap="round"/><path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Revision</span>
+        </button>
+        <button class="nav-btn" data-screen="goals" aria-label="Goals">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>
+          <span class="nav-label">Goals</span>
+        </button>
+        <button class="nav-btn" data-screen="settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M3 12h2.5M18.5 12H21M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8" stroke-linecap="round"/></svg>
+          <span class="nav-label">Settings</span>
+        </button>
+      </div>
+
+      <div class="rail__foot">
+        <button class="nav-btn" data-screen="focus" aria-label="Quick focus" title="Quick focus">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v6l4 2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="13" r="8"/></svg>
+          <span class="nav-label">Quick focus</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ============================ STAGE ============================ -->
+    <main class="stage">
+
+      <!-- ===================================================== LIBRARY -->
+      <section class="screen is-active" id="screen-library">
+        <div class="wrap">
+          <header class="head">
+            <div class="eyebrow">Your study space</div>
+            <h1 class="title">Library</h1>
+            <p class="subtitle">A quiet shelf of everything you're learning. Open a canvas to pick up where the ink left off.</p>
+          </header>
+
+          <div class="lib-bar">
+            <div class="sortgroup">
+              <span class="sortlabel">Sort</span>
+              <div class="seg" data-seg="sort">
+                <button class="is-active">Last edited</button>
+                <button>Created</button>
+                <button>Title</button>
+              </div>
+            </div>
+            <div class="lib-actions">
+              <button class="btn btn--ghost" id="new-folder-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M12 11v4M10 13h4" stroke-linecap="round"/></svg>
+                New folder
+              </button>
+              <button class="btn btn--sage" data-open-canvas>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+                New canvas
+              </button>
+            </div>
+          </div>
+
+          <!-- Organic Chemistry -->
+          <section class="folder">
+            <div class="folder__head">
+              <span class="folder__name">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                Organic Chemistry
+              </span>
+              <span class="folder__count">4 canvases</span>
+              <span class="folder__line"></span>
+            </div>
+            <div class="grid">
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <g stroke="#2a2a2a" stroke-width="1.6" fill="none" stroke-linecap="round">
+                      <path d="M44 96 L70 96 L83 74 L70 52 L44 52 L31 74 Z"/>
+                      <path d="M48 88 L68 88 M55 60 L66 60"/>
+                    </g>
+                    <path d="M90 74 C108 60, 124 60, 142 74" stroke="#7C9070" stroke-width="1.6" fill="none" stroke-linecap="round" marker-end="url(#ah1)"/>
+                    <defs><marker id="ah1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#7C9070" stroke-width="1.2"/></marker></defs>
+                    <text x="148" y="70" font-family="Caveat" font-size="15" fill="#444">HBr</text>
+                    <path d="M150 100 q14 -6 30 0" stroke="#FFC928" stroke-width="6" opacity=".4" fill="none" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Alkene Addition Reactions</div><div class="cc-time">2 hours ago</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <text x="22" y="40" font-family="Caveat" font-size="20" fill="#2a2a2a">SN1 vs SN2</text>
+                    <line x1="100" y1="50" x2="100" y2="128" stroke="#E3E3DC" stroke-width="1.4"/>
+                    <path d="M26 70 C46 60, 70 78, 86 70" stroke="#2a2a2a" stroke-width="1.5" fill="none"/>
+                    <path d="M118 70 C140 60, 162 80, 178 70" stroke="#2a2a2a" stroke-width="1.5" fill="none"/>
+                    <circle cx="40" cy="100" r="9" stroke="#1E9BFF" stroke-width="1.5" fill="none"/>
+                    <circle cx="150" cy="100" r="9" stroke="#FF4F91" stroke-width="1.5" fill="none"/>
+                    <path d="M55 100 h22" stroke="#444" stroke-width="1.3" marker-end="url(#a2)"/>
+                    <defs><marker id="a2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#444" stroke-width="1.2"/></marker></defs>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">SN1 vs SN2 Mechanisms</div><div class="cc-time">Yesterday</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <g stroke="#2a2a2a" stroke-width="1.6" fill="none" stroke-linecap="round">
+                      <path d="M40 60 q20 -16 40 0 M40 60 v34 M80 60 v34 M40 94 q20 16 40 0"/>
+                      <path d="M120 56 l22 12 l-22 12"/>
+                    </g>
+                    <path d="M85 76 h30" stroke="#7C9070" stroke-width="1.6" marker-end="url(#a3)"/>
+                    <defs><marker id="a3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#7C9070" stroke-width="1.2"/></marker></defs>
+                    <text x="120" y="118" font-family="Caveat" font-size="14" fill="#444">[4+2]</text>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Diels–Alder</div><div class="cc-time">3 days ago</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <g stroke="#2a2a2a" stroke-width="1.6" fill="none" stroke-linecap="round">
+                      <path d="M50 80 l18 -10 l18 10"/>
+                      <path d="M68 70 v-22"/><path d="M64 48 h8"/>
+                    </g>
+                    <text x="58" y="44" font-family="Caveat" font-size="16" fill="#2a2a2a">O</text>
+                    <text x="100" y="80" font-family="Caveat" font-size="15" fill="#444">C=O</text>
+                    <path d="M40 110 q22 -7 44 0" stroke="#FFC928" stroke-width="6" opacity=".4" fill="none" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Carbonyl Chemistry</div><div class="cc-time">Last week</div></div>
+              </a>
+            </div>
+          </section>
+
+          <!-- Linear Algebra -->
+          <section class="folder">
+            <div class="folder__head">
+              <span class="folder__name">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                Linear Algebra
+              </span>
+              <span class="folder__count">3 canvases</span>
+              <span class="folder__line"></span>
+            </div>
+            <div class="grid">
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <text x="24" y="42" font-family="Caveat" font-size="19" fill="#2a2a2a">Av = λv</text>
+                    <g stroke="#2a2a2a" stroke-width="1.4" fill="none">
+                      <path d="M40 70 v44 M40 70 q-4 0 -4 4 M40 114 q-4 0 -4 -4"/>
+                      <path d="M74 70 v44 M74 70 q4 0 4 4 M74 114 q4 0 4 -4"/>
+                    </g>
+                    <text x="48" y="86" font-family="Caveat" font-size="13" fill="#444">2 1</text>
+                    <text x="48" y="106" font-family="Caveat" font-size="13" fill="#444">1 2</text>
+                    <path d="M110 110 L160 60" stroke="#1E9BFF" stroke-width="1.8" marker-end="url(#a4)"/>
+                    <path d="M110 110 L150 96" stroke="#FF4F91" stroke-width="1.8" marker-end="url(#a4)"/>
+                    <defs><marker id="a4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#444" stroke-width="1.2"/></marker></defs>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Eigenvalues &amp; Eigenvectors</div><div class="cc-time">5 hours ago</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <text x="22" y="38" font-family="Caveat" font-size="17" fill="#2a2a2a">Gram–Schmidt</text>
+                    <path d="M40 120 L140 120" stroke="#2a2a2a" stroke-width="1.4" marker-end="url(#a5)"/>
+                    <path d="M40 120 L40 56" stroke="#2a2a2a" stroke-width="1.4" marker-end="url(#a5)"/>
+                    <path d="M40 120 L110 70" stroke="#36D400" stroke-width="1.8" marker-end="url(#a5)"/>
+                    <path d="M40 120 L60 70" stroke="#1E9BFF" stroke-width="1.8" marker-end="url(#a5)"/>
+                    <path d="M82 90 l8 -6 l4 9" stroke="#FF4F91" stroke-width="1.4" fill="none"/>
+                    <defs><marker id="a5" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#444" stroke-width="1.2"/></marker></defs>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Gram–Schmidt Process</div><div class="cc-time">2 days ago</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <text x="40" y="60" font-family="Caveat" font-size="26" fill="#2a2a2a">A = UΣVᵀ</text>
+                    <rect x="46" y="84" width="20" height="20" stroke="#1E9BFF" stroke-width="1.5" fill="none"/>
+                    <rect x="74" y="84" width="20" height="20" stroke="#FFC928" stroke-width="1.5" fill="none"/>
+                    <rect x="102" y="84" width="20" height="20" stroke="#FF4F91" stroke-width="1.5" fill="none"/>
+                    <path d="M40 122 q40 -8 90 0" stroke="#FFC928" stroke-width="6" opacity=".35" fill="none" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Singular Value Decomposition</div><div class="cc-time">Last week</div></div>
+              </a>
+            </div>
+          </section>
+
+          <!-- Modern History -->
+          <section class="folder">
+            <div class="folder__head">
+              <span class="folder__name">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+                Modern History
+              </span>
+              <span class="folder__count">2 canvases</span>
+              <span class="folder__line"></span>
+            </div>
+            <div class="grid">
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <text x="22" y="40" font-family="Caveat" font-size="18" fill="#2a2a2a">Yalta · Feb 1945</text>
+                    <line x1="30" y1="80" x2="170" y2="80" stroke="#2a2a2a" stroke-width="1.4"/>
+                    <circle cx="55" cy="80" r="4" fill="#FF4F91"/><text x="46" y="102" font-family="Caveat" font-size="12" fill="#444">FDR</text>
+                    <circle cx="100" cy="80" r="4" fill="#1E9BFF"/><text x="88" y="102" font-family="Caveat" font-size="12" fill="#444">Churchill</text>
+                    <circle cx="145" cy="80" r="4" fill="#36D400"/><text x="134" y="102" font-family="Caveat" font-size="12" fill="#444">Stalin</text>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Yalta Conference 1945</div><div class="cc-time">Yesterday</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <text x="22" y="40" font-family="Caveat" font-size="18" fill="#2a2a2a">Marshall Plan</text>
+                    <path d="M30 100 C70 60, 120 130, 170 80" stroke="#7C9070" stroke-width="1.8" fill="none" marker-end="url(#a6)"/>
+                    <text x="34" y="120" font-family="Caveat" font-size="13" fill="#444">$13B aid → Europe</text>
+                    <defs><marker id="a6" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#7C9070" stroke-width="1.2"/></marker></defs>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Marshall Plan</div><div class="cc-time">4 days ago</div></div>
+              </a>
+            </div>
+          </section>
+
+          <!-- Unfiled -->
+          <section class="folder" style="padding-bottom:64px;">
+            <div class="folder__head">
+              <span class="folder__name" style="color:var(--ink-faint);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--ink-ghost);"><path d="M4 6h16v12H4z" stroke-dasharray="3 3"/></svg>
+                Unfiled
+              </span>
+              <span class="folder__count">2 canvases</span>
+              <span class="folder__line"></span>
+            </div>
+            <div class="grid">
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <path d="M40 100 C60 60, 90 120, 120 70 S160 60, 170 90" stroke="#2a2a2a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+                    <circle cx="60" cy="50" r="12" stroke="#FF4F91" stroke-width="1.5" fill="none"/>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Quick sketch</div><div class="cc-time">Just now</div></div>
+              </a>
+              <a class="canvas-card" data-open-canvas>
+                <div class="thumb"><div class="dotpaper"></div>
+                  <svg class="thumb-art" viewBox="0 0 200 150">
+                    <g stroke="#2a2a2a" stroke-width="1.3" stroke-linecap="round">
+                      <line x1="34" y1="46" x2="150" y2="46"/><line x1="34" y1="64" x2="166" y2="64"/>
+                      <line x1="34" y1="82" x2="120" y2="82"/><line x1="34" y1="100" x2="158" y2="100"/>
+                    </g>
+                    <path d="M34 116 q30 -6 70 0" stroke="#FFC928" stroke-width="6" opacity=".35" fill="none" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="cc-meta"><div class="cc-title">Lecture 12 notes</div><div class="cc-time">3 hours ago</div></div>
+              </a>
+              <div class="lib-new" data-open-canvas>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+                <span>New canvas</span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="badge"><span class="badge-dot"></span><b>Zenno</b><span>· breathe, then learn</span></div>
+      </section>
+
+      <!-- ===================================================== FOCUS -->
+      <section class="screen" id="screen-focus">
+        <div class="wrap">
+          <header class="head">
+            <div class="eyebrow">Deep work</div>
+            <h1 class="title">Focus</h1>
+            <p class="subtitle">One thing at a time. Run your pre-study ritual, pick a timer, and begin.</p>
+          </header>
+
+          <div class="focus-hero">
+            <div class="focus-hero__txt">
+              <h2>Start a focus session</h2>
+              <p>Run your pre-study ritual, pick a timer, and begin. Everything else can wait.</p>
+              <div class="focus-hero__cta">
+                <button class="btn btn--accent" data-start-timer>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 5l11 7-11 7V5Z" stroke-linejoin="round"/></svg>
+                  Begin
+                </button>
+                <div class="timer-kinds" data-seg="kind">
+                  <button class="chip is-active"><span class="dot"></span>Pomodoro</button>
+                  <button class="chip"><span class="dot"></span>Flowmodoro</button>
+                </div>
+              </div>
+            </div>
+            <div class="focus-ring-deco" aria-hidden="true">
+              <svg viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--hairline)" stroke-width="1.5"/>
+                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--sage)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="100" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="3" fill="var(--sage)"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><div class="stat__num">48</div><div class="stat__label">Sessions</div></div>
+            <div class="stat"><div class="stat__num">32<small>h</small> 10<small>m</small></div><div class="stat__label">Total focus</div></div>
+            <div class="stat"><div class="stat__num">1.4</div><div class="stat__label">Distractions / session</div></div>
+          </div>
+
+          <div class="recent">
+            <div class="section-h">Recent sessions</div>
+            <div class="session-row" data-start-timer>
+              <span class="status-dot green"></span>
+              <div><div class="s-title">Orgo problem set</div><div class="s-sub">50m focused · 2 hours ago</div></div>
+              <span class="s-cycles">2×</span>
+              <span class="s-state green">Completed</span>
+            </div>
+            <div class="session-row" data-start-timer>
+              <span class="status-dot green"></span>
+              <div><div class="s-title">Read Strang Ch. 6</div><div class="s-sub">25m focused · yesterday</div></div>
+              <span class="s-cycles">1×</span>
+              <span class="s-state green">Completed</span>
+            </div>
+            <div class="session-row" data-start-timer>
+              <span class="status-dot red"></span>
+              <div><div class="s-title">History essay outline</div><div class="s-sub">15m focused · 2 days ago</div></div>
+              <span class="s-cycles">—</span>
+              <span class="s-state red">Abandoned</span>
+            </div>
+          </div>
+        </div>
+        <div class="badge"><span class="badge-dot"></span><b>Zenno</b><span>· breathe, then learn</span></div>
+      </section>
+
+      <!-- ===================================================== ACTIVE TIMER -->
+      <section class="screen timer-screen" id="screen-timer">
+        <div class="timer-stage">
+          <div class="timer-top">
+            <div class="timer-goal-pill"><span class="gp-dot"></span> Orgo problem set</div>
+            <button class="timer-leave" data-screen="focus">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Leave
+            </button>
+          </div>
+
+          <div class="breathe-wrap">
+            <div class="breathe-glow"></div>
+            <svg class="ring-svg" viewBox="0 0 360 360">
+              <circle class="ring-track" cx="180" cy="180" r="168"/>
+              <circle class="ring-prog" id="ring-prog" cx="180" cy="180" r="168"
+                      stroke-dasharray="1055.6" stroke-dashoffset="396"/>
+            </svg>
+            <div class="timer-center">
+              <div class="timer-label">Focusing</div>
+              <div class="timer-time" id="timer-readout">18:32</div>
+              <div class="timer-phase">Pomodoro · work block</div>
+            </div>
+          </div>
+
+          <div class="cycle-dots">
+            <span class="cd done"></span>
+            <span class="cd now"></span>
+            <span class="cd"></span>
+            <span class="cd"></span>
+          </div>
+
+          <div class="timer-controls">
+            <button class="tctl tctl--danger" data-screen="focus">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              Stop
+            </button>
+            <button class="tctl tctl--primary" id="pause-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 6v12M15 6v12" stroke-linecap="round"/></svg>
+              Pause
+            </button>
+            <button class="tctl" id="distract-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 8v4M12 16h.01" stroke-linecap="round"/><circle cx="12" cy="12" r="9"/></svg>
+              Distraction
+            </button>
+          </div>
+
+          <div class="distraction-count">Distractions this session · <b id="distract-count">1</b></div>
+        </div>
+      </section>
+
+      <!-- ===================================================== REVISION -->
+      <section class="screen" id="screen-revision">
+        <div class="wrap" style="max-width:1180px;">
+          <header class="head">
+            <div class="eyebrow">Spaced retrieval</div>
+            <h1 class="title">Schedule Revision</h1>
+            <p class="subtitle">Move each topic through time as it settles in memory. Pull it back the moment recall starts to fade.</p>
+          </header>
+
+          <div class="board">
+            <!-- Studying -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">Studying</span><span class="col__count">2</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot red"></span><span class="flag-label">Weak</span></div>
+                <div class="kcard__title">Pericyclic reactions</div>
+                <div class="kcard__foot"><span class="due-hint urgent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2" stroke-linecap="round"/></svg>revise today</span></div>
+              </div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot yellow"></span><span class="flag-label">Shaky</span></div>
+                <div class="kcard__title">Reaction kinetics</div>
+                <div class="kcard__foot"><span class="due-hint urgent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2" stroke-linecap="round"/></svg>revise today</span></div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add topic</button>
+            </div>
+
+            <!-- 1 Day -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">1 Day</span><span class="col__count">2</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot yellow"></span><span class="flag-label">Shaky</span></div>
+                <div class="kcard__title">Eigen-decomposition</div>
+                <div class="kcard__foot"><span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>due tomorrow</span></div>
+              </div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot green"></span><span class="flag-label">Confident</span></div>
+                <div class="kcard__title">Markov chains</div>
+                <div class="kcard__foot"><span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>due tomorrow</span></div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add topic</button>
+            </div>
+
+            <!-- 1 Week -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">1 Week</span><span class="col__count">2</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot green"></span><span class="flag-label">Confident</span></div>
+                <div class="kcard__title">SVD</div>
+                <div class="kcard__foot"><span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>due in 3 days</span></div>
+              </div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot yellow"></span><span class="flag-label">Shaky</span></div>
+                <div class="kcard__title">Cold War timeline</div>
+                <div class="kcard__foot"><span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>due in 6 days</span></div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add topic</button>
+            </div>
+
+            <!-- 1 Month -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">1 Month</span><span class="col__count">1</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__flag"><span class="flag-dot green"></span><span class="flag-label">Confident</span></div>
+                <div class="kcard__title">IUPAC Nomenclature</div>
+                <div class="kcard__foot"><span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>due in 24 days</span></div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add topic</button>
+            </div>
+          </div>
+        </div>
+        <div class="badge"><span class="badge-dot"></span><b>Zenno</b><span>· breathe, then learn</span></div>
+      </section>
+
+      <!-- ===================================================== GOALS -->
+      <section class="screen" id="screen-goals">
+        <div class="wrap" style="max-width:1180px;">
+          <header class="head">
+            <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px;">
+              <div>
+                <div class="eyebrow">Intentions</div>
+                <h1 class="title">Goal Cycle</h1>
+                <p class="subtitle">Hold a few intentions lightly. Reflect, adjust, and let what no longer serves you fall away.</p>
+              </div>
+              <button class="btn btn--ghost" style="margin-bottom:6px;" id="templates-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>
+                Templates
+              </button>
+            </div>
+          </header>
+
+          <div class="board">
+            <!-- Todo -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">Todo</span><span class="col__count">1</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__title">Master orgo mechanisms</div>
+                <div class="kcard__foot">
+                  <span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>Jun 20</span>
+                  <span class="refl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-11.9 7.6L3 21l1.9-6.1A8.4 8.4 0 1 1 21 11.5Z" stroke-linejoin="round"/></svg>0</span>
+                </div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add goal</button>
+            </div>
+
+            <!-- In Cycle -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">In Cycle</span><span class="col__count">2</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__title">Finish Strang Ch. 6</div>
+                <div class="kcard__foot">
+                  <span class="due-hint urgent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>Jun 8</span>
+                  <span class="refl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-11.9 7.6L3 21l1.9-6.1A8.4 8.4 0 1 1 21 11.5Z" stroke-linejoin="round"/></svg>3</span>
+                </div>
+              </div>
+              <div class="kcard">
+                <div class="kcard__title">Daily retrieval practice</div>
+                <div class="kcard__foot">
+                  <span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-2.6-6.3" stroke-linecap="round"/><path d="M21 4v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>ongoing</span>
+                  <span class="refl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-11.9 7.6L3 21l1.9-6.1A8.4 8.4 0 1 1 21 11.5Z" stroke-linejoin="round"/></svg>12</span>
+                </div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add goal</button>
+            </div>
+
+            <!-- Monitoring -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">Monitoring</span><span class="col__count">1</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard">
+                <div class="kcard__title">Sleep before midnight</div>
+                <div class="kcard__foot">
+                  <span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z" stroke-linejoin="round"/></svg>nightly</span>
+                  <span class="refl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-11.9 7.6L3 21l1.9-6.1A8.4 8.4 0 1 1 21 11.5Z" stroke-linejoin="round"/></svg>5</span>
+                </div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add goal</button>
+            </div>
+
+            <!-- Out of Cycle -->
+            <div class="kcol">
+              <div class="col__head"><span class="col__name">Out of Cycle</span><span class="col__count">1</span></div>
+              <div class="col__rule"></div>
+              <div class="kcard kcard--done">
+                <div class="kcard__flag"><span class="flag-dot green"></span><span class="flag-label">Done</span></div>
+                <div class="kcard__title">Quit late-night cramming</div>
+                <div class="kcard__foot">
+                  <span class="due-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg>retired</span>
+                </div>
+              </div>
+              <button class="col-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Add goal</button>
+            </div>
+          </div>
+        </div>
+        <div class="badge"><span class="badge-dot"></span><b>Zenno</b><span>· breathe, then learn</span></div>
+      </section>
+
+      <!-- ===================================================== SETTINGS -->
+      <section class="screen" id="screen-settings">
+        <div class="wrap" style="max-width:760px;">
+          <header class="head">
+            <div class="eyebrow">Preferences</div>
+            <h1 class="title">Settings</h1>
+            <p class="subtitle">Tune Zenno until it disappears, and only the work remains.</p>
+          </header>
+
+          <div class="settings-body">
+            <!-- Appearance -->
+            <section class="set-section">
+              <div class="set-section__h">Appearance</div>
+              <div class="set-section__sub">How Zenno looks and feels.</div>
+
+              <div class="set-row">
+                <div><div class="set-label">Theme</div><div class="set-help">Match your system, or commit to one mood.</div></div>
+                <div class="set-control">
+                  <div class="seg-pill" data-seg="theme"><button>System</button><button>Light</button><button class="is-active">Dark</button></div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Accent color</div><div class="set-help">A single quiet accent, used sparingly.</div></div>
+                <div class="set-control">
+                  <div class="swatches" data-swatch="accent">
+                    <span class="swatch is-active" style="background:#E8B84B"></span>
+                    <span class="swatch" style="background:#7C9070"></span>
+                    <span class="swatch" style="background:#C06E5C"></span>
+                    <span class="swatch" style="background:#5E7C9B"></span>
+                    <span class="swatch" style="background:#9B7CA6"></span>
+                    <span class="swatch" style="background:#1A1A1A"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Background color</div><div class="set-help">The paper your thinking rests on.</div></div>
+                <div class="set-control">
+                  <div class="swatches" data-swatch="bg">
+                    <span class="swatch is-active" style="background:#FAFAF8"></span>
+                    <span class="swatch" style="background:#F2EFE9"></span>
+                    <span class="swatch" style="background:#1E1E1C; border-color:rgba(255,255,255,.18)"></span>
+                    <span class="swatch" style="background:#11130F; border-color:rgba(255,255,255,.18)"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Canvas pen -->
+            <section class="set-section">
+              <div class="set-section__h">Canvas pen</div>
+              <div class="set-section__sub">How your ink responds to the stylus.</div>
+
+              <div class="set-row">
+                <div><div class="set-label">Pressure curve</div><div class="set-help">How firmly a stroke darkens and thickens.</div></div>
+                <div class="set-control">
+                  <div class="seg-pill" data-seg="pressure"><button>Light</button><button class="is-active">Normal</button><button>Firm</button></div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Stabilizer</div><div class="set-help">Smooth out hand tremor on slow strokes.</div></div>
+                <div class="set-control"><div class="slider-row"><input type="range" class="slider" min="0" max="100" value="38" data-slider /><span class="slider-val">38%</span></div></div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Smoothing</div><div class="set-help">Round off jitter as the line is drawn.</div></div>
+                <div class="set-control"><div class="slider-row"><input type="range" class="slider" min="0" max="100" value="60" data-slider /><span class="slider-val">60%</span></div></div>
+              </div>
+            </section>
+
+            <!-- Focus defaults -->
+            <section class="set-section">
+              <div class="set-section__h">Focus defaults</div>
+              <div class="set-section__sub">Starting points for new sessions.</div>
+
+              <div class="set-row">
+                <div><div class="set-label">Pomodoro work</div><div class="set-help">Length of a single work block.</div></div>
+                <div class="set-control"><div class="stepper" data-stepper data-unit=" min" data-step="5" data-min="5"><button data-dec><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14" stroke-linecap="round"/></svg></button><span class="val">25 min</span><button data-inc><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></button></div></div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Pomodoro break</div><div class="set-help">Short pause between blocks.</div></div>
+                <div class="set-control"><div class="stepper" data-stepper data-unit=" min" data-step="1" data-min="1"><button data-dec><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14" stroke-linecap="round"/></svg></button><span class="val">5 min</span><button data-inc><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></button></div></div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Flowmodoro break ratio</div><div class="set-help">Rest scales with how long you flowed.</div></div>
+                <div class="set-control"><div class="slider-row"><input type="range" class="slider" min="5" max="40" value="20" data-slider /><span class="slider-val">20%</span></div></div>
+              </div>
+              <div class="set-row">
+                <div><div class="set-label">Default session length</div><div class="set-help">Pre-filled when you start fresh.</div></div>
+                <div class="set-control"><div class="stepper" data-stepper data-unit=" min" data-step="5" data-min="5"><button data-dec><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14" stroke-linecap="round"/></svg></button><span class="val">50 min</span><button data-inc><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></button></div></div>
+              </div>
+            </section>
+
+            <!-- Focus -->
+            <section class="set-section">
+              <div class="set-section__h">Focus</div>
+              <div class="set-section__sub">Behaviour during a live session.</div>
+              <div class="set-row">
+                <div><div class="set-label">Keep screen on during sessions</div><div class="set-help">Prevent the tablet from dimming mid-focus.</div></div>
+                <div class="set-control"><button class="toggle on" data-toggle></button></div>
+              </div>
+            </section>
+
+            <!-- Library -->
+            <section class="set-section">
+              <div class="set-section__h">Library</div>
+              <div class="set-section__sub">Defaults for your study shelf.</div>
+              <div class="set-row">
+                <div><div class="set-label">Default sort</div><div class="set-help">Order canvases appear in on open.</div></div>
+                <div class="set-control"><div class="seg-pill" data-seg="libsort"><button class="is-active">Last edited</button><button>Created</button><button>Title</button></div></div>
+              </div>
+            </section>
+
+            <!-- About -->
+            <section class="set-section">
+              <div class="set-section__h">About</div>
+              <div class="about-card">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M16.5 4.8a8.2 8.2 0 1 0 3.2 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                  <circle cx="12" cy="12" r="2.2" fill="currentColor"/>
+                </svg>
+                <div>
+                  <div><b>Zenno</b> — An infinite-canvas study app for advanced learners.</div>
+                  <div class="about-ver">Version 1.0 · Calm over clever, discipline over decoration.</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="badge"><span class="badge-dot"></span><b>Zenno</b><span>· breathe, then learn</span></div>
+      </section>
+
+      <!-- ===================================================== CANVAS EDITOR -->
+      <section class="screen" id="screen-canvas">
+        <div class="editor">
+          <div class="editor__paper" id="editor-paper"></div>
+
+          <!-- Sample in-progress study content -->
+          <div class="editor__content" aria-hidden="true">
+            <svg viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid slice">
+              <!-- title (handwritten) -->
+              <text x="150" y="120" font-family="Caveat" font-size="46" fill="#1f1f1f">Alkene Addition — Markovnikov</text>
+              <path d="M150 138 q160 -10 470 0" stroke="#FFC928" stroke-width="16" opacity=".30" fill="none" stroke-linecap="round"/>
+
+              <!-- benzene ring, hand-sketched -->
+              <g stroke="#222" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M250 300 L320 300 L356 362 L320 424 L250 424 L214 362 Z"/>
+                <!-- inner double-bond hints -->
+                <path d="M262 312 L308 312"/>
+                <path d="M338 360 L320 392"/>
+                <path d="M262 412 L308 412"/>
+                <!-- inner circle (aromatic) -->
+                <circle cx="285" cy="362" r="34" stroke-dasharray="2 7" stroke-width="2.4"/>
+              </g>
+
+              <!-- reaction arrow -->
+              <path d="M400 362 C460 338, 540 338, 600 362" stroke="#7C9070" stroke-width="3" fill="none" stroke-linecap="round" marker-end="url(#bigarrow)"/>
+              <defs>
+                <marker id="bigarrow" markerWidth="12" markerHeight="12" refX="8" refY="5" orient="auto">
+                  <path d="M0 0 L10 5 L0 10" fill="none" stroke="#7C9070" stroke-width="2"/>
+                </marker>
+              </defs>
+              <text x="455" y="345" font-family="Caveat" font-size="30" fill="#3a3a3a">HBr</text>
+              <text x="450" y="392" font-family="Caveat" font-size="22" fill="#7C9070">peroxide?</text>
+
+              <!-- product ring -->
+              <g stroke="#222" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M640 300 L710 300 L746 362 L710 424 L640 424 L604 362 Z"/>
+                <circle cx="675" cy="362" r="34" stroke-dasharray="2 7" stroke-width="2.4"/>
+              </g>
+              <text x="724" y="300" font-family="Caveat" font-size="28" fill="#FF4F91">Br</text>
+              <path d="M716 300 L735 286" stroke="#FF4F91" stroke-width="3" stroke-linecap="round"/>
+
+              <!-- curved electron-pushing arrows -->
+              <path d="M300 460 C320 510, 360 510, 380 470" stroke="#1E9BFF" stroke-width="2.4" fill="none" marker-end="url(#bluearrow)"/>
+              <defs>
+                <marker id="bluearrow" markerWidth="11" markerHeight="11" refX="7" refY="5" orient="auto">
+                  <path d="M0 0 L9 5 L0 10" fill="none" stroke="#1E9BFF" stroke-width="1.8"/>
+                </marker>
+              </defs>
+
+              <!-- handwritten notes block -->
+              <g font-family="Caveat" fill="#262626">
+                <text x="150" y="540" font-size="30">• Markovnikov: H adds to C with more H's</text>
+                <text x="150" y="582" font-size="30">• carbocation forms at <tspan fill="#C06E5C">more stable</tspan> position</text>
+                <text x="150" y="624" font-size="30">• peroxides flip it → anti-Markovnikov</text>
+              </g>
+              <!-- highlight on the key line -->
+              <path d="M150 614 q230 -8 470 0" stroke="#36D400" stroke-width="16" opacity=".22" fill="none" stroke-linecap="round"/>
+
+              <!-- a small energy diagram, sketched, upper right -->
+              <g stroke="#444" stroke-width="2.4" fill="none" stroke-linecap="round">
+                <path d="M900 200 L900 360 M900 360 L1080 360"/>
+                <path d="M906 330 C950 330, 960 230, 1000 250 C1030 264, 1040 320, 1074 312"/>
+              </g>
+              <text x="905" y="190" font-family="Caveat" font-size="24" fill="#444">E</text>
+              <text x="985" y="232" font-family="Caveat" font-size="22" fill="#C9A04E">Ea</text>
+              <text x="1010" y="384" font-family="Caveat" font-size="22" fill="#444">reaction →</text>
+
+              <!-- faint stray pencil mark -->
+              <path d="M820 540 q40 -30 90 -10 t80 24" stroke="#9a9a92" stroke-width="2" fill="none" opacity=".5" stroke-linecap="round"/>
+              <text x="840" y="600" font-family="Caveat" font-size="26" fill="#8a8a82" opacity=".7">∴ regioselectivity!</text>
+            </svg>
+          </div>
+
+          <!-- edge fades so HUD floats away from content -->
+          <div class="fade-edge-l"></div>
+          <div class="fade-edge-r"></div>
+
+          <!-- top bar -->
+          <div class="ed-topbar">
+            <div class="ed-title-group">
+              <button class="ed-back" data-screen="library" title="Back to Library">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="ed-titles">
+                <div class="t1">Alkene Addition Reactions</div>
+                <div class="t2">Organic Chemistry</div>
+              </div>
+            </div>
+            <div class="ed-topright">
+              <span class="ed-saved"><span class="sv-dot"></span>Saved</span>
+              <span class="ed-divider-v"></span>
+              <button class="ed-icon-btn" title="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 7L4 12l5 5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 12h11a5 5 0 0 1 0 10h-1" stroke-linecap="round"/></svg></button>
+              <button class="ed-icon-btn" title="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 7l5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12H9a5 5 0 0 0 0 10h1" stroke-linecap="round"/></svg></button>
+              <span class="ed-divider-v"></span>
+              <button class="ed-icon-btn" title="Layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l9 5-9 5-9-5 9-5Z" stroke-linejoin="round"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5" stroke-linejoin="round"/></svg></button>
+              <button class="ed-icon-btn" id="paper-style-btn" title="Paper style"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg></button>
+              <button class="ed-icon-btn" title="Import image / PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="9" r="1.4"/></svg></button>
+              <button class="ed-icon-btn" title="Export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M8 8l4-4 4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+
+          <!-- LEFT FLOATING HUD: tools -->
+          <div class="hud" data-tools>
+            <button class="tool" title="Pan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11V5a1.5 1.5 0 0 1 3 0v5m0-1V4.5a1.5 1.5 0 0 1 3 0V10m0-1.5a1.5 1.5 0 0 1 3 0V14c0 3-2 6-6 6h-1.5c-2 0-3-1-4.2-2.6L7 14.5c-.8-1.2.9-2.7 2-1.6l1 .9V11" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tip">Pan</span></button>
+            <button class="tool" title="Lasso select"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 11c0-3.3 3.6-6 8-6s8 2.7 8 6-3.6 6-8 6c-1 0-2-.1-2.9-.4" stroke-dasharray="1 3" stroke-linecap="round"/><path d="M7 16.5c0 1.4-.8 2.5-1.8 2.5S3.4 18 3.4 17 4.2 15 5.2 15" stroke-linecap="round"/></svg><span class="tip">Lasso select</span></button>
+            <button class="tool" title="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 16l7-7 6 6-5 5H8l-3-3Z" stroke-linejoin="round"/><path d="M9 20h11" stroke-linecap="round"/></svg><span class="tip">Eraser</span></button>
+            <button class="tool" title="Shapes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="13" width="7" height="7" rx="1"/><circle cx="16.5" cy="7.5" r="3.5"/><path d="M13 20l3.5-6 3.5 6h-7Z" stroke-linejoin="round"/></svg><span class="tip">Shapes</span></button>
+            <button class="tool is-active" title="Draw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16.5 4.5l3 3L8 19l-4 1 1-4 11.5-11.5Z" stroke-linejoin="round"/></svg><span class="tip">Draw</span></button>
+            <button class="tool" title="Link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tip">Link</span></button>
+            <button class="tool" title="Text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 6h14M12 6v13M9 19h6" stroke-linecap="round"/></svg><span class="tip">Text</span></button>
+          </div>
+
+          <!-- BOTTOM FLOATING HUD: pen kinds · widths · colors -->
+          <div class="hud-bottom">
+            <div class="penkinds" data-penkinds>
+              <button class="penkind is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16.5 4.5l3 3L8 19l-4 1 1-4 11.5-11.5Z" stroke-linejoin="round"/></svg>Pen</button>
+              <button class="penkind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 21l4-1L20 7l-3-3L4 17l-1 4Z" stroke-linejoin="round"/><path d="M14 6l3 3" stroke-linecap="round"/></svg>Pencil</button>
+              <button class="penkind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 17l3 3 11-11-3-3L5 17Z" stroke-linejoin="round"/><path d="M5 17l-1 4 4-1" stroke-linejoin="round"/><path d="M14 6l3 3" stroke-linecap="round"/></svg>Highlighter</button>
+              <button class="penkind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 14l-3 6 6-3 10-10-3-3L7 14Z" stroke-linejoin="round"/></svg>Marker</button>
+              <button class="penkind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="15" r="3"/><path d="M11 13l6-6 3 3-6 6" stroke-linejoin="round"/><circle cx="19" cy="6" r=".6" fill="currentColor"/><circle cx="16" cy="9" r=".6" fill="currentColor"/></svg>Airbrush</button>
+            </div>
+
+            <span class="hud-vsep"></span>
+
+            <div class="widths" data-widths>
+              <button class="width-btn" title="1px"><span class="wd" style="width:2px;height:2px;"></span></button>
+              <button class="width-btn" title="2px"><span class="wd" style="width:4px;height:4px;"></span></button>
+              <button class="width-btn is-active" title="4px"><span class="wd" style="width:6px;height:6px;"></span></button>
+              <button class="width-btn" title="8px"><span class="wd" style="width:9px;height:9px;"></span></button>
+              <button class="width-btn" title="12px"><span class="wd" style="width:12px;height:12px;"></span></button>
+              <button class="width-btn" title="20px"><span class="wd" style="width:16px;height:16px;"></span></button>
+            </div>
+
+            <span class="hud-vsep"></span>
+
+            <div class="colors" data-colors>
+              <button class="color-btn" style="background:#FF4F91" title="Pink"></button>
+              <button class="color-btn" style="background:#FFC928" title="Yellow"></button>
+              <button class="color-btn" style="background:#36D400" title="Green"></button>
+              <button class="color-btn" style="background:#1E9BFF" title="Blue"></button>
+              <button class="color-btn" style="background:#FFFFFF" title="White"></button>
+              <button class="color-btn is-active" style="background:#1A1A1A" title="Ink"></button>
+            </div>
+          </div>
+
+          <!-- paper-style popover -->
+          <div class="paper-styles" id="paper-styles" data-paperstyles>
+            <div class="ps-opt" data-ps="blank"><div class="ps-art" style="background:#fff"></div><div class="ps-name">Blank</div></div>
+            <div class="ps-opt is-active" data-ps="dots"><div class="ps-art" style="background:radial-gradient(#cfcfca 1px,transparent 1.2px); background-size:7px 7px;"></div><div class="ps-name">Dots</div></div>
+            <div class="ps-opt" data-ps="lines"><div class="ps-art" style="background:repeating-linear-gradient(#fff 0 8px,#e0e0da 8px 9px);"></div><div class="ps-name">Lines</div></div>
+            <div class="ps-opt" data-ps="graph"><div class="ps-art" style="background:repeating-linear-gradient(#fff 0 7px,#e3e3dc 7px 8px),repeating-linear-gradient(90deg,#fff 0 7px,#e3e3dc 7px 8px);"></div><div class="ps-name">Graph</div></div>
+            <div class="ps-opt" data-ps="iso"><div class="ps-art" style="background:repeating-linear-gradient(60deg,#fff 0 8px,#e3e3dc 8px 9px),repeating-linear-gradient(-60deg,#fff 0 8px,#e3e3dc 8px 9px);"></div><div class="ps-name">Iso</div></div>
+            <div class="ps-opt" data-ps="tri"><div class="ps-art" style="background:repeating-linear-gradient(30deg,#fff 0 8px,#e3e3dc 8px 9px),repeating-linear-gradient(150deg,#fff 0 8px,#e3e3dc 8px 9px);"></div><div class="ps-name">Tri</div></div>
+          </div>
+
+          <!-- zoom widget -->
+          <div class="zoom-widget">
+            <button class="zoom-btn" id="zoom-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14" stroke-linecap="round"/></svg></button>
+            <span class="zoom-val" id="zoom-val">100%</span>
+            <button class="zoom-btn" id="zoom-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></button>
+            <span class="ed-divider-v" style="margin:0 4px;"></span>
+            <button class="zoom-btn" id="zoom-fit" title="Fit to screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke-linecap="round"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Screen navigation ---------- */
+  var screens = {
+    library:  document.getElementById('screen-library'),
+    focus:    document.getElementById('screen-focus'),
+    timer:    document.getElementById('screen-timer'),
+    revision: document.getElementById('screen-revision'),
+    goals:    document.getElementById('screen-goals'),
+    settings: document.getElementById('screen-settings'),
+    canvas:   document.getElementById('screen-canvas')
+  };
+  var navButtons = document.querySelectorAll('.nav-btn');
+
+  function show(name) {
+    Object.keys(screens).forEach(function (k) {
+      screens[k].classList.toggle('is-active', k === name);
+    });
+    // sync rail highlight (timer maps to focus, canvas maps to library)
+    var railKey = name === 'timer' ? 'focus' : (name === 'canvas' ? 'library' : name);
+    navButtons.forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-screen') === railKey);
+    });
+    // reset scroll for the newly shown screen
+    if (screens[name]) screens[name].scrollTop = 0;
+  }
+
+  navButtons.forEach(function (b) {
+    b.addEventListener('click', function () { show(b.getAttribute('data-screen')); });
+  });
+
+  // any element with data-screen (e.g. timer "Leave", editor back)
+  document.querySelectorAll('[data-screen]').forEach(function (el) {
+    if (el.classList.contains('nav-btn')) return;
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      show(el.getAttribute('data-screen'));
+    });
+  });
+
+  // open canvas editor
+  document.querySelectorAll('[data-open-canvas]').forEach(function (el) {
+    el.addEventListener('click', function (e) { e.preventDefault(); show('canvas'); });
+  });
+
+  // start timer
+  document.querySelectorAll('[data-start-timer]').forEach(function (el) {
+    el.addEventListener('click', function (e) { e.preventDefault(); show('timer'); startTimer(); });
+  });
+
+  /* ---------- Generic segmented controls ---------- */
+  document.querySelectorAll('[data-seg]').forEach(function (group) {
+    var btns = group.querySelectorAll('button');
+    btns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btns.forEach(function (b) { b.classList.remove('is-active'); });
+        btn.classList.add('is-active');
+      });
+    });
+  });
+
+  /* ---------- Swatch pickers ---------- */
+  document.querySelectorAll('[data-swatch]').forEach(function (group) {
+    var sw = group.querySelectorAll('.swatch');
+    sw.forEach(function (s) {
+      s.addEventListener('click', function () {
+        sw.forEach(function (x) { x.classList.remove('is-active'); });
+        s.classList.add('is-active');
+      });
+    });
+  });
+
+  /* ---------- Toggles ---------- */
+  document.querySelectorAll('[data-toggle]').forEach(function (t) {
+    t.addEventListener('click', function () { t.classList.toggle('on'); });
+  });
+
+  /* ---------- Sliders (live value label) ---------- */
+  document.querySelectorAll('[data-slider]').forEach(function (sl) {
+    var label = sl.parentElement.querySelector('.slider-val');
+    function paint() {
+      if (label) label.textContent = sl.value + '%';
+      var pct = (sl.value - sl.min) / (sl.max - sl.min) * 100;
+      sl.style.background = 'linear-gradient(90deg, var(--sage) ' + pct + '%, var(--hairline) ' + pct + '%)';
+    }
+    sl.addEventListener('input', paint);
+    paint();
+  });
+
+  /* ---------- Steppers ---------- */
+  document.querySelectorAll('[data-stepper]').forEach(function (st) {
+    var val = st.querySelector('.val');
+    var unit = st.getAttribute('data-unit') || '';
+    var step = parseInt(st.getAttribute('data-step') || '1', 10);
+    var min  = parseInt(st.getAttribute('data-min') || '0', 10);
+    function cur() { return parseInt(val.textContent, 10) || 0; }
+    st.querySelector('[data-dec]').addEventListener('click', function () {
+      val.textContent = Math.max(min, cur() - step) + unit;
+    });
+    st.querySelector('[data-inc]').addEventListener('click', function () {
+      val.textContent = (cur() + step) + unit;
+    });
+  });
+
+  /* ---------- Single-select button groups (canvas HUD) ---------- */
+  function singleSelect(containerSel, itemSel) {
+    var c = document.querySelector(containerSel);
+    if (!c) return;
+    var items = c.querySelectorAll(itemSel);
+    items.forEach(function (it) {
+      it.addEventListener('click', function () {
+        items.forEach(function (x) { x.classList.remove('is-active'); });
+        it.classList.add('is-active');
+      });
+    });
+  }
+  singleSelect('[data-tools]', '.tool');
+  singleSelect('[data-penkinds]', '.penkind');
+  singleSelect('[data-widths]', '.width-btn');
+  singleSelect('[data-colors]', '.color-btn');
+  singleSelect('[data-paperstyles]', '.ps-opt');
+
+  /* ---------- Paper style popover ---------- */
+  var psBtn = document.getElementById('paper-style-btn');
+  var psPop = document.getElementById('paper-styles');
+  var paperEl = document.getElementById('editor-paper');
+  if (psBtn && psPop) {
+    psBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      psPop.classList.toggle('open');
+    });
+    document.addEventListener('click', function (e) {
+      if (!psPop.contains(e.target) && e.target !== psBtn) psPop.classList.remove('open');
+    });
+    psPop.querySelectorAll('.ps-opt').forEach(function (opt) {
+      opt.addEventListener('click', function () {
+        applyPaper(opt.getAttribute('data-ps'));
+        psPop.classList.remove('open');
+      });
+    });
+  }
+  function applyPaper(kind) {
+    if (!paperEl) return;
+    var map = {
+      blank: { img: 'none', size: 'auto' },
+      dots:  { img: 'radial-gradient(#E3E3DC 1.1px, transparent 1.2px)', size: '26px 26px' },
+      lines: { img: 'repeating-linear-gradient(#FCFCFA 0 27px, #E6E6DF 27px 28px)', size: 'auto' },
+      graph: { img: 'repeating-linear-gradient(#FCFCFA 0 25px,#E8E8E1 25px 26px),repeating-linear-gradient(90deg,#FCFCFA 0 25px,#E8E8E1 25px 26px)', size: 'auto' },
+      iso:   { img: 'repeating-linear-gradient(60deg,#FCFCFA 0 25px,#E8E8E1 25px 26px),repeating-linear-gradient(-60deg,#FCFCFA 0 25px,#E8E8E1 25px 26px)', size: 'auto' },
+      tri:   { img: 'repeating-linear-gradient(30deg,#FCFCFA 0 25px,#E8E8E1 25px 26px),repeating-linear-gradient(150deg,#FCFCFA 0 25px,#E8E8E1 25px 26px)', size: 'auto' }
+    };
+    var s = map[kind] || map.dots;
+    paperEl.style.backgroundImage = s.img;
+    paperEl.style.backgroundSize = s.size;
+  }
+
+  /* ---------- Zoom widget ---------- */
+  var zoom = 100;
+  var zoomVal = document.getElementById('zoom-val');
+  var content = document.querySelector('#screen-canvas .editor__content');
+  function applyZoom() {
+    if (zoomVal) zoomVal.textContent = zoom + '%';
+    if (content) {
+      content.style.transformOrigin = 'center center';
+      content.style.transform = 'scale(' + (zoom / 100) + ')';
+      content.style.transition = 'transform 220ms cubic-bezier(.4,0,.2,1)';
+    }
+  }
+  var zi = document.getElementById('zoom-in');
+  var zo = document.getElementById('zoom-out');
+  var zf = document.getElementById('zoom-fit');
+  if (zi) zi.addEventListener('click', function () { zoom = Math.min(300, zoom + 10); applyZoom(); });
+  if (zo) zo.addEventListener('click', function () { zoom = Math.max(40, zoom - 10); applyZoom(); });
+  if (zf) zf.addEventListener('click', function () { zoom = 100; applyZoom(); });
+
+  /* ---------- Active timer logic ---------- */
+  var timerReadout = document.getElementById('timer-readout');
+  var ringProg = document.getElementById('ring-prog');
+  var pauseBtn = document.getElementById('pause-btn');
+  var distractBtn = document.getElementById('distract-btn');
+  var distractCountEl = document.getElementById('distract-count');
+
+  var TOTAL = 25 * 60;           // 25:00 work block
+  var remaining = 18 * 60 + 32;  // start at 18:32 to match the brief
+  var distractions = 1;
+  var running = false;
+  var tick = null;
+  var CIRC = 2 * Math.PI * 168;  // ring circumference
+
+  function fmt(s) {
+    var m = Math.floor(s / 60);
+    var ss = s % 60;
+    return m + ':' + (ss < 10 ? '0' : '') + ss;
+  }
+  function paintTimer() {
+    if (timerReadout) timerReadout.textContent = fmt(remaining);
+    if (ringProg) {
+      var done = (TOTAL - remaining) / TOTAL;          // fraction elapsed
+      ringProg.setAttribute('stroke-dasharray', CIRC.toFixed(1));
+      ringProg.setAttribute('stroke-dashoffset', (CIRC * (1 - done)).toFixed(1));
+    }
+    if (distractCountEl) distractCountEl.textContent = distractions;
+  }
+  function setRunning(on) {
+    running = on;
+    if (!pauseBtn) return;
+    pauseBtn.innerHTML = on
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 6v12M15 6v12" stroke-linecap="round"/></svg> Pause'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 5l11 7-11 7V5Z" stroke-linejoin="round"/></svg> Resume';
+  }
+  function startTimer() {
+    setRunning(true);
+    paintTimer();
+    if (tick) clearInterval(tick);
+    tick = setInterval(function () {
+      if (running && remaining > 0) { remaining--; paintTimer(); }
+    }, 1000);
+  }
+  if (pauseBtn) pauseBtn.addEventListener('click', function () { setRunning(!running); });
+  if (distractBtn) distractBtn.addEventListener('click', function () {
+    distractions++; paintTimer();
+    distractBtn.style.transform = 'scale(.95)';
+    setTimeout(function () { distractBtn.style.transform = ''; }, 130);
+  });
+
+  // when leaving the timer, stop ticking
+  document.querySelectorAll('#screen-timer [data-screen]').forEach(function (el) {
+    el.addEventListener('click', function () { if (tick) clearInterval(tick); setRunning(false); });
+  });
+
+  paintTimer();
+
+  /* ---------- Light parallax / breathing already CSS-driven ---------- */
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zenno Architecture Analysis — Analyzer 01</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#0f1419; --panel:#171e26; --ink:#e8edf2; --muted:#9ba8b5; --line:#34404c; --high:#ff7b72; --medium:#d29922; --low:#58a6ff; --good:#3fb950; --accent:#c9a227; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+    a { color:#79c0ff; }
+    code { color:#f0c674; overflow-wrap:anywhere; }
+    header { padding:2.25rem max(1.25rem,calc((100vw - 1180px)/2)); border-bottom:1px solid var(--line); background:#111820; }
+    header h1 { margin:0 0 .35rem; font-size:clamp(1.8rem,4vw,3rem); }
+    header p { margin:.25rem 0; color:var(--muted); }
+    .layout { max-width:1180px; margin:auto; display:grid; grid-template-columns:250px minmax(0,1fr); gap:2rem; padding:2rem 1.25rem 5rem; }
+    nav { position:sticky; top:1rem; align-self:start; padding:1rem; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+    nav a { display:block; padding:.28rem 0; text-decoration:none; }
+    nav .sub { padding-left:.8rem; font-size:.9rem; }
+    main { min-width:0; }
+    section { scroll-margin-top:1rem; margin-bottom:2.4rem; }
+    h2 { border-bottom:1px solid var(--line); padding-bottom:.4rem; }
+    h3 { margin-top:0; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.8rem; }
+    .card,.finding,.iteration,.note { border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:1rem; }
+    .card strong { display:block; font-size:1.5rem; }
+    .finding { margin:1rem 0; border-left-width:5px; }
+    .finding.high { border-left-color:var(--high); }
+    .finding.medium { border-left-color:var(--medium); }
+    .finding.low { border-left-color:var(--low); }
+    .finding h3 { display:flex; gap:.6rem; align-items:flex-start; }
+    .badge { white-space:nowrap; border:1px solid currentColor; border-radius:999px; padding:.08rem .5rem; font-size:.75rem; letter-spacing:.04em; text-transform:uppercase; }
+    .high .badge { color:var(--high); } .medium .badge { color:var(--medium); } .low .badge { color:var(--low); }
+    dl { display:grid; grid-template-columns:130px 1fr; gap:.35rem .8rem; }
+    dt { color:var(--muted); font-weight:600; } dd { margin:0; }
+    table { width:100%; border-collapse:collapse; display:block; overflow:auto; }
+    th,td { border-bottom:1px solid var(--line); padding:.55rem .7rem; text-align:left; vertical-align:top; }
+    th { color:var(--muted); }
+    pre { overflow:auto; padding:1rem; border:1px solid var(--line); border-radius:8px; background:#0b1015; }
+    .muted { color:var(--muted); }
+    .confidence { color:var(--good); }
+    .iteration { margin:.7rem 0; }
+    footer { color:var(--muted); border-top:1px solid var(--line); padding-top:1rem; }
+    @media (max-width:800px) { .layout { grid-template-columns:1fr; } nav { position:static; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Zenno architecture analysis</h1>
+  <p><strong>Analyzer 01</strong> · holistic architecture, module boundaries, dependency direction, ownership, and systemic design risks</p>
+  <p>Analysis-only living report · first comprehensive pass: <time datetime="2026-07-18T05:01:56+08:00">2026-07-18 05:01:56 PST (+08:00)</time> · last challenged: <time datetime="2026-07-18T05:19:50+08:00">2026-07-18 05:19:50 PST (+08:00)</time></p>
+</header>
+<div class="layout">
+  <nav aria-label="Report navigation">
+    <strong>Contents</strong>
+    <a href="#scope">Scope & method</a>
+    <a href="#summary">Executive summary</a>
+    <a href="#map">Architecture map</a>
+    <a href="#findings">Findings</a>
+    <a class="sub" href="#a01">A01 Canvas concentration</a>
+    <a class="sub" href="#a02">A02 Dependency inversion</a>
+    <a class="sub" href="#a03">A03 Cross-module cycles</a>
+    <a class="sub" href="#a04">A04 Split board ownership</a>
+    <a class="sub" href="#a05">A05 Non-owning cascades</a>
+    <a class="sub" href="#a06">A06 Cleanup lifecycle</a>
+    <a class="sub" href="#a07">A07 Layer leakage</a>
+    <a class="sub" href="#a08">A08 Bootstrap ownership</a>
+    <a class="sub" href="#a09">A09 Lossy reconciliation</a>
+    <a class="sub" href="#a10">A10 Kanban duplication</a>
+    <a class="sub" href="#a11">A11 Reactive aggregate</a>
+    <a class="sub" href="#a12">A12 Platform boundary</a>
+    <a class="sub" href="#a13">A13 Boundary enforcement</a>
+    <a class="sub" href="#a14">A14 Recovery ownership</a>
+    <a class="sub" href="#a15">A15 Reflection decode isolation</a>
+    <a class="sub" href="#a16">A16 Timestamp semantics</a>
+    <a href="#strengths">Structural strengths</a>
+    <a href="#sequence">Recommended sequence</a>
+    <a href="#iterations">Iteration log</a>
+  </nav>
+  <main>
+    <section id="scope">
+      <h2>Scope and method</h2>
+      <p>This report assesses the checked-out repository at <code>/Users/karlromero/personal/zenno</code>, including tracked Dart application and test code plus relevant untracked architecture/review/plan material. The working tree was observed on <code>feat/intuitive-tool-wheel</code> with existing untracked user material; none of it was modified. No build, test, install, app run, branch operation, remote operation, or external-service action was performed.</p>
+      <p>Evidence comes from repository inventory, source line counts, internal import edges, table constraints, repository/controller behavior, and existing design documentation. Findings distinguish a demonstrated defect from a latent exposure. Paths and line numbers refer to this checkout as inspected.</p>
+      <div class="note"><strong>Severity semantics:</strong> High means a large systemic blast radius or credible threat to durable note/study data; Medium means meaningful coupling or an invariant risk with current mitigating conditions; Low means bounded design friction. Confidence reflects source support, not likelihood.</div>
+    </section>
+
+    <section id="summary">
+      <h2>Executive summary</h2>
+      <p>Zenno has a clear product decomposition and a strong local-first persistence core, but its implemented dependency graph does not consistently match the documented “feature-first” architecture. The main structural fault line is the canvas: roughly 21,816 handwritten lines across 37 files, including two files over 4,500 lines. Its controller owns document state, command history, tool behavior, persistence write-through, import, raster scheduling, and resource lifetime. This makes the app’s most flow-sensitive subsystem the highest-blast-radius place to change.</p>
+      <p>The next fault line is ownership. Domain-facing models and rendering code import enums from Drift table definitions; “shared” attachment code imports the concrete library feature; settings owns global pen preferences but imports their types from canvas input; and the canvas editor directly consumes library and settings providers. These edges form cycles and place schema/application details upstream of models that should be stable.</p>
+      <p>The highest-confidence data-integrity design defect is at the canvas load/recovery seam: missing element-detail rows are intentionally omitted from memory, but later full-state retry reconciliation interprets every durable row absent from memory as stale and deletes it. That turns a lossy read into authoritative destructive repair. Additional exposures deserve hardening: board-card ownership is duplicated without a database invariant tying a card’s board to its column’s board; historical associations rely on repository conventions to override destructive cascades; and abnormal bootstrap recovery can reset preferences, duplicate seeded aggregates, or fail against referenced builtin templates.</p>
+      <div class="cards">
+        <div class="card"><span class="muted">Handwritten app code</span><strong>~39,920</strong><span>lines (generated files excluded)</span></div>
+        <div class="card"><span class="muted">Canvas subsystem</span><strong>21,816</strong><span>lines / 37 files</span></div>
+        <div class="card"><span class="muted">Largest controller</span><strong>4,528</strong><span><code>canvas_controller.dart</code></span></div>
+        <div class="card"><span class="muted">Largest UI file</span><strong>4,841</strong><span><code>canvas_toolbar.dart</code></span></div>
+      </div>
+    </section>
+
+    <section id="map">
+      <h2>Observed architecture map</h2>
+      <pre aria-label="Dependency overview">main/app/config
+  ├─ feature routes: library, focus, revision, goal_cycle, settings
+  └─ top-level canvas editor
+
+core/database (single ZennoDatabase; 25 tables; schema v13)
+  ├─ canvas tables ──────────────┐
+  ├─ board tables ── imports canvas tables
+  ├─ focus tables ── imports canvas tables
+  ├─ reflection tables ─ imports board tables
+  └─ settings tables             │
+                                  │
+canvas ── imports core DB enums, library providers, settings providers
+settings ── imports canvas input types
+shared/canvas_attachments ── imports library repository/providers
+focus ── imports library providers and settings providers
+revision + goal_cycle ── share kanban models/controller and board tables</pre>
+      <table>
+        <thead><tr><th>Module</th><th>Files</th><th>Handwritten lines</th><th>Observed role</th></tr></thead>
+        <tbody>
+          <tr><td><code>canvas</code></td><td>37</td><td>21,816</td><td>Engine, model, input, rendering, persistence, I/O, PDF rasterization, editor and toolbar</td></tr>
+          <tr><td><code>features/focus</code></td><td>21</td><td>5,340</td><td>Strongest explicit domain/application/data/presentation split</td></tr>
+          <tr><td><code>features/goal_cycle</code></td><td>14</td><td>3,680</td><td>Board and reflection workflows over shared board storage</td></tr>
+          <tr><td><code>shared</code></td><td>8</td><td>2,146</td><td>Kanban UI/contracts plus canvas attachment integration</td></tr>
+          <tr><td><code>core</code></td><td>19</td><td>1,823</td><td>Database composition, connections, provider, utilities, shell widgets</td></tr>
+          <tr><td><code>features/library</code></td><td>7</td><td>1,732</td><td>Canvas collection/folder ownership and media cleanup</td></tr>
+          <tr><td><code>features/revision</code></td><td>6</td><td>1,394</td><td>Revision specialization over shared Kanban storage/UI</td></tr>
+          <tr><td><code>features/settings</code></td><td>3</td><td>1,185</td><td>App and canvas-input preferences</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="findings">
+      <h2>Findings</h2>
+
+      <article id="a01" class="finding high">
+        <h3><span class="badge">High</span> A01 — Canvas responsibilities are concentrated into change-amplifying monoliths</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Status</dt><dd>Observed structural condition; not itself a proven runtime defect</dd><dt>Flow impact</dt><dd>High: input latency, undo, persistence, imports, and tool UI share change surfaces</dd><dt>Data integrity</dt><dd>Medium exposure: durable writes and document mutation are controlled by the same very large mutable object</dd></dl>
+        <p><strong>Evidence.</strong> <code>lib/canvas/canvas_controller.dart</code> is 4,528 lines. Its imports span commands, transforms, spatial indexing, stroke construction, input processing/profile, import, models, PDF rasterization, persistence, geometry, and IDs (<code>:8–26</code>). Its own contract says it holds viewport, elements, live gestures, tool state, undo/redo, spatial index and persistence (<code>:149–178</code>). The same class hydrates seven categories of durable state through sequential repository reads (<code>:862–923</code>), launches and retries asynchronous writes (<code>:926–1117</code>), owns command application (<code>:1123–1135</code>), and disposes raster/PDF resources (<code>:4490–4526</code>). Separately, <code>lib/canvas/widgets/canvas_toolbar.dart</code> is 4,841 lines and <code>lib/canvas/render/canvas_view.dart</code> is 1,553 lines.</p>
+        <p><strong>Root cause.</strong> Canvas features were added around a single mutable controller and a single comprehensive toolbar because those were convenient, already-connected integration points. The architectural seam is class-level rather than capability-level. Historical planning made this direction explicit: <code>.plans/plan-canvas-evolution.html:638–724</code> said to extend rather than tear down the architecture and assigned viewport, tools, selection, undo/redo, and persistence write-through to <code>CanvasController</code>; its later roadmap then added arrows, export, stylus mapping, smarter pen, and deep zoom around that pipeline (<code>:1432–1501</code>). That plan is context, not proof of a present defect, but it explains the accumulation pattern.</p>
+        <p><strong>Counterevidence / mitigation.</strong> The controller is unusually well covered by focused tests: command, view-input, repository, export, toolbar, fill, geometry, raster and document suites instantiate it directly. Persistence batching is transactional and tested for rollback and newest-state retry (<code>test/canvas_repository_test.dart:804–837,839–927</code>). This reduces regression probability but does not reduce the ownership or change-blast radius.</p>
+        <p><strong>Recommendation (analysis only).</strong> Treat this as a staged subsystem decomposition, not a cosmetic file split. Keep existing data formats and behavior stable while extracting capability owners behind narrow interfaces: document/command state, persistence coordinator, raster/import service, viewport state, and tool configuration. Use the existing direct-controller tests as characterization coverage, then move one owner at a time. Splitting methods into extensions without changing ownership would not reduce the risk.</p>
+      </article>
+
+      <article id="a02" class="finding medium">
+        <h3><span class="badge">Medium</span> A02 — Persistence definitions sit upstream of domain models, rendering, and document interchange</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Medium: schema evolution can force unrelated editor/render/export changes</dd><dt>Data integrity</dt><dd>Medium: import/export semantics can drift with database representation</dd></dl>
+        <p><strong>Evidence.</strong> <code>CanvasLayer</code> imports <code>core/database/tables/canvas_tables.dart</code> and uses <code>CanvasLayerKind</code> directly (<code>lib/canvas/model/canvas_layer.dart:3,16,27</code>). <code>CanvasPaperStyle</code> imports the same table file (<code>lib/canvas/model/canvas_style.dart:4</code>); the renderer then imports the table file to compare <code>BackgroundKind</code> (<code>lib/canvas/render/grid_painter.dart:8,64,83</code>). The standalone document codec also imports table enums (<code>lib/canvas/io/zenno_document.dart:11,97–103</code>). Board, mastery, focus, and settings enums similarly live in table-definition files and are consumed above the data layer.</p>
+        <p><strong>Root cause.</strong> Drift table files became the canonical home for concepts because <code>intEnum</code> needs enums, so database representation and domain vocabulary were collapsed into one module.</p>
+        <p><strong>Recommendation (analysis only).</strong> Move stable product concepts to domain/model modules and make Drift tables/repositories map to them. The desired direction is database adapter → domain, not renderer/model/export codec → database schema. Preserve stored enum ordinals explicitly during any move and verify migrations/document compatibility.</p>
+      </article>
+
+      <article id="a03" class="finding medium">
+        <h3><span class="badge">Medium</span> A03 — “Shared” and feature boundaries form dependency cycles and obscure ownership</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Medium: changes to library/settings/canvas integration spread across modules</dd><dt>Data integrity</dt><dd>Low direct risk; medium coordination risk around cross-feature operations</dd></dl>
+        <p><strong>Evidence.</strong> Canvas editor UI imports library and settings application providers (<code>lib/canvas/canvas_editor_page.dart:27–28</code>), while library presentation imports canvas code and settings providers, and settings data imports canvas input types (<code>lib/features/settings/data/settings_repository.dart:6–7</code>). The supposedly lower-level attachment repository imports the concrete <code>LibraryRepository</code> (<code>lib/shared/canvas_attachments/card_canvas_attachment_repository.dart:5,30–35</code>) and calls it inside a shared transaction to create a canvas (<code>:76–93</code>); attachment providers and picker also import library application providers.</p>
+        <p><strong>Root cause.</strong> Cross-feature user journeys were placed under <code>shared</code>, but <code>shared</code> mixes reusable UI/contracts with orchestration that necessarily knows concrete features. Settings also became the persistence owner for types physically owned by canvas.</p>
+        <p><strong>Recommendation (analysis only).</strong> Separate truly reusable primitives (<code>shared/kanban</code>) from integration/application services. Compose canvas↔library↔settings and card↔canvas workflows at an app/integration layer using small ports defined by the consumer. Give global pen/stylus preference types a neutral domain owner. Do not create a generic service locator; make the few cross-feature dependencies explicit.</p>
+      </article>
+
+      <article id="a04" class="finding medium">
+        <h3><span class="badge">Medium</span> A04 — Board-card ownership is duplicated without an enforced consistency invariant</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High for schema exposure; medium for practical likelihood</dd><dt>Status</dt><dd>Latent invariant risk; current board-local UI appears mitigating</dd><dt>Flow impact</dt><dd>Potential cards disappearing, appearing in the wrong workflow, or failing later operations</dd><dt>Data integrity</dt><dd>Medium: stored ownership can become internally contradictory</dd></dl>
+        <p><strong>Evidence.</strong> <code>BoardCards</code> stores both <code>columnId</code> and denormalized <code>boardId</code>, each with an independent foreign key (<code>lib/core/database/tables/board_tables.dart:40–61</code>). Nothing ensures the referenced column belongs to the referenced board. Both <code>RevisionRepository.moveCard</code> and <code>GoalRepository.moveCard</code> update only <code>columnId</code> and <code>position</code> (<code>lib/features/revision/data/revision_repository.dart:168–181</code>; <code>lib/features/goal_cycle/data/goal_repository.dart:198–211</code>). Their public add/move/reorder/rename/remove methods accept arbitrary column IDs; helpers derive whatever board owns the supplied column but do not verify that it has the feature’s expected <code>BoardType</code> (<code>revision_repository.dart:304–348</code>; <code>goal_repository.dart:350–396</code>).</p>
+        <p><strong>Root cause.</strong> <code>boardId</code> was denormalized for query speed, but the write model has no single owner responsible for keeping the duplicate relationship coherent.</p>
+        <p><strong>Counterevidence / mitigation.</strong> Shared Kanban widgets receive columns from one board snapshot, so normal drag/drop supplies same-board IDs. Card creation derives <code>boardId</code> from the selected column. Existing repository tests cover position normalization and transactional goal saves, but no inspected test deliberately passes a cross-board column to a feature repository.</p>
+        <p><strong>Recommendation (analysis only).</strong> Encode the invariant at the most durable feasible layer: either remove redundant ownership and query through the column, or introduce a composite relationship/validated transaction that derives <code>boardId</code> from <code>toColumnId</code>. Also scope every feature mutation to its expected board type and ensure feature subtype details match it. Add cross-board/corruption-oriented repository tests before altering the schema.</p>
+      </article>
+
+      <article id="a05" class="finding medium">
+        <h3><span class="badge">Medium</span> A05 — Non-owning relationships use destructive cascades that repositories must manually override</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Status</dt><dd>Current repository paths preserve the records; schema semantics remain unsafe if bypassed</dd><dt>Flow impact</dt><dd>Low under current paths; potentially high after an alternate deletion path or migration</dd><dt>Data integrity</dt><dd>High impact to canvases or historical records if repository guards are bypassed</dd></dl>
+        <p><strong>Evidence.</strong> Three nullable/reference relationships behave as associations in product code but as ownership in the schema. (1) <code>Canvases.folderId</code> cascades on folder deletion (<code>lib/core/database/tables/canvas_tables.dart:28–33</code>), while <code>LibraryRepository.deleteFolder</code> first moves canvases to unfiled (<code>lib/features/library/data/library_repository.dart:158–170</code>). (2) <code>FocusSessions.linkedCanvasId</code> cascades on canvas deletion (<code>lib/core/database/tables/focus_tables.dart:74–78</code>), while <code>LibraryRepository.deleteCanvas</code> first nulls matching links (<code>library_repository.dart:187–199</code>). (3) <code>FocusSessionRitualChecks.itemId</code> is nullable and its label is snapshotted, yet source-item deletion cascades the historical check row (<code>focus_tables.dart:85–102</code>); <code>RitualRepository</code> avoids deletion by retiring items (<code>lib/features/focus/data/ritual_repository.dart:107–114</code>).</p>
+        <p><strong>Counterevidence / mitigation.</strong> Inspected production paths use the preserving repository methods. <code>test/library_repository_test.dart:89–126</code> verifies folder deletion keeps its canvas and canvas deletion keeps linked focus history. No production checklist deletion API was found.</p>
+        <p><strong>Root cause.</strong> Foreign-key actions were chosen as broad cleanup defaults rather than from relationship semantics. Safety therefore lives as procedural knowledge in repositories rather than in durable constraints.</p>
+        <p><strong>Recommendation (analysis only).</strong> Classify every FK as ownership, association, or snapshot provenance. Use <code>SET NULL</code> for nullable associations/provenance and cascade only true owned aggregates. Keep preserving repository actions, but no longer make them the sole barrier. Verify generated migrations plus folder, session, and ritual-history tests. This is hardening, not evidence that current UI paths lose these records.</p>
+      </article>
+
+      <article id="a06" class="finding medium">
+        <h3><span class="badge">Medium</span> A06 — Filesystem garbage collection is tied to an auto-disposed repository lifecycle rather than a controlled maintenance boundary</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">Medium-high</dd><dt>Flow impact</dt><dd>Potential background I/O during navigation/provider recreation</dd><dt>Data integrity</dt><dd>Medium exposure for app-owned imported media if a valid transient file is not yet referenced</dd></dl>
+        <p><strong>Evidence.</strong> The generated <code>libraryRepositoryProvider</code> is explicitly <code>isAutoDispose: true</code> (<code>lib/features/library/application/library_providers.g.dart:18–36</code>) and starts <code>cleanupOrphanedFiles()</code> unawaited every time it is created (<code>lib/features/library/application/library_providers.dart:15–24</code>). The auto-disposed attachment repository watches the library repository (<code>lib/shared/canvas_attachments/card_canvas_attachment_providers.dart:10–27</code>), so opening card attachment surfaces is another construction path. The repository itself says cleanup is safe “at startup, when in-memory undo history is empty” (<code>lib/features/library/data/library_repository.dart:28–44</code>). Native cleanup enumerates all files directly under the app’s media and thumbnail roots and deletes any absent from a previously collected database-reference set (<code>lib/features/library/data/library_file_cleanup_io.dart:29–47,54–59</code>). Image/PDF import copies a file before the controller creates the persisted element reference (<code>lib/canvas/io/canvas_import.dart:96–107,125–132,151–164</code>), and thumbnail capture writes before updating its DB path (<code>lib/canvas/canvas_editor_page.dart:217–239</code>), creating narrow concurrency windows if cleanup is still running.</p>
+        <p><strong>Root cause.</strong> Maintenance startup behavior is attached to dependency construction, which Riverpod may repeat based on listeners, instead of an app-lifecycle owner with a single-run/serialized contract.</p>
+        <p><strong>Counterevidence / mitigation.</strong> While an editor is mounted, its title/provider dependency normally keeps the library repository alive, so repeated cleanup during one editing session is not expected. The risk is startup/provider recreation overlapping file staging, not routine deletion of referenced files. Existing path-root and symlink checks constrain deletion to app-owned directories.</p>
+        <p><strong>Recommendation (analysis only).</strong> Give cleanup a deliberate app-start maintenance coordinator, run it once after persistence initialization, and serialize it against import/thumbnail finalization. Re-check references immediately before deletion or use an age/quarantine policy. Existing path-root and symlink checks are valuable and should be preserved.</p>
+      </article>
+
+      <article id="a07" class="finding low">
+        <h3><span class="badge">Low</span> A07 — Presentation frequently imports data repositories and Drift-facing types directly</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Low today; increases UI/data coupling and test setup cost</dd><dt>Data integrity</dt><dd>Low direct risk</dd></dl>
+        <p><strong>Evidence.</strong> Revision card widgets import <code>RevisionRepository</code> and database table enums; goal-cycle widgets import <code>GoalRepository</code>/<code>ReflectionRepository</code>; focus pages import <code>FocusRepository</code> and table types. The revision application controller itself accepts Drift <code>Value</code> and table-owned <code>MasteryFlag</code> (<code>lib/features/revision/application/revision_providers.dart:1,4,109–135</code>).</p>
+        <p><strong>Root cause.</strong> Repository output models and mutation APIs double as presentation contracts, while application providers are thin adapters rather than the consistent public boundary.</p>
+        <p><strong>Recommendation (analysis only).</strong> Do not add layers mechanically. For workflows that already have application controllers, move UI mutation semantics and plain domain types there; keep repository calls direct only where the screen truly is a simple CRUD shell. Remove Drift <code>Value</code> from application/public APIs first because it is a clear adapter leak.</p>
+      </article>
+
+      <article id="a08" class="finding medium">
+        <h3><span class="badge">Medium</span> A08 — Database bootstrap recovery is neither independently idempotent nor safe for referenced builtin rows</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High for structure and SQL conflict semantics; low likelihood in a healthy database</dd><dt>Status</dt><dd>Latent abnormal-state recovery failure</dd><dt>Flow impact</dt><dd>Potential database-open failure, duplicate boards/checklists, or reset preferences after bootstrap-state damage</dd><dt>Data integrity</dt><dd>Medium exposure for preferences and seeded workflow identity; no established canvas-note loss</dd></dl>
+        <p><strong>Evidence.</strong> Every database open calls <code>seedDatabase</code> from <code>beforeOpen</code> after enabling foreign keys (<code>lib/core/database/database.dart:153–158</code>). Seeding decides global completion solely from <code>app_settings.db_schema_seeded</code> (<code>lib/core/database/seed/seed_data.dart:24–33</code>). When false or missing, it replaces the singleton with defaults, replaces all fixed-ID builtin templates, then creates fresh UUID boards, columns, checklist, and items (<code>:38–76,80–145,148–209</code>). <code>Boards</code> has no uniqueness constraint on <code>boardType</code> (<code>lib/core/database/tables/board_tables.dart:10–19</code>). More seriously, reflection entries reference templates with <code>ON DELETE RESTRICT</code> (<code>lib/core/database/tables/reflection_tables.dart:23–36</code>); SQLite replacement deletes the conflicting template row before inserting the replacement, so a rerun after reflections exist can be rejected by that relationship and roll back the entire open-time seed transaction.</p>
+        <p><strong>Root cause.</strong> Schema/bootstrap metadata shares ownership with editable user preferences, and every seeded aggregate delegates idempotence to one mutable sentinel. Conflict behavior is selected per insert without an aggregate-level recovery contract.</p>
+        <p><strong>Counterevidence / mitigation.</strong> Migration ownership is otherwise unusually explicit. <code>test/database_test.dart:551–570</code> validates every schema version 1–12 against the exact v13 schema, while targeted cases assert preservation/default contracts for focus runtime, canvases, arrows, layers, bookmarks, and tool-wheel settings (<code>:101–549</code>). This makes ordinary upgrade drift much less likely; A08 concerns abnormal bootstrap-state recovery, which those tests do not cover.</p>
+        <p><strong>Recommendation (analysis only).</strong> Keep bootstrap metadata separate from user settings. Make each seed independently idempotent with stable identifiers or uniqueness constraints. Update builtin templates in place only where explicitly intended; do not use delete-and-reinsert replacement against referenced rows, and never replace user settings merely to recover seed state. Add recovery tests for “settings exists but sentinel false,” “settings missing while reflections reference builtins,” and “boards/checklist exist but sentinel is false” before changing bootstrap behavior.</p>
+      </article>
+
+      <article id="a09" class="finding high">
+        <h3><span class="badge">High</span> A09 — Lossy canvas loading becomes destructive when retry reconciliation treats memory as complete authority</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Status</dt><dd>Demonstrated code-path composition; requires pre-existing incomplete/corrupt data plus a later retry</dd><dt>Flow impact</dt><dd>A damaged element can silently disappear, or a malformed stroke can prevent the whole canvas from opening</dd><dt>Data integrity</dt><dd>High: recoverable durable rows can be permanently deleted by unrelated save recovery</dd></dl>
+        <p><strong>Evidence.</strong> <code>CanvasRepository.loadElements</code> deliberately skips any generic element whose per-kind detail row is missing (<code>lib/canvas/persistence/canvas_repository.dart:77–82,177–192,195–300</code>). The controller therefore has no identifier or diagnostic for the omitted durable row. When any asynchronous save later fails, <code>retryFailedWrites</code> sends the controller’s in-memory snapshot to <code>syncCanvasState</code> (<code>lib/canvas/canvas_controller.dart:1059–1091</code>). That reconciliation selects every stored element ID and deletes every ID absent from memory (<code>lib/canvas/persistence/canvas_repository.dart:554–591</code>), including skipped incomplete rows and soft-deleted rows not loaded into memory. In the opposite corruption mode, malformed stroke bytes throw <code>FormatException</code> from <code>InkCodec.decodePoints</code> (<code>lib/canvas/persistence/ink_codec.dart:71–123</code>) and abort aggregate loading rather than isolating one element.</p>
+        <p><strong>Root cause.</strong> The persistence boundary returns only <code>List&lt;CanvasElement&gt;</code>, collapsing “validly loaded,” “filtered,” “quarantined,” and “failed to reconstruct” into presence/absence. Recovery then assumes absence means intentional deletion.</p>
+        <p><strong>Counterevidence / mitigation.</strong> Current generic/detail writes are transactional and a failed replace batch is regression-tested to restore the original element (<code>lib/canvas/persistence/canvas_repository.dart:326–376,530–551</code>; <code>test/canvas_repository_test.dart:804–837</code>), so normal writes should not manufacture a missing-detail row. The retry test proves newest-state recovery for healthy rows (<code>test/canvas_repository_test.dart:896–927</code>), but no inspected test composes retry with skipped or soft-deleted durable rows. The defect is therefore a recovery-of-damaged-state hazard, not a routine-save failure.</p>
+        <p><strong>Recommendation (analysis only).</strong> Return a typed load report containing loaded elements, explicitly filtered IDs, quarantined/corrupt IDs, and diagnostics. Reconciliation may delete only IDs the controller explicitly removed during its session, never IDs absent because they could not be loaded. Preserve corrupt rows for export/repair, surface a non-destructive warning, and contain per-element decode failures where safe. Add a test composing a missing detail row, unrelated write failure, retry, and verification that the original row remains recoverable.</p>
+      </article>
+
+      <article id="a10" class="finding medium">
+        <h3><span class="badge">Medium</span> A10 — Shared Kanban ownership ends at the UI contract while storage rules are duplicated in feature repositories</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Medium over time: fixes to ordering, ownership, and destructive behavior must stay synchronized</dd><dt>Data integrity</dt><dd>Medium systemic exposure because duplicated code governs the same shared tables</dd></dl>
+        <p><strong>Evidence.</strong> <code>RevisionRepository</code> (403 lines) and <code>GoalRepository</code> (451 lines) each independently implement board query assembly, move/update/add/delete card, reorder/rename/add/remove column, board lookup, card-position renormalization, and column-position renormalization (<code>lib/features/revision/data/revision_repository.dart:31–403</code>; <code>lib/features/goal_cycle/data/goal_repository.dart:31–451</code>). <code>shared/kanban/KanbanController</code> unifies only the widget mutation surface (<code>lib/shared/kanban/kanban_controller.dart:5–52</code>). Both repositories mutate the same <code>Boards</code>, <code>BoardColumns</code>, and <code>BoardCards</code> tables.</p>
+        <p><strong>Root cause.</strong> Reuse was designed presentation-first. Feature specialization and shared aggregate storage were both placed in each repository, so common invariants have two owners.</p>
+        <p><strong>Recommendation (analysis only).</strong> Extract a narrow internal board-store component for shared aggregate operations and enforce an expected <code>BoardType</code> in it. Keep revision mastery and goal/reflection behavior in their feature repositories. This is justified reuse across two existing implementations; avoid a generic repository framework.</p>
+      </article>
+
+      <article id="a11" class="finding low">
+        <h3><span class="badge">Low</span> A11 — The focus-history “aggregate stream” watches only the root table</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Low-to-medium: history detail refresh depends on an unrelated session-row emission</dd><dt>Data integrity</dt><dd>None directly; this is stale projection risk</dd></dl>
+        <p><strong>Evidence.</strong> <code>watchHistoryDetails</code> subscribes to <code>watchHistory()</code>, which watches only <code>focus_sessions</code>, then performs one-shot child reads for distractions and ritual checks on each root emission (<code>lib/features/focus/data/focus_repository.dart:367–399</code>). Inserts into <code>distractions</code> or changes to snapshot rows do not themselves trigger this stream. The application provider describes it as the full joined reactive history (<code>lib/features/focus/application/focus_providers.dart:44–49</code>). Review separately watches distractions, and periodic session checkpoints usually cause eventual refresh while a session is active, which limits current impact.</p>
+        <p><strong>Root cause.</strong> <code>FocusSessionDetail</code> is modeled as an aggregate projection, but its reactivity is owned by only one constituent table.</p>
+        <p><strong>Recommendation (analysis only).</strong> Build the projection from a joined Drift watch or combine root and child invalidation streams, then assemble in bulk to avoid per-session child queries. Keep the separate per-session distraction stream for the active review surface.</p>
+      </article>
+
+      <article id="a12" class="finding medium">
+        <h3><span class="badge">Medium</span> A12 — Platform-specific canvas file I/O is guarded at runtime instead of owned by compile-time adapters</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Medium for the documented web preview; low for the Android production target</dd><dt>Data integrity</dt><dd>Medium boundary risk because the web database can persist media paths that web cannot own/render</dd></dl>
+        <p><strong>Evidence.</strong> The database and library cleanup use explicit conditional adapters (<code>lib/core/database/connection.dart:1–11</code>; <code>lib/features/library/data/library_file_cleanup.dart:1–13</code>). In contrast, canvas editor, import, export, and library-card presentation directly import <code>dart:io</code>/<code>path_provider</code> (<code>lib/canvas/canvas_editor_page.dart:1–12</code>; <code>lib/canvas/io/canvas_import.dart:1–10</code>; <code>lib/canvas/io/canvas_export.dart:1–21</code>; <code>lib/features/library/presentation/widgets/canvas_card.dart:1–13</code>). Toolbar and thumbnails then use scattered <code>kIsWeb</code> checks to disable/hide operations (<code>lib/canvas/widgets/canvas_toolbar.dart:695–724</code>; <code>canvas_card.dart:354–375</code>). README calls Android the real runtime but web a supported development preview (<code>README.md:3–5,57–66</code>).</p>
+        <p><strong>Root cause.</strong> Platform support is capability-by-capability, but only database/cleanup capabilities received adapter boundaries; canvas file ownership remains embedded in controllers/widgets.</p>
+        <p><strong>Recommendation (analysis only).</strong> Define one canvas media/export capability boundary with native and web implementations/stubs selected conditionally. Make unsupported capability explicit before persistence, and keep platform checks out of widgets. If media-backed canvases are intentionally Android-only, encode that product boundary in the data/service contract and documentation rather than allowing path-shaped web state.</p>
+      </article>
+
+      <article id="a13" class="finding low">
+        <h3><span class="badge">Low</span> A13 — Architectural boundaries are documented conventions with no automated import-direction guard</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>Long-term: cycles and adapter leaks can grow unnoticed</dd><dt>Data integrity</dt><dd>Indirect</dd></dl>
+        <p><strong>Evidence.</strong> README declares a feature-first split (<code>README.md:24–29</code>), but the observed graph contains canvas↔library, canvas↔settings, shared→library, and presentation→data/Drift edges documented in A02, A03 and A07. <code>analysis_options.yaml:1–24</code> enables Flutter/Riverpod/style lints only; no architecture test or import restriction defines allowable directions.</p>
+        <p><strong>Root cause.</strong> Folder names communicate intent, but build/static-analysis tooling does not encode it.</p>
+        <p><strong>Recommendation (analysis only).</strong> After choosing the intended direction, add a small repository test or static check for a few high-value rules: domain/model must not import database/presentation; <code>shared</code> must not import concrete features; presentation should not import Drift. Keep an explicit allowlist for composition roots and deliberate integrations so enforcement remains simple.</p>
+      </article>
+
+      <article id="a14" class="finding medium">
+        <h3><span class="badge">Medium</span> A14 — Recovery state exists in the schema but has no end-to-end owner</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Flow impact</dt><dd>High after an accidental confirmed deletion; no in-app recovery path</dd><dt>Data integrity</dt><dd>High consequence, user-mediated likelihood</dd></dl>
+        <p><strong>Evidence.</strong> Canvases have <code>isArchived</code> and elements have <code>isDeleted</code> columns (<code>lib/core/database/tables/canvas_tables.dart:18–33,131–161</code>). <code>LibraryRepository.archiveCanvas</code> exists (<code>lib/features/library/data/library_repository.dart:180–185</code>) but repository-wide search found no caller. The library card instead confirms and calls permanent <code>deleteCanvas</code> (<code>lib/features/library/presentation/widgets/canvas_card.dart:171–212</code>). Element deletion hard-deletes generic/detail rows (<code>lib/canvas/persistence/canvas_repository.dart:494–528</code>); <code>isDeleted</code> is only a load filter and test fixture. Kanban column/card and reflection-entry deletion similarly commit cascades/hard deletes with no durable trash aggregate.</p>
+        <p><strong>Root cause.</strong> Recovery concepts were added at storage level, but application workflows and retention/purge policy were never assigned to a module. As a result, safe lifecycle fields are dormant while destructive services own the real behavior.</p>
+        <p><strong>Recommendation (analysis only).</strong> Make archive/trash the primary application operation for canvases and other high-value writing; assign restore, retention, and final purge to the library/data-maintenance boundary. Decide whether element soft deletion is part of undo/recovery or remove the misleading field after migration. Do not implement UI-only undo over already-purged rows.</p>
+      </article>
+
+      <article id="a15" class="finding medium">
+        <h3><span class="badge">Medium</span> A15 — One malformed reflection JSON row can poison an entire aggregate stream</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High</dd><dt>Status</dt><dd>Damaged/legacy-state resilience gap; normal writers emit valid JSON</dd><dt>Flow impact</dt><dd>Templates or a card’s saved reflections can become collectively inaccessible because one row cannot decode</dd><dt>Data integrity</dt><dd>Stored answers remain in SQLite, but the application has no row-isolated recovery path</dd></dl>
+        <p><strong>Evidence.</strong> The reflection codec’s documentation says non-array or malformed/older schema should be treated as empty, yet <code>ReflectionTemplateSchema.fromJsonString</code> calls <code>jsonDecode</code> without catching <code>FormatException</code> (<code>lib/features/goal_cycle/domain/reflection_template_schema.dart:89–106</code>). The answers decoder has the same uncaught parse step (<code>:125–141</code>). <code>ReflectionRepository.watchTemplates</code> maps every result row in one stream transformation (<code>lib/features/goal_cycle/data/reflection_repository.dart:109–140</code>), and <code>watchEntriesForCard</code> likewise maps every entry through both codecs (<code>:244–266</code>). Consequently one syntactically invalid <code>schema_json</code>, snapshot, or <code>answers_json</code> throws the whole emission rather than isolating the affected row. Settings and canvas tool-wheel/control-point codecs provide useful counterexamples: they catch parse failures and select bounded defaults (<code>lib/features/settings/data/settings_repository.dart:314–364</code>; <code>lib/canvas/persistence/canvas_repository.dart:1105–1155,1186–1199</code>).</p>
+        <p><strong>Root cause.</strong> Raw serialized storage is decoded inside aggregate projection with no explicit error-result type, so row-level corruption is promoted to feature-level stream failure. The codec contract and implementation disagree about tolerance.</p>
+        <p><strong>Counterevidence / mitigation.</strong> Repository and UI write paths construct JSON via the paired encoders, so ordinary saves should be valid. No inspected test injects syntactically malformed reflection JSON. This is a recovery and forward/backward-compatibility risk, not evidence that normal reflection editing corrupts data.</p>
+        <p><strong>Recommendation (analysis only).</strong> Give reflection codecs a deliberate result contract: either return a validated value plus diagnostics or throw a typed row-local decode error that the repository can quarantine. Preserve raw snapshot/answer text, render unaffected rows, and surface which reflection needs repair. Add malformed-template and malformed-single-entry tests that prove sibling history remains available; do not silently overwrite damaged JSON with an empty value.</p>
+      </article>
+
+      <article id="a16" class="finding medium">
+        <h3><span class="badge">Medium</span> A16 — Persistence has no single policy distinguishing UTC instants from local calendar dates</h3>
+        <dl><dt>Confidence</dt><dd class="confidence">High for inconsistency; medium for user-visible likelihood</dd><dt>Status</dt><dd>Systemic ordering/semantic exposure, most visible after timezone or daylight-offset changes</dd><dt>Flow impact</dt><dd>“Recent” canvases can be misordered after travel/offset changes; date-only goals risk accidental instant-based handling</dd><dt>Data integrity</dt><dd>Low-to-medium: timestamp meaning can drift even though note content remains intact</dd></dl>
+        <p><strong>Evidence.</strong> The database deliberately stores every <code>DateTime</code> as ISO-8601 text and calls that representation sortable (<code>lib/core/database/database.dart:55–62</code>). Canvas persistence writes local <code>DateTime.now()</code> throughout (<code>lib/canvas/persistence/canvas_repository.dart:61–69,347–375,510–570,678–730,781–810,879–949,988–1007</code>), and library creation/rename/move/open paths do the same (<code>lib/features/library/data/library_repository.dart:79–100,111–130,142–176,253–267</code>). By contrast, focus, revision, goal, reflection, attachment, and seed writes generally call <code>toUtc()</code> (for example <code>lib/features/focus/application/active_session_controller.dart:19–21</code>; <code>lib/features/revision/data/revision_repository.dart:168–225</code>; <code>lib/features/goal_cycle/data/goal_repository.dart:198–278</code>). Drift’s text mapping preserves a local value with its UTC offset while UTC values end in <code>Z</code>; lexical ordering is only chronological when comparable instants use one normalized representation. Library “recent” and “created” sorts order the stored text columns directly (<code>library_repository.dart:47–68</code>). Separately, goal <code>targetDate</code> is a calendar-day concept but shares the same generic <code>DateTime</code> storage/API as instants (<code>goal_repository.dart:232–250,294–309</code>).</p>
+        <p><strong>Root cause.</strong> Repositories choose clocks and timezone conversion independently, and the schema uses one type for two meanings: timeline instants and user-local calendar dates.</p>
+        <p><strong>Counterevidence / mitigation.</strong> Canvas and library currently use local time consistently with each other, so ordering is normally correct while the device remains on one offset. Other feature aggregates are internally mostly UTC. The risk emerges across travel/DST, old/new code paths, imports, or future cross-feature queries—not on every save.</p>
+        <p><strong>Recommendation (analysis only).</strong> Define one persistence time policy: store all true instants in UTC and inject a clock where ordering/recovery tests need control. Represent a goal target day as a date-only value/encoding rather than silently converting it as an instant. Before normalizing existing rows, write migration tests using mixed offsets and preserve the intended local day for targets. Avoid a broad mechanical <code>toUtc()</code> replacement because calendar dates have different semantics.</p>
+      </article>
+    </section>
+
+    <section id="strengths">
+      <h2>Structural strengths worth preserving</h2>
+      <ul>
+        <li><strong>Single explicit database composition:</strong> <code>ZennoDatabase</code> lists all tables and migrations centrally (<code>lib/core/database/database.dart:12–65</code>), which makes durability review feasible.</li>
+        <li><strong>Historical migration verification:</strong> generated schemas cover versions 1–13, every older version is validated against current v13, and targeted tests assert important data-preservation/default contracts (<code>test/generated_migrations/schema.dart:7–56</code>; <code>test/database_test.dart:101–570</code>).</li>
+        <li><strong>Transactional aggregate writes:</strong> canvas generic/detail rows are written together (<code>lib/canvas/persistence/canvas_repository.dart:326–376</code>), and card plus subtype details are created transactionally in feature repositories.</li>
+        <li><strong>Safe current canvas deletion orchestration:</strong> focus links are detached before canvas deletion and media files are deleted only after remaining references are checked (<code>lib/features/library/data/library_repository.dart:187–251</code>).</li>
+        <li><strong>Useful canvas seam already exists:</strong> <code>CanvasRepository</code> explicitly maps engine objects to Drift rows, and retry uses a full current-state reconciliation rather than replaying stale failed closures (<code>lib/canvas/canvas_controller.dart:1059–1091</code>).</li>
+        <li><strong>Shared Kanban contract is directionally sound:</strong> <code>KanbanController</code> keeps the generic widget database-free (<code>lib/shared/kanban/kanban_controller.dart:5–52</code>).</li>
+        <li><strong>Focus domain is comparatively clean:</strong> <code>FocusSessionConfig</code> and <code>TimerEngine</code> are plain Dart and explicitly separate from Flutter/Drift (<code>lib/features/focus/domain/focus_session_config.dart:1–10</code>).</li>
+      </ul>
+    </section>
+
+    <section id="sequence">
+      <h2>Recommended architectural sequence</h2>
+      <ol>
+        <li><strong>Close the lossy reconciliation path:</strong> make canvas load completeness explicit and prevent retry from deleting rows that were not successfully materialized. Treat malformed rows as recoverable evidence, not authoritative absence.</li>
+        <li><strong>Protect durable invariants:</strong> codify folder/focus/ritual relationship semantics, board/column ownership, cleanup lifecycle, archive/restore policy, and instant-vs-calendar time semantics with focused corruption and migration tests.</li>
+        <li><strong>Move product enums out of Drift tables:</strong> establish stable domain types and explicit database mapping while preserving stored ordinals.</li>
+        <li><strong>Clarify integration ownership:</strong> relocate card↔canvas and canvas↔settings/library composition out of lower-level <code>shared</code>/feature internals.</li>
+        <li><strong>Extract canvas capability owners incrementally:</strong> persistence coordinator and raster/import lifecycle first, then document/command state and tool configuration. Keep the existing controller as a façade during migration.</li>
+        <li><strong>Shrink presentation/data coupling where it pays:</strong> remove Drift types from application APIs and route complex mutations through feature controllers, without inventing abstraction for simple reads.</li>
+      </ol>
+      <p>This order minimizes data risk: it closes the one demonstrated destructive composition first, then makes implicit invariants executable before moving the high-blast-radius canvas code.</p>
+    </section>
+
+    <section id="iterations">
+      <h2>Iteration log</h2>
+      <div class="iteration"><strong>Iteration 1 — comprehensive evidence pass</strong><br><time datetime="2026-07-18T05:01:56+08:00">2026-07-18 05:01:56 PST</time> · Inventoried modules and sizes; traced cross-module imports; inspected database composition/table constraints, library deletion and file cleanup, canvas controller/repository responsibilities, shared attachments, settings ownership, focus domain, and board repositories. Produced A01–A07. No source or repository state changes.</div>
+      <div class="iteration"><strong>Iteration 2 — counterexample and invariant challenge</strong><br><time datetime="2026-07-18T05:06:59+08:00">2026-07-18 05:06:59 PST</time> · Confirmed the library repository is auto-disposed; narrowed cleanup risk to file-staging concurrency windows; found explicit focus-history deletion regression coverage; strengthened cross-board mutation evidence; recorded canvas persistence/test mitigations; inspected migration/bootstrap ownership and added A08. Basic report structure validated. No builds or tests run.</div>
+      <div class="iteration"><strong>Iteration 3 — aggregate ownership and recovery composition</strong><br><time datetime="2026-07-18T05:09:10+08:00">2026-07-18 05:09:10 PST</time> · Inspected focus, ritual and reflection repositories; cross-checked adjacent analyzer headings and independently verified source. Broadened A05 with ritual-snapshot FK semantics. Added A09 for lossy load→destructive retry composition, A10 for duplicated Kanban storage ownership, and A11 for incomplete aggregate reactivity. Existing UI/UX reviews were treated as historical context only because their scope/line references predate current code.</div>
+      <div class="iteration"><strong>Iteration 4 — provider, platform, and enforcement audit</strong><br><time datetime="2026-07-18T05:10:25+08:00">2026-07-18 05:10:25 PST</time> · Traced generated provider lifetimes and found attachment surfaces also instantiate the auto-disposed library repository/cleanup. Compared conditional database/cleanup adapters with runtime-guarded canvas file I/O and added A12. Inspected lint/build configuration and added A13 because documented module directions are not enforced. Cross-checked the dedicated platform report, then independently verified every retained path.</div>
+      <div class="iteration"><strong>Iteration 5 — destructive ownership and recovery lifecycle</strong><br><time datetime="2026-07-18T05:11:13+08:00">2026-07-18 05:11:13 PST</time> · Enumerated destructive operations and all archive/soft-delete references. Consolidated folder, focus-link, and ritual-provenance cascade mismatches into systemic A05. Added A14 because schema-level archive/soft-delete concepts have no application owner and production paths hard-delete instead. Verified current folder/canvas preserving tests and avoided labeling guarded paths as current loss bugs.</div>
+      <div class="iteration"><strong>Iteration 6 — consistency correction, re-ranking, and document validation</strong><br><time datetime="2026-07-18T05:13:18+08:00">2026-07-18 05:13:18 PST</time> · Recomputed the handwritten Dart inventory and corrected the summary total to approximately 39,920 lines. Generalized A05 metadata so it matches all three documented relationship classes rather than only canvas→focus history. Re-ranked A09 ahead of broad refactoring because it is the strongest demonstrated destructive composition. Validated all 14 finding articles, all seven top-level report sections, unique IDs, and internal navigation targets; no build or test was run.</div>
+      <div class="iteration"><strong>Iteration 7 — migration and historical-decision challenge</strong><br><time datetime="2026-07-18T05:15:43+08:00">2026-07-18 05:15:43 PST</time> · Read the full database migration suite and recorded its strong all-version schema verification and targeted preservation contracts, narrowing A08 to abnormal bootstrap-state recovery. Re-read current canvas exit/flush behavior and confirmed note writes are flushed before thumbnail capture on guarded navigation. Used the untracked canvas-evolution plan only as historical root-cause evidence for A01’s accumulation pattern. Challenged A09 against transactional generic/detail writes and newest-state retry tests; retained it specifically as a damaged-state recovery hazard and documented the missing composed test.</div>
+      <div class="iteration"><strong>Iteration 8 — conflict-mode and bootstrap recovery audit</strong><br><time datetime="2026-07-18T05:17:27+08:00">2026-07-18 05:17:27 PST</time> · Enumerated all ignore/replace/upsert conflict modes. Confirmed canvas element replacement is transactionally paired with detail replacement, but found that open-time seeding replaces fixed-ID builtin templates even though reflection entries restrict template deletion. Elevated A08 to Medium because a false/missing global sentinel can now reset settings, create duplicate UUID-seeded workflows, or make database opening fail once referenced builtins exist. Confirmed other auto-disposed repositories have no construction side effect, keeping A06 scoped to library cleanup.</div>
+      <div class="iteration"><strong>Iteration 9 — serialized payload and row-isolation audit</strong><br><time datetime="2026-07-18T05:18:26+08:00">2026-07-18 05:18:26 PST</time> · Traced every hand-written JSON decoder used for durable settings, canvas configuration, reflection templates, and reflection answers. Settings/canvas configuration intentionally fall back on parse failure; reflection codecs claim tolerance but allow syntax errors to escape, while repository streams map all rows as one aggregate. Added A15 and limited it to damaged/legacy state because all normal writers use paired encoders.</div>
+      <div class="iteration"><strong>Iteration 10 — clock and temporal-meaning audit</strong><br><time datetime="2026-07-18T05:19:50+08:00">2026-07-18 05:19:50 PST</time> · Challenged focus checkpoint overlap but did not promote it because current single-executor ordering and transactional lifecycle guards make the stale-write claim too speculative. Instead enumerated all persisted clock calls and added A16: canvas/library store local-offset instants, most study features store UTC instants, and goal target days use the same <code>DateTime</code> type. Scoped the impact to timezone/offset transitions and future cross-feature composition rather than ordinary same-zone saves.</div>
+      <p class="muted">Next passes will inspect ignored-write result contracts, route/editor ownership, import/export aggregate boundaries, and exact dependency-edge counts.</p>
+    </section>
+
+    <footer>Analyzer 01 · Zenno architecture analysis · local standalone report · analysis only</footer>
+  </main>
+</div>
+</body>
+</html>

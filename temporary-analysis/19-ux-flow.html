@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zenno UX Flow Analysis — Analyzer 19</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f2ea;
+      --panel: #fffdf7;
+      --text: #20241f;
+      --muted: #646b62;
+      --line: #d9d5ca;
+      --accent: #315f50;
+      --accent-soft: #deebe4;
+      --critical: #8e2637;
+      --high: #ad4c20;
+      --medium: #836515;
+      --low: #476072;
+      --good: #25634e;
+      --code: #ece9e0;
+      --shadow: 0 8px 30px rgba(31, 36, 31, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #151816;
+        --panel: #1d211e;
+        --text: #eef1eb;
+        --muted: #acb3a9;
+        --line: #384039;
+        --accent: #9acbb8;
+        --accent-soft: #263b33;
+        --critical: #ff9cab;
+        --high: #f2a27e;
+        --medium: #dcc576;
+        --low: #9abbd1;
+        --good: #91d2b8;
+        --code: #262b27;
+        --shadow: none;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    code {
+      padding: .12rem .35rem;
+      border-radius: .3rem;
+      background: var(--code);
+      font: .88em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+    aside {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 28px 22px;
+      border-right: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+    }
+    aside .identity { margin-bottom: 24px; }
+    aside .identity strong { display: block; color: var(--accent); font-size: 1.1rem; }
+    aside .identity span { color: var(--muted); font-size: .82rem; }
+    nav a {
+      display: block;
+      padding: 7px 10px;
+      border-radius: 7px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: .9rem;
+    }
+    nav a:hover { color: var(--text); background: var(--accent-soft); }
+    main { width: min(1180px, 100%); padding: 54px 48px 100px; }
+    .hero { max-width: 900px; margin-bottom: 32px; }
+    .eyebrow { color: var(--accent); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; font-size: .75rem; }
+    h1 { margin: 8px 0 12px; font-size: clamp(2rem, 5vw, 4rem); line-height: 1.02; letter-spacing: -.045em; }
+    h2 { margin: 58px 0 18px; font-size: 1.65rem; letter-spacing: -.02em; }
+    h3 { margin: 0 0 8px; font-size: 1.08rem; }
+    p { margin: 8px 0 12px; }
+    .lede { color: var(--muted); font-size: 1.08rem; max-width: 78ch; }
+    .meta, .legend, .cards { display: grid; gap: 12px; }
+    .meta { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 28px 0; }
+    .meta > div, .card, .finding, .callout, .journey, .iteration {
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .meta > div { padding: 15px 16px; }
+    .meta small { display: block; color: var(--muted); }
+    .meta strong { display: block; margin-top: 2px; }
+    .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card { padding: 17px; }
+    .card .number { font-size: 1.9rem; font-weight: 800; line-height: 1; }
+    .card .label { color: var(--muted); font-size: .82rem; }
+    .callout { padding: 18px 20px; border-left: 5px solid var(--accent); }
+    .callout strong { color: var(--accent); }
+    .method { color: var(--muted); font-size: .92rem; }
+    .journeys { display: grid; gap: 13px; }
+    .journey { display: grid; grid-template-columns: 135px 1fr 120px; gap: 16px; align-items: start; padding: 17px; }
+    .journey .name { font-weight: 800; }
+    .journey .state { text-align: right; color: var(--muted); font-size: .85rem; }
+    .bar { height: 5px; margin-top: 7px; border-radius: 10px; background: var(--line); overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--accent); }
+    .findings { display: grid; gap: 16px; }
+    .finding { padding: 22px; scroll-margin-top: 24px; }
+    .finding-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .finding-head h3 { margin-right: auto; }
+    .pill { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid currentColor; border-radius: 99px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .severity-high { color: var(--high); }
+    .severity-medium { color: var(--medium); }
+    .severity-low { color: var(--low); }
+    .confidence { color: var(--muted); }
+    .finding-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 22px; }
+    .evidence { padding: 14px 16px; border-radius: 9px; background: var(--code); font-size: .86rem; }
+    .evidence ul, .compact { margin: 6px 0 0; padding-left: 18px; }
+    .evidence li, .compact li { margin: 5px 0; }
+    .impact { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .impact b, .recommendation b { color: var(--accent); }
+    .recommendation { margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
+    th, td { padding: 12px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+    tr:last-child td { border-bottom: 0; }
+    .positive { color: var(--good); }
+    .scope-list { columns: 2; column-gap: 30px; }
+    .iteration { padding: 18px 20px; margin-bottom: 12px; }
+    .iteration time { color: var(--muted); font-size: .84rem; }
+    footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: .86rem; }
+    @media (max-width: 900px) {
+      .layout { display: block; }
+      aside { position: static; width: auto; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      nav { display: flex; flex-wrap: wrap; }
+      main { padding: 34px 20px 80px; }
+      .meta, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .finding-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 580px) {
+      .meta, .cards { grid-template-columns: 1fr; }
+      .journey { grid-template-columns: 1fr; }
+      .journey .state { text-align: left; }
+      .scope-list { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="identity">
+        <strong>Analyzer 19</strong>
+        <span>End-to-end journeys · invisible UI</span>
+      </div>
+      <nav aria-label="Report sections">
+        <a href="#summary">Executive summary</a>
+        <a href="#method">Method &amp; scope</a>
+        <a href="#journeys">Journey map</a>
+        <a href="#priority">Priority order</a>
+        <a href="#findings">Detailed findings</a>
+        <a href="#safety">Data-safety posture</a>
+        <a href="#strengths">Flow strengths</a>
+        <a href="#intent">Intentional tradeoffs</a>
+        <a href="#questions">Decisions to make</a>
+        <a href="#iterations">Iteration log</a>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="hero" id="summary">
+        <div class="eyebrow">Zenno repository analysis · analysis only</div>
+        <h1>The canvas captures thought quickly. The rest of the system does not yet return it as quickly.</h1>
+        <p class="lede">Zenno’s strongest path is “Library → New canvas → draw.” The editor also takes unsaved work seriously. The largest end-to-end weakness appears later, when a growing body of notes must be found, related, revisited, or converted into revision and goal work. Search stops at canvas and folder names, link activation is both tool- and input-device-dependent, and study artifacts live in separate boards and nested sheets. The interface therefore asks the user to remember where a thought was stored—the very memory burden a thinking tool should remove.</p>
+      </header>
+
+      <section class="meta" aria-label="Report metadata">
+        <div><small>Analyzer</small><strong>Analyzer 19</strong></div>
+        <div><small>Current iteration</small><strong>11 · Recency semantics</strong></div>
+        <div><small>Last updated</small><strong>2026-07-18 05:20 PST</strong></div>
+      </section>
+
+      <section class="cards" aria-label="Finding counts">
+        <div class="card"><div class="number">5</div><div class="label">High-severity findings</div></div>
+        <div class="card"><div class="number">12</div><div class="label">Medium-severity findings</div></div>
+        <div class="card"><div class="number">6</div><div class="label">Low-severity findings</div></div>
+        <div class="card"><div class="number">0</div><div class="label">Critical findings supported</div></div>
+      </section>
+
+      <section class="callout" style="margin-top:16px">
+        <strong>Core diagnosis.</strong> The information architecture is container-first while the learning workflow is idea-first. Canvas titles, folders, Kanban lanes, attached canvases, bookmarks, and canvas links each work locally, but there is no cross-surface retrieval layer. This is manageable with a small collection and increasingly costly as knowledge accumulates.
+      </section>
+
+      <section id="method">
+        <h2>Method and scope</h2>
+        <p class="method">Static, read-only source analysis. No app, build, test, installation, dependency, Git-state, branch, remote, PR, or external-service action was run or changed. Conclusions distinguish behavior directly encoded in source from likely user impact inferred from interaction structure. Existing review documents were treated as historical context only; resolved claims were not carried forward.</p>
+        <p>Inspected tracked application code plus relevant repository documentation and untracked planning/review material. Primary code paths covered:</p>
+        <ul class="scope-list compact">
+          <li>routing and responsive shell</li>
+          <li>Library, folders, cards, search and sorting</li>
+          <li>canvas editor, gestures, toolbar and persistence</li>
+          <li>text, image, PDF, links, bookmarks and navigation</li>
+          <li>Focus setup, active session, distractions and review</li>
+          <li>Revision and Goal Kanban flows</li>
+          <li>goal reflections and reusable templates</li>
+          <li>shared canvas attachments and pickers</li>
+          <li>settings and persisted interaction preferences</li>
+          <li>schemas/repositories supporting these journeys</li>
+        </ul>
+        <p class="method"><b>Severity:</b> High means likely to undermine a core learning journey or create serious recoverability risk; Medium means recurring friction or misleading state; Low means bounded polish/scaling friction. <b>Confidence:</b> High means directly visible in active code; Medium means behavior is supported but experiential impact is inferred without running the app.</p>
+      </section>
+
+      <section id="journeys">
+        <h2>End-to-end journey map</h2>
+        <div class="journeys">
+          <article class="journey">
+            <div class="name">Capture</div>
+            <div>One action creates and opens an empty canvas. Typed notes, links, cards, reflections, and focus sessions introduce modal or multi-stage setup before thought returns to the workspace.</div>
+            <div class="state">Strong entry<div class="bar"><i style="width:76%"></i></div></div>
+          </article>
+          <article class="journey">
+            <div class="name">Organize</div>
+            <div>Folders and manual Kanban lanes are predictable. Archive is implemented in data code but absent from the UI; collapse state is transient; revision scheduling remains split across separate actions.</div>
+            <div class="state">Serviceable<div class="bar"><i style="width:58%"></i></div></div>
+          </article>
+          <article class="journey">
+            <div class="name">Retrieve</div>
+            <div>Library search only matches canvas title and folder name. Canvas text, links, bookmarks, goal/reflection content, revision notes, and focus records are not discoverable through a common search path.</div>
+            <div class="state">Primary gap<div class="bar"><i style="width:30%"></i></div></div>
+          </article>
+          <article class="journey">
+            <div class="name">Connect</div>
+            <div>Canvas links and card attachments exist, and route stacking preserves return context. Region-target support is dormant in authoring; a finger cannot follow a link, while stylus/mouse activation requires Pan; target pickers do not scale.</div>
+            <div class="state">Capable, hidden<div class="bar"><i style="width:46%"></i></div></div>
+          </article>
+          <article class="journey">
+            <div class="name">Think on canvas</div>
+            <div>Full-bleed space, stylus-first routing, persisted viewport and durable writes support flow. A large permanent radial cluster and modal text editing compete with the canvas for attention.</div>
+            <div class="state">Strong core<div class="bar"><i style="width:70%"></i></div></div>
+          </article>
+          <article class="journey">
+            <div class="name">Resume</div>
+            <div>Editor state, bookmarks, tool position and focus runtime are persisted. Native thumbnails and last-edited sorting help recognition; web thumbnails are placeholders and most study surfaces have no search/filter path.</div>
+            <div class="state">Mixed<div class="bar"><i style="width:61%"></i></div></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="priority">
+        <h2>Recommended priority order</h2>
+        <table>
+          <thead><tr><th>Order</th><th>Outcome</th><th>Why first</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Surface and preserve unreconstructable canvas elements</td><td>A rare partial-data failure should never look like an empty area or have its remaining evidence deleted during retry.</td></tr>
+            <tr><td>2</td><td>Ship an editable, media-complete backup and restore path</td><td>Visual export is not disaster recovery; note ownership requires a tested way out and back in.</td></tr>
+            <tr><td>3</td><td>Introduce recoverable canvas removal</td><td>It closes the direct, irreversible user-action path to note loss.</td></tr>
+            <tr><td>4</td><td>Design idea-level retrieval across canvases and study artifacts</td><td>It addresses the central scaling failure and reduces dependence on memory.</td></tr>
+            <tr><td>5</td><td>Make connection traversal mode-independent and target selection searchable</td><td>Links should behave as reading affordances, not drawing-mode affordances.</td></tr>
+            <tr><td>6</td><td>Reduce permanent canvas chrome and modal capture</td><td>Reclaims attention in Zenno’s most important thinking surface.</td></tr>
+            <tr><td>7</td><td>Collapse duplicate setup/edit stages in Focus, Revision and Goals</td><td>Removes repeat friction without changing stored knowledge structures.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="findings">
+        <h2>Detailed findings</h2>
+        <div class="findings">
+
+          <article class="finding" id="f1">
+            <div class="finding-head">
+              <h3>F1 · Retrieval searches containers, not knowledge</h3>
+              <span class="pill severity-high">High</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The Library computes search results from the already-loaded canvas list and folder names. It never queries canvas element text or any study records. Goal reflections are reachable only inside a goal detail sheet; Revision and Goal are horizontal boards without search or filter controls.</p>
+                <p class="impact"><b>Flow impact.</b> A learner who remembers an idea, phrase, reflection, or linked concept—but not its canvas title or folder—cannot retrieve it. Collection growth converts organization into a memory test and encourages overlong titles or duplicated canvases.</p>
+                <p><b>Data integrity.</b> No stored data is corrupted, but practically undiscoverable knowledge behaves like lost knowledge.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Define a single retrieval contract before implementing UI: which content is indexed, how results are grouped, and how a result navigates to an exact canvas element, goal/reflection, revision card, or focus record. Start with canvas title + text-note content + goal/revision/reflection text; expose scope and result type rather than silently searching only some stores.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/library/presentation/pages/library_page.dart:328–365</code> filters only lowercased canvas titles and folder names.</li>
+                <li><code>lib/core/database/tables/canvas_tables.dart:275–290</code> stores typed canvas-note text separately, but Library does not read it.</li>
+                <li><code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:333–369</code> exposes reflections only inside one goal sheet.</li>
+                <li><code>lib/features/revision/presentation/pages/revision_board_page.dart:82–91</code> and <code>lib/features/goal_cycle/presentation/pages/goal_board_page.dart:70–80</code> provide board/card actions but no search surface.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f2">
+            <div class="finding-head">
+              <h3>F2 · Permanent canvas deletion bypasses an already-present archive model</h3>
+              <span class="pill severity-high">High</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The visible card action confirms and then permanently deletes a canvas, its elements, and owned files. The repository already supports <code>isArchived</code> and <code>archiveCanvas</code>, and the main query hides archived canvases, but no active UI route calls archive or restores archived content.</p>
+                <p class="impact"><b>Flow impact.</b> Cleanup requires a high-stakes decision. Fear of deleting useful thought can produce clutter; one mistaken confirmation can destroy notes and media with no recovery path. The warning mentions content “on” the canvas but not cross-feature consequences: card attachments vanish and incoming links remain as visually normal but dangling references.</p>
+                <p><b>Data integrity.</b> The confirmation is clear and focus-history links are detached safely, but the impact is irreversible after confirmation. Under Zenno’s “data integrity is absolute” rule, the missing recovery state is a high-priority gap.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Make archive the ordinary removal action, add an Archived/Trash view with restore, and reserve permanent deletion for a secondary action with explicit retention semantics. Before permanent deletion, summarize attached study cards and incoming links that will be removed or broken. Decide whether owned files remain while archived before implementation.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/library/presentation/widgets/canvas_card.dart:171–203</code> labels the operation permanent and calls <code>deleteCanvas</code>.</li>
+                <li><code>lib/features/library/data/library_repository.dart:47–70</code> hides archived canvases from the normal Library.</li>
+                <li><code>lib/features/library/data/library_repository.dart:180–185</code> implements archive, while repository-wide call-site search found no UI use.</li>
+                <li><code>lib/features/library/data/library_repository.dart:187–205</code> cascades database deletion and removes orphaned owned files.</li>
+                <li><code>lib/core/database/tables/board_tables.dart:89–116</code> cascades card attachment rows when a canvas is deleted.</li>
+                <li><code>lib/core/database/tables/canvas_tables.dart:249–252</code> intentionally preserves incoming links as soft, potentially dangling references.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f3">
+            <div class="finding-head">
+              <h3>F3 · Canvas links behave like tool operations, not universal reading affordances</h3>
+              <span class="pill severity-high">High</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> A link opens only when Pan is active <em>and</em> the pointer follows the tool-gesture path. All touch pointers are routed to viewport/long-press-lasso handling and return before tool gestures are created; only stylus and mouse reach link hit-testing. The authoring dialog creates only whole-canvas targets even though the persistent model supports exact destination viewports. Its target control is an unsearchable dropdown and failed option loads are rendered as “No other canvases.” No active edit/retarget flow was found.</p>
+                <p class="impact"><b>Flow impact.</b> The natural reading gesture on a tablet—a finger tap—cannot open a visible connection. A stylus/mouse tap can draw, erase, select, or follow depending on the current tool. That is a combined input-device and mode error at the boundary between writing and reading. Large libraries also turn link creation into dropdown scanning, while a mistaken label or target appears to require deleting and recreating the link.</p>
+                <p><b>Data integrity.</b> Links themselves persist safely. The risk is navigation ambiguity and false “empty library” feedback on load failure, not note corruption.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Exploit the existing input separation: let a stationary single-finger tap on a link open it while finger drag continues to pan, independent of the active stylus tool. Define a movement threshold and test it against pinch and long-press lasso so navigation does not steal viewport gestures. Reuse a searchable canvas picker, distinguish error/empty/loading states, expose edit/retarget, and either ship region links or remove dormant region promises until their authoring journey is designed.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/model/canvas_element.dart:638–734</code> defines exact destination viewport support and documents Pan-only tapping.</li>
+                <li><code>lib/canvas/canvas_editor_page.dart:403–420</code> follows a link only when the Pan tool callback is reached.</li>
+                <li><code>lib/canvas/render/canvas_view.dart:97–104, 296–328</code> routes touch pointers to viewport/long-press handling and returns before tool gestures are created.</li>
+                <li><code>lib/canvas/render/canvas_view.dart:337–365</code> routes only stylus and mouse through the active tool, where Pan can hit-test links.</li>
+                <li><code>lib/canvas/widgets/link_target_dialog.dart:91–112</code> always constructs <code>LinkTarget(targetCanvasId: ...)</code> without a viewport.</li>
+                <li><code>lib/canvas/widgets/link_target_dialog.dart:155–193</code> collapses absent/error data to an empty list and uses a dropdown without search.</li>
+                <li>Repository-wide source search found no active link update/retarget call site; only creation, persistence, navigation, import/export, and tests.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f4">
+            <div class="finding-head">
+              <h3>F4 · The persistent tool wheel is the loudest object on the thinking surface</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The editor always overlays a multi-page radial wheel, a 34-pixel side-action strip, and a palette. At normal widths the wheel alone is 187.2–211.2 logical pixels; the cluster also carries top-corner navigation, zoom, orientation, bookmarks, and save state. The wheel can move and its position persists, but there is no active collapse/hide state in the rendered control path. Meanwhile, the only in-editor explanation of pen long-press, two-finger undo and three-finger redo is itself an action inside the More → View wheel page.</p>
+                <p class="impact"><b>Flow impact.</b> The control that should disappear after tool selection remains a large focal object and occludes content. Nested tool/context/more/insert/appearance/view pages replace spatially stable, quiet access with mode memory, while the most space-efficient gestures require knowing where their hidden guide lives.</p>
+                <p><b>Data integrity.</b> None. This is sustained attention and usable-canvas-area cost.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Validate with the target tablet before redesign. Prefer a compact resting state that shows active tool/color and expands at the pointer or on stylus command, while keeping undo/save status independently visible. Preserve the movable position as an accessibility escape hatch.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/widgets/canvas_toolbar.dart:16</code> applies a 1.2 wheel scale.</li>
+                <li><code>lib/canvas/widgets/canvas_toolbar.dart:176–264</code> maintains seven radial pages with context-dependent center behavior.</li>
+                <li><code>lib/canvas/widgets/canvas_toolbar.dart:314–388</code> computes a minimum 120-pixel wheel and preferred 187.2/211.2-pixel wheel plus palette/side controls.</li>
+                <li><code>lib/canvas/canvas_editor_page.dart:643–673</code> overlays the toolbar across the full canvas.</li>
+                <li><code>lib/canvas/widgets/canvas_toolbar.dart:749–807, 1199–1223</code> places the multi-touch/stylus guide inside the View wheel actions.</li>
+                <li><code>test/canvas_toolbar_test.dart:95–130</code> explicitly requires the wheel/palette to remain visible after drawing and confirms a 211.2-pixel tablet wheel. This test was read, not run.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f5">
+            <div class="finding-head">
+              <h3>F5 · Typed-note capture leaves the spatial context for a modal editor</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Tapping with the Text tool opens an <code>AlertDialog</code> containing a conventional text field; saving commits the text back at the tapped world point. Existing notes use the same modal. Saving an empty edit removes the element.</p>
+                <p class="impact"><b>Flow impact.</b> A thought that belongs at a specific visual location is composed in a detached dialog, hiding nearby strokes and references. The empty-save deletion behavior is not communicated in the dialog, so clearing text can unexpectedly become a delete gesture.</p>
+                <p><b>Data integrity.</b> Empty removal is undoable through the canvas command stack, but its semantics are implicit.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Prefer an in-place editor anchored to the note bounds, keeping surrounding content visible. If modal editing remains, state the empty-save behavior or disallow empty Save and offer an explicit Delete action.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/canvas_editor_page.dart:349–395</code> opens a dialog for both create and edit.</li>
+                <li><code>lib/canvas/canvas_controller.dart:3703–3731</code> places a non-empty text element at the selected canvas point.</li>
+                <li><code>lib/canvas/canvas_controller.dart:3733–3747</code> interprets an empty edit as <code>removeElements</code>.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f6">
+            <div class="finding-head">
+              <h3>F6 · Focus setup repeats defaults before every session</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">Medium confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Starting a session presents a long scrolling form: ritual, study goal, energy, timer type, timer-specific values, target length, and working canvas. Settings already persist the timing and length defaults, yet the setup page gives each configuration block equal visual weight.</p>
+                <p class="impact"><b>Flow impact.</b> The user must configure focus before focusing. Repeated choices create activation energy precisely where the desired behavior is to begin work, and make the optional canvas link feel like another form field rather than the workspace.</p>
+                <p><b>Data integrity.</b> None. Runtime persistence is strong once a session begins.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Treat persisted defaults as a one-tap “Start” preset. Keep goal/canvas near the primary action, summarize timing in one compact row, and reveal ritual/timing customization progressively. Preserve explicit setup as an advanced path rather than removing it.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/focus/presentation/pages/focus_setup_page.dart:68–159</code> renders every setup section before the Start button.</li>
+                <li><code>lib/features/settings/presentation/pages/settings_page.dart:187–243</code> already stores Focus rhythm and session-length defaults.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_setup_page.dart:224–290</code> adds or creates a linked canvas as another dialog flow.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f7">
+            <div class="finding-head">
+              <h3>F7 · Break- and pause-time distractions are indistinguishable from work interruptions</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The Distraction action remains available regardless of whether the timer is working, paused, or on break. The saved row records wall-clock seconds into the session, kind, note and timestamp, but not timer phase/status or accumulated focus time. Later aggregates count every record as a session distraction.</p>
+                <p class="impact"><b>Flow impact.</b> Capturing remains fast, and “minutes into the session” is accurately encoded. But future “when do I drift?” analysis cannot tell a focus interruption from something intentionally noticed during a break or pause. Counts and attention-pattern conclusions can therefore mix meaningfully different events.</p>
+                <p><b>Data integrity.</b> Records are structurally and temporally valid; the missing contextual dimension makes the analytic meaning ambiguous rather than the elapsed value incorrect.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Decide whether break/pause capture is valuable. If yes, persist phase/status plus both session-wall and accumulated-focus elapsed values at capture; if no, disable or relabel the action outside work phases. Keep “into the session” for the current wall-clock field.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/focus/presentation/pages/focus_active_page.dart:414–472</code> exposes Distraction without receiving or gating on timer phase/status.</li>
+                <li><code>lib/features/focus/application/active_session_controller.dart:222–249</code> saves wall time since session start; its focus-time comment is inconsistent with the implementation.</li>
+                <li><code>lib/core/database/tables/focus_tables.dart:105–116</code> stores timestamp, kind, note and seconds into session, but no phase/status/focus elapsed.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_review_page.dart:392–403</code> accurately labels the field “into the session.”</li>
+                <li><code>lib/features/focus/application/focus_stats_provider.dart:32–52</code> counts all captured distractions without phase distinction.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f8">
+            <div class="finding-head">
+              <h3>F8 · Revision completion and next scheduling are separate mental transactions</h3>
+              <span class="pill severity-low">Low</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Intentional tradeoff.</b> “Mark revised” only stamps time and increments a count, then closes the detail sheet. Revision lanes are explicitly manual; moving a card to its next interval is a separate board action. Repository planning documents confirm this is deliberate and explicitly prohibit automatic movement.</p>
+                <p class="impact"><b>Flow impact.</b> The most natural moment to schedule the next encounter is immediately after review, but the workflow ends before that decision. The user must remember which card was just reviewed and move it separately, creating stale scheduling state.</p>
+                <p><b>Data integrity.</b> History remains correct, but board position can stop representing intended next review.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Preserve manual scheduling unless the product decision is reopened. Validate whether users actually forget the follow-up movement. If so, prefer a non-automatic cue—keep the sheet open, briefly highlight the reviewed card, or offer an optional “Move next” action—rather than silently advancing it.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/revision/presentation/widgets/revision_card_detail_sheet.dart:173–197</code> marks and immediately closes.</li>
+                <li><code>lib/features/revision/data/revision_repository.dart:258–276</code> changes only last-revised time and revision count.</li>
+                <li><code>lib/features/revision/presentation/pages/revision_board_page.dart:82–91</code> supplies a manual Kanban surface.</li>
+                <li><code>plan/revisionUIUX.md:4, 56</code> explicitly requires manual buckets and says Mark revised must not move a card.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f9">
+            <div class="finding-head">
+              <h3>F9 · Creating a study card is a modal followed by another editor</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The shared Kanban column first asks for title and optional notes in a “New card” dialog. Both Revision and Goals then open the newly created card’s full detail sheet immediately.</p>
+                <p class="impact"><b>Flow impact.</b> “Add topic” and “Add goal” feel like two consecutive forms, with the first fields repeated in the second. Quick capture is impossible without entering—and then dismissing—the heavier editor.</p>
+                <p><b>Data integrity.</b> The card is persisted before the detail sheet opens, so dismissing the second stage does not lose the title/notes.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Choose one capture contract: either create a minimal card inline and stop, with detail opened only on demand; or open the full editor first and persist once. The inline/minimal path best preserves rapid capture.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/shared/kanban/kanban_column_view.dart:460–487</code> saves a draft and invokes <code>onCardAdded</code>.</li>
+                <li><code>lib/shared/kanban/kanban_column_view.dart:822–909</code> defines the initial title/notes dialog.</li>
+                <li><code>lib/features/revision/presentation/pages/revision_board_page.dart:88–90</code> opens detail for new topics.</li>
+                <li><code>lib/features/goal_cycle/presentation/pages/goal_board_page.dart:77–79</code> does the same for new goals.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f10">
+            <div class="finding-head">
+              <h3>F10 · Shared canvas pickers do not scale with the Library</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The attachment/Focus picker renders every canvas in a 280-pixel list without search, folder grouping, current-folder context, or already-attached filtering. Its recency label prints the raw <code>DateTime</code>. The link dialog independently implements a second, less capable dropdown picker.</p>
+                <p class="impact"><b>Flow impact.</b> Connecting a goal, revision topic, or focus session becomes a scanning task as the Library grows. Multiple selection patterns teach different behavior for the same “choose a canvas” job.</p>
+                <p><b>Data integrity.</b> Existing duplicate attachment insertion is ignored in persistence, but the picker still permits selecting an attached canvas and provides no “already attached” feedback.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Consolidate on one searchable, folder-aware canvas chooser with recent results, relative timestamps, exclusions/selected state, distinct error/empty/loading states, and create-new. Reuse it for links, focus and card attachments.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/shared/canvas_attachments/canvas_picker_dialog.dart:64–114</code> combines create-new and an unfiltered list.</li>
+                <li><code>lib/shared/canvas_attachments/canvas_picker_dialog.dart:125–157</code> caps the list at 280 pixels and prints raw <code>lastOpenedAt</code>.</li>
+                <li><code>lib/shared/canvas_attachments/card_canvas_attachments_section.dart:70–98</code> attaches without excluding current attachments.</li>
+                <li><code>lib/shared/canvas_attachments/card_canvas_attachment_repository.dart:115–135</code> ignores duplicate inserts yet returns a newly generated ID, so the UI has no duplicate signal.</li>
+                <li><code>lib/canvas/widgets/link_target_dialog.dart:155–193</code> separately uses an unsearchable dropdown.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f11">
+            <div class="finding-head">
+              <h3>F11 · Missing or corrupt canvas media is visually indistinguishable from pending media</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Image decode and PDF rasterization failures are caught and discarded. The element remains in its placeholder state with no error marker, retry action, file location, or repair path.</p>
+                <p class="impact"><b>Flow impact.</b> A learner revisiting a visually anchored note cannot tell whether a document is loading, missing, unsupported, or corrupt. Silent failure interrupts comprehension and discourages trust in media-backed notes.</p>
+                <p><b>Data integrity.</b> The element record remains, so metadata is not deleted. However, the source content may be unavailable without any visible diagnosis.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Persist or derive a runtime load state and render a quiet, bounded error affordance inside the element with Retry and Locate/Replace Source. Never automatically remove the element on load failure.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/canvas_controller.dart:4262–4317</code> returns silently when image decoding fails and explicitly leaves the placeholder.</li>
+                <li><code>lib/canvas/canvas_controller.dart:4320–4341</code> silently returns for PDF service errors or null results.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f12">
+            <div class="finding-head">
+              <h3>F12 · Settings writes mostly fail silently</h3>
+              <span class="pill severity-low">Low</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Settings controls call repository futures directly from synchronous callbacks without awaiting or handling failure. The tool-wheel position is a notable exception: it catches errors and shows retry guidance.</p>
+                <p class="impact"><b>Flow impact.</b> A control can snap back only when the reactive database stream fails to change, with no explanation. This is especially confusing for stylus behavior and Focus defaults because the failure may only be noticed in a later workflow.</p>
+                <p><b>Data integrity.</b> Failed preferences are not mis-stored, but user intent can be lost silently.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Apply the existing tool-wheel error pattern through one small settings action helper: await, show neutral failure copy, and retain/revert visible state consistently. Avoid exposing raw database errors.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/settings/presentation/pages/settings_page.dart:112–113, 128–182, 200–240, 271–272</code> invokes write futures without handling them.</li>
+                <li><code>lib/features/settings/data/settings_repository.dart:200–290</code> confirms these methods return <code>Future&lt;void&gt;</code>.</li>
+                <li><code>lib/canvas/widgets/canvas_toolbar.dart:222–245</code> shows the stronger caught-error pattern for wheel position.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f13">
+            <div class="finding-head">
+              <h3>F13 · Folder visibility state resets with the page</h3>
+              <span class="pill severity-low">Low</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Collapsed folder identifiers live only in the Library page state. Search intentionally expands every matching group, but there is no persisted or restorable collapse preference.</p>
+                <p class="impact"><b>Flow impact.</b> A carefully reduced Library expands again after page recreation, so visual clutter returns and spatial scanning must be repeated.</p>
+                <p><b>Data integrity.</b> None.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> First decide whether collapse state is a durable preference or session state. Persist only if real use shows repeated re-collapsing; otherwise keep the implementation simple.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/library/presentation/pages/library_page.dart:44–73</code> keeps collapsed IDs in widget state.</li>
+                <li><code>lib/features/library/presentation/pages/library_page.dart:568–596</code> derives visibility only from search state and that set.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f14">
+            <div class="finding-head">
+              <h3>F14 · Web Library cards lose visual recognition</h3>
+              <span class="pill severity-low">Low</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The card thumbnail widget always renders its generic placeholder on web, even when a thumbnail path exists.</p>
+                <p class="impact"><b>Flow impact.</b> Visual thinkers cannot use sketch shape/color as a recognition cue in the web version and must rely on titles and folders—the same metadata already limiting search.</p>
+                <p><b>Data integrity.</b> None; this is representation only.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> If web is a supported daily surface, produce browser-readable thumbnails (blob/IndexedDB bytes or generated data) and retain the placeholder only for absent/failed previews. If web is only a development target, document that constraint and keep this low priority.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/library/presentation/widgets/canvas_card.dart:354–364</code> returns the placeholder when <code>kIsWeb</code>.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f15">
+            <div class="finding-head">
+              <h3>F15 · Painted canvas knowledge is absent from the semantic and keyboard navigation model</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Canvas content is rendered as stacked <code>CustomPaint</code> layers inside a raw pointer listener. The toolbar has semantics, and the page has command shortcuts, but text notes, link chips, images and PDFs do not become focusable semantic children. Keyboard commands can act on an existing selection but cannot traverse painted elements to create that selection.</p>
+                <p class="impact"><b>Flow impact.</b> Screen-reader and keyboard-only retrieval stops at the toolbar. Even non-assistive desktop use remains pointer-dependent for finding and opening a link or text note. The knowledge is visually present but structurally invisible.</p>
+                <p><b>Data integrity.</b> None; access to stored information is constrained.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Add a viewport-aware semantic overlay for meaningful object elements first: text-note label/body, link label and open action, image/PDF label, selection state, and ordered keyboard traversal. Do not attempt to narrate every ink point; offer a concise canvas summary and object list for freehand-heavy canvases.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/render/canvas_view.dart:1455–1552</code> renders grid, committed elements, live ink and overlays entirely through <code>CustomPaint</code> under <code>Listener</code>.</li>
+                <li>Repository-wide canvas source search finds semantics on toolbar controls but none representing rendered <code>CanvasElement</code> objects.</li>
+                <li><code>lib/canvas/canvas_editor_page.dart:550–623</code> defines undo, selection transforms and tool shortcuts, but no next/previous element traversal or open-selected-link action.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f16">
+            <div class="finding-head">
+              <h3>F16 · Partial element corruption is silent, and later retry can erase its remaining recovery evidence</h3>
+              <span class="pill severity-high">High</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Each canvas element has a generic envelope row plus a kind-specific detail row. Loading silently skips an envelope when its detail row is absent. The controller therefore believes the skipped element does not exist. If any later asynchronous canvas write fails and the user invokes retry, full-state synchronization treats every stored envelope absent from controller memory as stale and deletes it.</p>
+                <p class="impact"><b>Flow impact.</b> A partially damaged note can open with unexplained missing content. The user receives no warning to stop editing or make a backup; an otherwise sensible Retry can remove the surviving envelope that could help diagnose or recover the item.</p>
+                <p><b>Data integrity.</b> High impact, but likely low frequency. Normal element writes are transactional, and this analysis found no evidence that partial corruption is currently occurring. The finding is about fail-safe behavior once an inconsistent database exists.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Do not silently discard. Return load diagnostics alongside reconstructed elements, block destructive full-state reconciliation for unknown rows, and show a quiet “some content could not be loaded” state with export/backup guidance. Preserve raw rows for recovery; never auto-delete them as stale unless their absence was an intentional user edit.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/persistence/canvas_repository.dart:77–82</code> explicitly says a missing detail row is skipped rather than failing load.</li>
+                <li><code>lib/canvas/persistence/canvas_repository.dart:177–191</code> omits every reconstruction that returns null.</li>
+                <li><code>lib/canvas/persistence/canvas_repository.dart:195–300</code> returns null for missing stroke, image, PDF, link, text or shape detail.</li>
+                <li><code>lib/canvas/canvas_controller.dart:1059–1090</code> retries failures by synchronizing the controller’s complete current snapshot.</li>
+                <li><code>lib/canvas/persistence/canvas_repository.dart:554–591</code> deletes stored element IDs not present in that snapshot.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f17">
+            <div class="finding-head">
+              <h3>F17 · Focus review offers a “Discard” contract that does not cover ritual edits made on the same screen</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The review page is treated as one unsaved form on every back attempt, even when untouched. Its energy and note are held until “Save &amp; finish,” but ritual rename/add/retire actions write immediately to the repository. Back then shows the shared promise “You have unsaved changes. If you leave now, they will be lost.” Choosing Discard completes the session without review fields; it does not undo ritual changes.</p>
+                <p class="impact"><b>Flow impact.</b> The end-of-session screen mixes reflection with maintenance and gives two different persistence models one visual boundary. A user can reasonably believe a renamed or retired ritual item will be reverted, then meet the changed ritual next session. Back also demands a destructive-sounding confirmation when no review field was changed.</p>
+                <p><b>Data integrity.</b> Historical ritual snapshots are preserved, so this does not corrupt past sessions. It violates current user intent through misleading persistence feedback.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Move ritual maintenance out of the review transaction or label it as saved immediately. Track actual review dirtiness; when untouched, offer “Skip review” without claiming changes will be lost. If ritual maintenance remains inline, use a confirmation that explicitly lists what will be discarded and what was already saved.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/focus/presentation/pages/focus_review_page.dart:52–56</code> blocks every back attempt regardless of actual dirty state.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_review_page.dart:99–159</code> writes ritual edit/retire/add actions through <code>RitualRepository</code> while still inside review.</li>
+                <li><code>lib/core/widgets/app_dialog.dart:26–61</code> promises that unsaved changes will be lost on Discard.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_review_page.dart:258–282</code> Discard only calls the session controller.</li>
+                <li><code>lib/features/focus/data/focus_repository.dart:268–275</code> completes the pending session without review fields; it does not revert ritual records.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f18">
+            <div class="finding-head">
+              <h3>F18 · Connections have neither a destination-side backlink surface nor visible health</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Link rows are deliberately queryable by target and documented as enabling backlinks/graphs, but active source only loads links as elements of their source canvas. The destination has no incoming-link list. Link rendering always uses the same gold chip and chain glyph; target existence is queried only after a Pan-tool tap.</p>
+                <p class="impact"><b>Flow impact.</b> A connection is recoverable only from the canvas where it was authored. On arrival, the reader cannot see “what led here” or discover related source contexts. If a target was deleted, the source still looks healthy until the user switches tool and activates it.</p>
+                <p><b>Data integrity.</b> The soft reference intentionally preserves dangling links rather than cascading deletion, which is the safer storage choice. The missing piece is honest representation and reverse navigation.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Start with a quiet per-canvas “Linked from” panel rather than a global graph. Query source title, link label and optional source viewport; make each backlink navigable. Resolve target health on load or in the background and render a subtle broken state without deleting the link.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/core/database/tables/canvas_tables.dart:236–252</code> describes backlink/graph queries and stores a soft target reference.</li>
+                <li>Repository-wide active source search found no query or UI for incoming <code>CanvasLinks.targetCanvasId</code>.</li>
+                <li><code>lib/canvas/render/elements_painter.dart:754–836</code> paints a uniform gold chain chip from label data only.</li>
+                <li><code>lib/canvas/canvas_editor_page.dart:403–419</code> checks target existence only during follow and then shows a snackbar.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f19">
+            <div class="finding-head">
+              <h3>F19 · Zenno can export a picture of thought, but not a complete editable backup of it</h3>
+              <span class="pill severity-high">High</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The user-facing export path produces PNG, JPG or SVG for one canvas. No Library or Settings flow exports/restores the database, goals, reflections, revision cards, focus history, settings, bookmarks, attachments and owned media as a coherent bundle. A versioned <code>ZennoDocumentCodec</code> exists, but active application code does not call it; it omits bookmarks and serializes image/PDF source paths rather than packaging their bytes.</p>
+                <p class="impact"><b>Flow impact.</b> Export supports presentation, not continuity. The sole user cannot confidently migrate devices, make a portable backup, restore after storage failure, or move an editable canvas elsewhere. A visual file preserves appearance while discarding layers, object behavior, connections and study-system context.</p>
+                <p><b>Data integrity.</b> No current record is damaged, but there is no in-app recovery boundary around the local database and app-owned files. That makes device/app storage the practical single point of failure.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Define and test a versioned backup bundle that contains the database plus every referenced app-owned media file and a manifest/checksum. Restore into a validation/staging transaction before replacing current state; never partially import over live notes. Keep visual export as a separate “Share image” job. Decide whether a single-canvas editable package is also useful, but do not mistake it for whole-library backup.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/io/canvas_export.dart:63–95</code> limits user-facing export to content/viewport/selection and PNG/JPG/SVG.</li>
+                <li><code>lib/canvas/widgets/canvas_toolbar.dart:1960–2025</code> writes a rendered file and reports its path; it does not create or restore an editable package.</li>
+                <li><code>lib/canvas/io/zenno_document.dart:13–83</code> defines a versioned editable canvas codec.</li>
+                <li>Active <code>lib/</code> call-site search finds no use of <code>ZennoDocumentCodec</code> outside its definition; usage is test-only.</li>
+                <li><code>lib/canvas/io/zenno_document.dart:191–225</code> stores image/PDF paths, link/text data and object geometry but no media bytes or bookmarks.</li>
+                <li>Repository-wide application source search finds no whole-database backup/restore flow.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f20">
+            <div class="finding-head">
+              <h3>F20 · Focus history eagerly loads rich evidence, then shows only its count</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Every history emission resolves distractions and ritual-check snapshots for every session through two sequential child queries per session. The History card then uses only distraction count and ignores ritual snapshots entirely. Individual notes, kinds and elapsed times are visible during the one-time Review screen but have no later detail surface.</p>
+                <p class="impact"><b>Flow impact.</b> Zenno asks the user to capture why and when focus broke, then removes that context from retrospective learning. “When do I drift?” cannot be answered from History even though the rows are already loaded. As sessions accumulate, the page also pays a 1 + 2N query pattern and eagerly builds all session cards without exposing the data that caused the work.</p>
+                <p><b>Data integrity.</b> The evidence remains stored; the failure is retrieval and eventual history performance, not loss.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Keep the default card quiet, but let a session expand into distraction note/kind/timing and ritual completion. Fetch or batch child data when expanded rather than sequentially loading every child list for every card. Add one modest pattern view only after F7’s elapsed-time semantics are corrected.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/focus/data/focus_repository.dart:7–25</code> defines History detail with full distractions and ritual snapshots.</li>
+                <li><code>lib/features/focus/data/focus_repository.dart:374–399</code> issues child reads inside a loop for every session.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_history_page.dart:186–284</code> displays session summary, notes, linked canvas and distraction count only.</li>
+                <li>History source contains no use of <code>detail.ritualChecks</code> and no rendering of distraction note, kind or elapsed time.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_review_page.dart:349–417</code> proves those distraction details exist only in immediate review UI.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f21">
+            <div class="finding-head">
+              <h3>F21 · Reusing a bookmark name silently replaces the saved place</h3>
+              <span class="pill severity-low">Low</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The bookmark dialog accepts any non-empty name and hands it directly to the controller. Exact-name matches are deliberately implemented as upserts: the old viewport is replaced in memory and persistence. The UI neither indicates that the name already exists nor confirms whether a new place was added or an old one was moved.</p>
+                <p class="impact"><b>Flow impact.</b> A repeated generic name such as “Overview” can quietly destroy the only navigation cue back to an earlier region. The learner notices only later, when choosing the bookmark lands somewhere unexpected.</p>
+                <p><b>Data integrity.</b> Canvas content is untouched, but a persisted user-authored orientation aid is irreversibly overwritten without an explicit replacement decision.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Detect an existing name in the dialog and present “Replace saved view?” before commit, or expose explicit update/rename actions beside each bookmark. A lightweight “Bookmark saved” / “Bookmark updated” confirmation would make the state transition visible.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/canvas/widgets/canvas_bookmarks_menu.dart:89–98</code> forwards the entered name without collision handling or feedback.</li>
+                <li><code>lib/canvas/widgets/canvas_bookmarks_menu.dart:109–159</code> validates only non-empty text; it has no access to or warning about existing names.</li>
+                <li><code>lib/canvas/canvas_controller.dart:3817–3844</code> replaces an exact-name bookmark and persists it via upsert.</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f22">
+            <div class="finding-head">
+              <h3>F22 · A failed Focus restore becomes an apparent empty state with no retry path</h3>
+              <span class="pill severity-medium">Medium</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> The active-session state models restoring, active and none, but not restore failure. Startup assigns one restoration future; <code>_restoreAtStartup</code> has a <code>finally</code> that changes restoring to none but no catch/retry. <code>startFrom</code> later awaits that same future before it can create a session.</p>
+                <p class="impact"><b>Flow impact.</b> If the restore read throws, Home replaces “Restoring…” with the ordinary “Start a focus session” card even if an in-progress row remains. Entering Setup and pressing Start then repeatedly produces a generic start failure because the cached restore future is still failed. The user cannot resume, retry, or understand that stored session state is blocking the path.</p>
+                <p><b>Data integrity.</b> The session row is not deleted by this path, which is good. The risk is temporary inaccessibility and misleading empty state; repeated restarts are the only implicit retry visible in source.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Add an explicit restoration-error state that keeps Start blocked and offers Retry plus a non-destructive diagnostic message. On retry, create a fresh restore future. Never offer “discard stored session” until its row can be read and the consequence is explicit.</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/focus/application/active_session_controller.dart:29–78</code> defines no error variant or error payload in <code>ActiveSessionState</code>.</li>
+                <li><code>lib/features/focus/application/active_session_controller.dart:106–117</code> starts one restoration future during provider build.</li>
+                <li><code>lib/features/focus/application/active_session_controller.dart:134–137</code> awaits that same future before every start.</li>
+                <li><code>lib/features/focus/application/active_session_controller.dart:406–454</code> lets restore errors escape while <code>finally</code> converts restoring to none.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_home_page.dart:45–62</code> interprets that none state as the normal Start card.</li>
+                <li><code>lib/features/focus/presentation/pages/focus_setup_page.dart:166–204</code> catches the later failed await only as generic “Could not start.”</li>
+              </ul></div>
+            </div>
+          </article>
+
+          <article class="finding" id="f23">
+            <div class="finding-head">
+              <h3>F23 · “Last edited” also means panned, zoomed, or changed tools</h3>
+              <span class="pill severity-low">Low</span><span class="pill confidence">High confidence</span>
+            </div>
+            <div class="finding-grid">
+              <div>
+                <p><b>Root cause.</b> Library’s Recent sort and card subtitle both use <code>canvases.updatedAt</code>. Content writes bump that field, but so do saving the viewport, rotation-lock state and active pen/tool settings. A separate <code>lastOpenedAt</code> is recorded when a Library card opens, yet it is not used by the visible sort/subtitle.</p>
+                <p class="impact"><b>Flow impact.</b> Browsing a canvas, panning to inspect it, or changing a tool can move it to the top as “Edited” even when no note content changed. This weakens the list as an answer to “what did I actually revise?” and makes recency order less predictable.</p>
+                <p><b>Data integrity.</b> No data is lost; the timestamp’s meaning is overloaded and the user-facing label is more specific than the stored event semantics.</p>
+                <p class="recommendation"><b>Analysis-only recommendation.</b> Decide which job the default sort serves. If it is resumption, sort/label by “Recently used” and intentionally combine open/interaction time. If it is content change, add a content-modified timestamp that excludes viewport and preference writes. Avoid presenting one overloaded timestamp as “Edited.”</p>
+              </div>
+              <div class="evidence"><b>Evidence</b><ul>
+                <li><code>lib/features/library/data/library_repository.dart:38–63</code> defines Recent as descending <code>updatedAt</code>.</li>
+                <li><code>lib/features/library/presentation/widgets/canvas_card.dart:235–250</code> labels the same field “Edited.”</li>
+                <li><code>lib/canvas/persistence/canvas_repository.dart:915–949</code> bumps <code>updatedAt</code> for tool settings, viewport and rotation-lock state.</li>
+                <li><code>lib/features/library/data/library_repository.dart:255–260</code> maintains a distinct <code>lastOpenedAt</code> that the visible Recent sort does not use.</li>
+              </ul></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="safety">
+        <h2>Data-safety posture</h2>
+        <table>
+          <thead><tr><th>Area</th><th>Observed behavior</th><th>Assessment</th></tr></thead>
+          <tbody>
+            <tr><td>Canvas writes</td><td>Writes are tracked; failed operations are retained; retry synchronizes current state and flushes.</td><td class="positive">Strong</td></tr>
+            <tr><td>Normal editor exit</td><td>Inline title saves, pending canvas writes flush, unsaved state prompts before leaving, then a thumbnail is captured.</td><td class="positive">Strong</td></tr>
+            <tr><td>Undoable edits</td><td>Element removal, clearing, text replacement and empty-text removal flow through commands.</td><td class="positive">Strong</td></tr>
+            <tr><td>Focus runtime</td><td>Active runtime is persisted periodically and across lifecycle transitions; wall-clock reconstruction avoids timer drift.</td><td class="positive">Strong</td></tr>
+            <tr><td>Focus restoration failure</td><td>Stored rows survive, but a restore exception is represented as no active session and has no in-app retry.</td><td class="severity-medium">Inaccessible-state risk</td></tr>
+            <tr><td>Canvas deletion</td><td>Clear warning and transactional cleanup, but no recovery route after confirmation.</td><td class="severity-high">High residual risk</td></tr>
+            <tr><td>Backup / restore</td><td>Visual per-canvas export exists; no complete editable library backup and verified restore path is surfaced.</td><td class="severity-high">Single-point-of-failure risk</td></tr>
+            <tr><td>Partial element reads</td><td>Missing detail rows are hidden; a later full-state retry can delete their remaining envelope rows. No occurrence was observed—this is conditional fail-safe analysis.</td><td class="severity-high">High impact / low likelihood</td></tr>
+            <tr><td>Media availability</td><td>Records survive decode/raster failure, but failure is invisible and cannot be repaired in place.</td><td class="severity-medium">Needs diagnosis UI</td></tr>
+            <tr><td>Study analytics</td><td>Distraction wall time is coherent, but work/break/pause context is not stored and all events feed the same counts.</td><td class="severity-medium">Semantic ambiguity</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="strengths">
+        <h2>Flow strengths worth preserving</h2>
+        <ul class="compact">
+          <li><span class="positive"><b>Fast blank-canvas entry:</b></span> <code>library_page.dart:82–103</code> creates and immediately opens a canvas without a naming gate.</li>
+          <li><span class="positive"><b>Quiet full-screen editor:</b></span> the canvas route sits outside the shell and gets the entire viewport.</li>
+          <li><span class="positive"><b>Navigation continuity:</b></span> canvas links push a chain and reuse an existing live editor where possible, preserving the return path.</li>
+          <li><span class="positive"><b>Finger/stylus separation:</b></span> fingers default to viewport movement while stylus/mouse follow the active tool, reducing accidental ink during navigation.</li>
+          <li><span class="positive"><b>Write transparency:</b></span> the toolbar exposes unsaved state; close handling does not pretend failed writes succeeded.</li>
+          <li><span class="positive"><b>Focused distraction capture:</b></span> the sheet is intentionally short and supports a one-tap kind capture.</li>
+          <li><span class="positive"><b>Dirty-form guards:</b></span> Revision and Goal editors protect in-progress changes on destructive or competing actions.</li>
+          <li><span class="positive"><b>Accessible Kanban fallback:</b></span> card move menus allow cross-lane movement even when drag targets are offscreen.</li>
+          <li><span class="positive"><b>Folder deletion safety:</b></span> deleting a folder unfiles canvases transactionally rather than deleting their content.</li>
+        </ul>
+      </section>
+
+      <section id="intent">
+        <h2>Intentional tradeoffs confirmed during the reread</h2>
+        <table>
+          <thead><tr><th>Choice</th><th>Evidence of intent</th><th>How this report treats it</th></tr></thead>
+          <tbody>
+            <tr><td>Revision scheduling is manual</td><td><code>plan/revisionUIUX.md:4, 56</code> explicitly prohibits Mark revised from moving a card.</td><td>F8 was downgraded from Medium to Low and reframed as a cognitive tradeoff, not a bug.</td></tr>
+            <tr><td>The radial wheel remains visible</td><td><code>test/canvas_toolbar_test.dart:95–130</code> requires wheel/palette persistence and a 211.2-pixel tablet wheel.</td><td>F4 challenges the attention cost, not implementation correctness.</td></tr>
+            <tr><td>Focus begins with ritual and timer choice</td><td><code>focus_home_page.dart:18–23, 201–208</code> describes Setup → Active → Review and names ritual/timer selection as the entry.</td><td>F6 proposes a faster preset path while retaining the explicit ritual path.</td></tr>
+            <tr><td>Study cards explicitly create or select canvases</td><td><code>plan/connect-study-system-to-canvases.md</code> requires explicit create/select and soft attachment ownership.</td><td>F10 focuses on picker scaling and consistency; it does not recommend automatic canvas ownership.</td></tr>
+            <tr><td>Current export is visual sharing/archival</td><td><code>.plans/plan-canvas-evolution.html</code> scopes export to quick images and polished visual notes.</td><td>F19 does not criticize visual export quality; it identifies the separate missing editable backup/restore job.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="questions">
+        <h2>Product decisions to make before implementation</h2>
+        <ol class="compact">
+          <li>Is Zenno’s primary retrieval unit a canvas, an idea inside a canvas, or any learning artifact? Search architecture depends on this answer.</li>
+          <li>Should canvas removal default to Archive, and what retention/recovery window should apply to permanent deletion and owned media?</li>
+          <li>Should a stationary single-finger tap open a link while finger drag remains pan, or should links expose a separate open handle?</li>
+          <li>Should “Mark revised” schedule the next encounter automatically, prompt for a lane, or remain retrospective only?</li>
+          <li>Is web a production note-taking surface? If not, web-only visual limitations should be documented rather than prioritized over tablet flow.</li>
+          <li>Should Focus optimize for immediate entry with defaults, or is the pre-study ritual itself a required part of the intended practice?</li>
+        </ol>
+      </section>
+
+      <section id="iterations">
+        <h2>Iteration log</h2>
+        <article class="iteration">
+          <h3>Iteration 1 · Comprehensive journey pass</h3>
+          <time datetime="2026-07-18T05:04:40+08:00">2026-07-18 05:04 PST (Asia/Manila)</time>
+          <p>Traced shell → Library → editor → links/bookmarks, Focus setup → active → review, Revision/Goal board → detail → attachment/reflection, settings, persistence and data deletion. Added 14 findings, separated verified behavior from inferred experience, and recorded strong safety/flow patterns to preserve. No runtime behavior was inferred as observed testing.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 2 · Adversarial verification and recovery-path pass</h3>
+          <time datetime="2026-07-18T05:09:01+08:00">2026-07-18 05:09 PST (Asia/Manila)</time>
+          <p>Challenged the high-severity claims against active call sites and read-only test specifications. Confirmed the radial wheel is intentionally persistent at tablet and narrow widths; retained its medium severity but raised behavioral confidence. Confirmed Pan-only link follow and the absence of active archive and link-retarget call sites. Added semantic/keyboard invisibility and a conditional partial-corruption → silent omission → retry deletion chain. Updated attachment-picker evidence to distinguish silent duplicate handling from data duplication. No tests were executed.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 3 · Interruption boundaries and persistence contracts</h3>
+          <time datetime="2026-07-18T05:10:48+08:00">2026-07-18 05:10 PST (Asia/Manila)</time>
+          <p>Re-read dirty-form guards, nested reflection/canvas routes, Focus completion/discard, ritual maintenance, attachment transactions, link rendering and reverse-link storage. Confirmed that Goal, Revision and Reflection editors generally guard drafts well. Added a narrower Focus defect where immediately persisted ritual changes sit behind a generic review-level Discard promise. Added destination-side backlink and link-health absence as a separate connection finding instead of overstating the Pan-only traversal issue. Confirmed Focus sessions and pending reviews restore across navigation/restart, so no session-loss claim was added.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 4 · Relationship integrity, deletion blast radius and portability</h3>
+          <time datetime="2026-07-18T05:12:04+08:00">2026-07-18 05:12 PST (Asia/Manila)</time>
+          <p>Followed canvas deletion through Focus history, card attachments, link soft references and owned media. Strengthened—not duplicated—the recoverable-removal finding: Focus history is safely detached, but attachment loss and dangling incoming links are not disclosed by the confirmation. Re-read import/export and the dormant native document codec. Added the absence of a complete editable backup/restore journey as a high-severity data-ownership gap; distinguished it from the working PNG/JPG/SVG presentation export.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 5 · Product-intent and historical-review audit</h3>
+          <time datetime="2026-07-18T05:13:12+08:00">2026-07-18 05:13 PST (Asia/Manila)</time>
+          <p>Compared active code with relevant untracked design prototypes, implementation plans and historical review notes. Removed stale review claims from consideration where active source now has responsive shell behavior, title orientation, dirty guards, error handling or focus restoration. Confirmed that manual revision buckets are a documented product decision; downgraded F8 from Medium to Low and rewrote its recommendation to preserve manual control. Added an explicit intent table so deliberate workflows are not conflated with defects. Persistent wheel and ritualized Focus entry remain recommendations for user validation, not correctness claims.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 6 · Secondary retrieval and history scaling</h3>
+          <time datetime="2026-07-18T05:14:38+08:00">2026-07-18 05:14 PST (Asia/Manila)</time>
+          <p>Traced Focus History, reflection-template library/editor, reflection-entry expansion, revision tiles and goal tiles. Templates and snapshot-based reflection rendering preserve historical meaning well. Found that Focus History resolves full distraction and ritual child data for every session but renders only distraction count and no ritual history; added this as a focused retrieval/performance finding rather than widening the global-search finding. Retained the working session-note and linked-canvas affordances as counterevidence.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 7 · Pointer-routing and link-activation contract</h3>
+          <time datetime="2026-07-18T05:15:42+08:00">2026-07-18 05:15 PST (Asia/Manila)</time>
+          <p>Re-read the canvas pointer router rather than relying on the Pan-tool callback alone. Corrected F3: link traversal is not merely Pan-mode dependent. Every touch pointer exits through viewport/long-press-lasso handling, so a finger cannot activate a link; only stylus/mouse in Pan reaches link hit-testing. Updated the recommendation to preserve the intentional finger-pans/stylus-draws contract by distinguishing stationary finger tap from finger drag. No new finding or severity change was needed; this iteration made an existing high-severity claim more precise.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 8 · Hidden gestures and saved-orientation state</h3>
+          <time datetime="2026-07-18T05:16:54+08:00">2026-07-18 05:16 PST (Asia/Manila)</time>
+          <p>Traced bookmarks from menu through controller upsert and persistence, then re-read the in-editor gesture-help route. Added one Low finding for silent exact-name bookmark replacement: it loses a saved place, not note content. Expanded F4 rather than duplicating it to show the contrast between permanently visible controls and the buried guide for space-efficient gestures. This pass kept severities proportional and did not convert intentional upsert behavior into a corruption claim.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 9 · Focus-timing claim correction</h3>
+          <time datetime="2026-07-18T05:17:49+08:00">2026-07-18 05:17 PST (Asia/Manila)</time>
+          <p>Challenged F7 against schema, repository, Review copy, active controls and aggregate statistics. Retracted the claim that wall-clock elapsed is inherently wrong: three product-facing layers consistently define it as time into the session, while only one controller comment says focus time. Replaced that claim with the supported information-loss boundary: capture stays available in work, break and pause states, but phase/status is not stored and all events enter the same distraction aggregate. Severity remains Medium because the issue affects interpretation, not record validity.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 10 · Focus restoration error-state audit</h3>
+          <time datetime="2026-07-18T05:19:19+08:00">2026-07-18 05:19 PST (Asia/Manila)</time>
+          <p>Followed startup restoration through controller state, the cached restore future, Home rendering and Setup start handling. The successful restore path remains strong and covered by read-only test specifications. Added one Medium exceptional-path finding: an error is collapsed into the normal no-session state, while the cached failed future blocks subsequent starts and no Retry action exists. The persisted session is retained, so this is reported as inaccessible state rather than data loss.</p>
+        </article>
+        <article class="iteration">
+          <h3>Iteration 11 · Library recency semantics</h3>
+          <time datetime="2026-07-18T05:20:12+08:00">2026-07-18 05:20 PST (Asia/Manila)</time>
+          <p>Followed Library’s “Last edited” subtitle and Recent ordering back through every canvas-row timestamp write. Added one Low finding: viewport, rotation-lock and active-tool preference persistence bump the same <code>updatedAt</code> as content, while the separately stored open timestamp is unused by this presentation. The recommendation leaves the product choice open—content recency versus resumption recency—and asks that the label match the chosen meaning.</p>
+        </article>
+      </section>
+
+      <footer>
+        Analyzer 19 · Static UX-flow analysis for Zenno · This report contains recommendations only and does not modify the application.
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

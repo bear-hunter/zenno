@@ -560,6 +560,28 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
     requiredDuringInsert: false,
     defaultValue: const Constant(4),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<PaperTexture, int> paperTexture =
+      GeneratedColumn<int>(
+        'paper_texture',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<PaperTexture>($CanvasesTable.$converterpaperTexture);
+  static const VerificationMeta _paperTextureOpacityMeta =
+      const VerificationMeta('paperTextureOpacity');
+  @override
+  late final GeneratedColumn<double> paperTextureOpacity =
+      GeneratedColumn<double>(
+        'paper_texture_opacity',
+        aliasedName,
+        false,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0.06),
+      );
   static const VerificationMeta _activePenColorMeta = const VerificationMeta(
     'activePenColor',
   );
@@ -655,6 +677,8 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
     gridSpacing,
     gridOpacity,
     graphMajorInterval,
+    paperTexture,
+    paperTextureOpacity,
     activePenColor,
     activePenWidth,
     activePenWidthMode,
@@ -826,6 +850,15 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
         ),
       );
     }
+    if (data.containsKey('paper_texture_opacity')) {
+      context.handle(
+        _paperTextureOpacityMeta,
+        paperTextureOpacity.isAcceptableOrUnknown(
+          data['paper_texture_opacity']!,
+          _paperTextureOpacityMeta,
+        ),
+      );
+    }
     if (data.containsKey('active_pen_color')) {
       context.handle(
         _activePenColorMeta,
@@ -966,6 +999,16 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
         DriftSqlType.int,
         data['${effectivePrefix}graph_major_interval'],
       )!,
+      paperTexture: $CanvasesTable.$converterpaperTexture.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}paper_texture'],
+        )!,
+      ),
+      paperTextureOpacity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}paper_texture_opacity'],
+      )!,
       activePenColor: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}active_pen_color'],
@@ -1002,6 +1045,8 @@ class $CanvasesTable extends Canvases with TableInfo<$CanvasesTable, Canvase> {
 
   static JsonTypeConverter2<BackgroundKind, int, int> $converterbackgroundKind =
       const EnumIndexConverter<BackgroundKind>(BackgroundKind.values);
+  static JsonTypeConverter2<PaperTexture, int, int> $converterpaperTexture =
+      const EnumIndexConverter<PaperTexture>(PaperTexture.values);
   static JsonTypeConverter2<StrokeTool, int, int> $converteractivePenTool =
       const EnumIndexConverter<StrokeTool>(StrokeTool.values);
 }
@@ -1032,6 +1077,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
   final double gridSpacing;
   final double gridOpacity;
   final int graphMajorInterval;
+  final PaperTexture paperTexture;
+  final double paperTextureOpacity;
   final int activePenColor;
   final double activePenWidth;
   final int activePenWidthMode;
@@ -1060,6 +1107,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     required this.gridSpacing,
     required this.gridOpacity,
     required this.graphMajorInterval,
+    required this.paperTexture,
+    required this.paperTextureOpacity,
     required this.activePenColor,
     required this.activePenWidth,
     required this.activePenWidthMode,
@@ -1101,6 +1150,12 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     map['grid_spacing'] = Variable<double>(gridSpacing);
     map['grid_opacity'] = Variable<double>(gridOpacity);
     map['graph_major_interval'] = Variable<int>(graphMajorInterval);
+    {
+      map['paper_texture'] = Variable<int>(
+        $CanvasesTable.$converterpaperTexture.toSql(paperTexture),
+      );
+    }
+    map['paper_texture_opacity'] = Variable<double>(paperTextureOpacity);
     map['active_pen_color'] = Variable<int>(activePenColor);
     map['active_pen_width'] = Variable<double>(activePenWidth);
     map['active_pen_width_mode'] = Variable<int>(activePenWidthMode);
@@ -1143,6 +1198,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       gridSpacing: Value(gridSpacing),
       gridOpacity: Value(gridOpacity),
       graphMajorInterval: Value(graphMajorInterval),
+      paperTexture: Value(paperTexture),
+      paperTextureOpacity: Value(paperTextureOpacity),
       activePenColor: Value(activePenColor),
       activePenWidth: Value(activePenWidth),
       activePenWidthMode: Value(activePenWidthMode),
@@ -1183,6 +1240,12 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       gridSpacing: serializer.fromJson<double>(json['gridSpacing']),
       gridOpacity: serializer.fromJson<double>(json['gridOpacity']),
       graphMajorInterval: serializer.fromJson<int>(json['graphMajorInterval']),
+      paperTexture: $CanvasesTable.$converterpaperTexture.fromJson(
+        serializer.fromJson<int>(json['paperTexture']),
+      ),
+      paperTextureOpacity: serializer.fromJson<double>(
+        json['paperTextureOpacity'],
+      ),
       activePenColor: serializer.fromJson<int>(json['activePenColor']),
       activePenWidth: serializer.fromJson<double>(json['activePenWidth']),
       activePenWidthMode: serializer.fromJson<int>(json['activePenWidthMode']),
@@ -1220,6 +1283,10 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       'gridSpacing': serializer.toJson<double>(gridSpacing),
       'gridOpacity': serializer.toJson<double>(gridOpacity),
       'graphMajorInterval': serializer.toJson<int>(graphMajorInterval),
+      'paperTexture': serializer.toJson<int>(
+        $CanvasesTable.$converterpaperTexture.toJson(paperTexture),
+      ),
+      'paperTextureOpacity': serializer.toJson<double>(paperTextureOpacity),
       'activePenColor': serializer.toJson<int>(activePenColor),
       'activePenWidth': serializer.toJson<double>(activePenWidth),
       'activePenWidthMode': serializer.toJson<int>(activePenWidthMode),
@@ -1253,6 +1320,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     double? gridSpacing,
     double? gridOpacity,
     int? graphMajorInterval,
+    PaperTexture? paperTexture,
+    double? paperTextureOpacity,
     int? activePenColor,
     double? activePenWidth,
     int? activePenWidthMode,
@@ -1283,6 +1352,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     gridSpacing: gridSpacing ?? this.gridSpacing,
     gridOpacity: gridOpacity ?? this.gridOpacity,
     graphMajorInterval: graphMajorInterval ?? this.graphMajorInterval,
+    paperTexture: paperTexture ?? this.paperTexture,
+    paperTextureOpacity: paperTextureOpacity ?? this.paperTextureOpacity,
     activePenColor: activePenColor ?? this.activePenColor,
     activePenWidth: activePenWidth ?? this.activePenWidth,
     activePenWidthMode: activePenWidthMode ?? this.activePenWidthMode,
@@ -1337,6 +1408,12 @@ class Canvase extends DataClass implements Insertable<Canvase> {
       graphMajorInterval: data.graphMajorInterval.present
           ? data.graphMajorInterval.value
           : this.graphMajorInterval,
+      paperTexture: data.paperTexture.present
+          ? data.paperTexture.value
+          : this.paperTexture,
+      paperTextureOpacity: data.paperTextureOpacity.present
+          ? data.paperTextureOpacity.value
+          : this.paperTextureOpacity,
       activePenColor: data.activePenColor.present
           ? data.activePenColor.value
           : this.activePenColor,
@@ -1382,6 +1459,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
           ..write('gridSpacing: $gridSpacing, ')
           ..write('gridOpacity: $gridOpacity, ')
           ..write('graphMajorInterval: $graphMajorInterval, ')
+          ..write('paperTexture: $paperTexture, ')
+          ..write('paperTextureOpacity: $paperTextureOpacity, ')
           ..write('activePenColor: $activePenColor, ')
           ..write('activePenWidth: $activePenWidth, ')
           ..write('activePenWidthMode: $activePenWidthMode, ')
@@ -1415,6 +1494,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
     gridSpacing,
     gridOpacity,
     graphMajorInterval,
+    paperTexture,
+    paperTextureOpacity,
     activePenColor,
     activePenWidth,
     activePenWidthMode,
@@ -1447,6 +1528,8 @@ class Canvase extends DataClass implements Insertable<Canvase> {
           other.gridSpacing == this.gridSpacing &&
           other.gridOpacity == this.gridOpacity &&
           other.graphMajorInterval == this.graphMajorInterval &&
+          other.paperTexture == this.paperTexture &&
+          other.paperTextureOpacity == this.paperTextureOpacity &&
           other.activePenColor == this.activePenColor &&
           other.activePenWidth == this.activePenWidth &&
           other.activePenWidthMode == this.activePenWidthMode &&
@@ -1477,6 +1560,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
   final Value<double> gridSpacing;
   final Value<double> gridOpacity;
   final Value<int> graphMajorInterval;
+  final Value<PaperTexture> paperTexture;
+  final Value<double> paperTextureOpacity;
   final Value<int> activePenColor;
   final Value<double> activePenWidth;
   final Value<int> activePenWidthMode;
@@ -1506,6 +1591,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     this.gridSpacing = const Value.absent(),
     this.gridOpacity = const Value.absent(),
     this.graphMajorInterval = const Value.absent(),
+    this.paperTexture = const Value.absent(),
+    this.paperTextureOpacity = const Value.absent(),
     this.activePenColor = const Value.absent(),
     this.activePenWidth = const Value.absent(),
     this.activePenWidthMode = const Value.absent(),
@@ -1536,6 +1623,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     this.gridSpacing = const Value.absent(),
     this.gridOpacity = const Value.absent(),
     this.graphMajorInterval = const Value.absent(),
+    this.paperTexture = const Value.absent(),
+    this.paperTextureOpacity = const Value.absent(),
     this.activePenColor = const Value.absent(),
     this.activePenWidth = const Value.absent(),
     this.activePenWidthMode = const Value.absent(),
@@ -1569,6 +1658,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     Expression<double>? gridSpacing,
     Expression<double>? gridOpacity,
     Expression<int>? graphMajorInterval,
+    Expression<int>? paperTexture,
+    Expression<double>? paperTextureOpacity,
     Expression<int>? activePenColor,
     Expression<double>? activePenWidth,
     Expression<int>? activePenWidthMode,
@@ -1601,6 +1692,9 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
       if (gridOpacity != null) 'grid_opacity': gridOpacity,
       if (graphMajorInterval != null)
         'graph_major_interval': graphMajorInterval,
+      if (paperTexture != null) 'paper_texture': paperTexture,
+      if (paperTextureOpacity != null)
+        'paper_texture_opacity': paperTextureOpacity,
       if (activePenColor != null) 'active_pen_color': activePenColor,
       if (activePenWidth != null) 'active_pen_width': activePenWidth,
       if (activePenWidthMode != null)
@@ -1634,6 +1728,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     Value<double>? gridSpacing,
     Value<double>? gridOpacity,
     Value<int>? graphMajorInterval,
+    Value<PaperTexture>? paperTexture,
+    Value<double>? paperTextureOpacity,
     Value<int>? activePenColor,
     Value<double>? activePenWidth,
     Value<int>? activePenWidthMode,
@@ -1665,6 +1761,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
       gridSpacing: gridSpacing ?? this.gridSpacing,
       gridOpacity: gridOpacity ?? this.gridOpacity,
       graphMajorInterval: graphMajorInterval ?? this.graphMajorInterval,
+      paperTexture: paperTexture ?? this.paperTexture,
+      paperTextureOpacity: paperTextureOpacity ?? this.paperTextureOpacity,
       activePenColor: activePenColor ?? this.activePenColor,
       activePenWidth: activePenWidth ?? this.activePenWidth,
       activePenWidthMode: activePenWidthMode ?? this.activePenWidthMode,
@@ -1745,6 +1843,16 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
     if (graphMajorInterval.present) {
       map['graph_major_interval'] = Variable<int>(graphMajorInterval.value);
     }
+    if (paperTexture.present) {
+      map['paper_texture'] = Variable<int>(
+        $CanvasesTable.$converterpaperTexture.toSql(paperTexture.value),
+      );
+    }
+    if (paperTextureOpacity.present) {
+      map['paper_texture_opacity'] = Variable<double>(
+        paperTextureOpacity.value,
+      );
+    }
     if (activePenColor.present) {
       map['active_pen_color'] = Variable<int>(activePenColor.value);
     }
@@ -1795,6 +1903,8 @@ class CanvasesCompanion extends UpdateCompanion<Canvase> {
           ..write('gridSpacing: $gridSpacing, ')
           ..write('gridOpacity: $gridOpacity, ')
           ..write('graphMajorInterval: $graphMajorInterval, ')
+          ..write('paperTexture: $paperTexture, ')
+          ..write('paperTextureOpacity: $paperTextureOpacity, ')
           ..write('activePenColor: $activePenColor, ')
           ..write('activePenWidth: $activePenWidth, ')
           ..write('activePenWidthMode: $activePenWidthMode, ')
@@ -14333,6 +14443,10 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     'idx_focus_sessions_started_at',
     'CREATE INDEX idx_focus_sessions_started_at ON focus_sessions (started_at)',
   );
+  late final Index idxFocusSessionRitualChecksSessionId = Index(
+    'idx_focus_session_ritual_checks_session_id',
+    'CREATE INDEX idx_focus_session_ritual_checks_session_id ON focus_session_ritual_checks (session_id)',
+  );
   late final Index idxDistractionsSessionId = Index(
     'idx_distractions_session_id',
     'CREATE INDEX idx_distractions_session_id ON distractions (session_id)',
@@ -14399,6 +14513,7 @@ abstract class _$ZennoDatabase extends GeneratedDatabase {
     idxCanvasElementsCanvasId,
     idxCanvasElementsCanvasIdZIndex,
     idxFocusSessionsStartedAt,
+    idxFocusSessionRitualChecksSessionId,
     idxDistractionsSessionId,
     idxBoardColumnsBoardId,
     idxBoardCardsColumnIdPosition,
@@ -14899,6 +15014,8 @@ typedef $$CanvasesTableCreateCompanionBuilder =
       Value<double> gridSpacing,
       Value<double> gridOpacity,
       Value<int> graphMajorInterval,
+      Value<PaperTexture> paperTexture,
+      Value<double> paperTextureOpacity,
       Value<int> activePenColor,
       Value<double> activePenWidth,
       Value<int> activePenWidthMode,
@@ -14930,6 +15047,8 @@ typedef $$CanvasesTableUpdateCompanionBuilder =
       Value<double> gridSpacing,
       Value<double> gridOpacity,
       Value<int> graphMajorInterval,
+      Value<PaperTexture> paperTexture,
+      Value<double> paperTextureOpacity,
       Value<int> activePenColor,
       Value<double> activePenWidth,
       Value<int> activePenWidthMode,
@@ -15179,6 +15298,17 @@ class $$CanvasesTableFilterComposer
 
   ColumnFilters<int> get graphMajorInterval => $composableBuilder(
     column: $table.graphMajorInterval,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PaperTexture, PaperTexture, int>
+  get paperTexture => $composableBuilder(
+    column: $table.paperTexture,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<double> get paperTextureOpacity => $composableBuilder(
+    column: $table.paperTextureOpacity,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15472,6 +15602,16 @@ class $$CanvasesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get paperTexture => $composableBuilder(
+    column: $table.paperTexture,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get paperTextureOpacity => $composableBuilder(
+    column: $table.paperTextureOpacity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get activePenColor => $composableBuilder(
     column: $table.activePenColor,
     builder: (column) => ColumnOrderings(column),
@@ -15617,6 +15757,17 @@ class $$CanvasesTableAnnotationComposer
 
   GeneratedColumn<int> get graphMajorInterval => $composableBuilder(
     column: $table.graphMajorInterval,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<PaperTexture, int> get paperTexture =>
+      $composableBuilder(
+        column: $table.paperTexture,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<double> get paperTextureOpacity => $composableBuilder(
+    column: $table.paperTextureOpacity,
     builder: (column) => column,
   );
 
@@ -15857,6 +16008,8 @@ class $$CanvasesTableTableManager
                 Value<double> gridSpacing = const Value.absent(),
                 Value<double> gridOpacity = const Value.absent(),
                 Value<int> graphMajorInterval = const Value.absent(),
+                Value<PaperTexture> paperTexture = const Value.absent(),
+                Value<double> paperTextureOpacity = const Value.absent(),
                 Value<int> activePenColor = const Value.absent(),
                 Value<double> activePenWidth = const Value.absent(),
                 Value<int> activePenWidthMode = const Value.absent(),
@@ -15886,6 +16039,8 @@ class $$CanvasesTableTableManager
                 gridSpacing: gridSpacing,
                 gridOpacity: gridOpacity,
                 graphMajorInterval: graphMajorInterval,
+                paperTexture: paperTexture,
+                paperTextureOpacity: paperTextureOpacity,
                 activePenColor: activePenColor,
                 activePenWidth: activePenWidth,
                 activePenWidthMode: activePenWidthMode,
@@ -15917,6 +16072,8 @@ class $$CanvasesTableTableManager
                 Value<double> gridSpacing = const Value.absent(),
                 Value<double> gridOpacity = const Value.absent(),
                 Value<int> graphMajorInterval = const Value.absent(),
+                Value<PaperTexture> paperTexture = const Value.absent(),
+                Value<double> paperTextureOpacity = const Value.absent(),
                 Value<int> activePenColor = const Value.absent(),
                 Value<double> activePenWidth = const Value.absent(),
                 Value<int> activePenWidthMode = const Value.absent(),
@@ -15946,6 +16103,8 @@ class $$CanvasesTableTableManager
                 gridSpacing: gridSpacing,
                 gridOpacity: gridOpacity,
                 graphMajorInterval: graphMajorInterval,
+                paperTexture: paperTexture,
+                paperTextureOpacity: paperTextureOpacity,
                 activePenColor: activePenColor,
                 activePenWidth: activePenWidth,
                 activePenWidthMode: activePenWidthMode,

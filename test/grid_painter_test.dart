@@ -23,4 +23,16 @@ void main() {
     _paintGrid(BackgroundKind.isometric);
     _paintGrid(BackgroundKind.triangle);
   });
+
+  test('paper textures paint without throwing', () {
+    for (final PaperTexture texture in PaperTexture.values) {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      PaperTexturePainter(
+        viewport: ViewportState.initial,
+        style: CanvasPaperStyle(texture: texture),
+      ).paint(canvas, const Size(320, 240));
+      recorder.endRecording().dispose();
+    }
+  });
 }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/rendering.dart';
 
+import 'package:zenno/canvas/canvas_controller.dart' show CanvasElementDamage;
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
@@ -16,11 +17,10 @@ import 'package:zenno/canvas/render/shape_painter.dart';
 /// Paints the committed [elements] layer, culled to the visible viewport.
 ///
 /// The world-to-screen transform is applied to the [Canvas] once, so every
-/// element is drawn in world coordinates. Before drawing, the visible region
-/// is mapped back into world space and the [spatialIndex] is queried for the
-/// ids whose [CanvasElement.worldBounds] intersect it — only those elements
-/// are painted. Render cost is therefore bounded by what is on screen, not by
-/// the total element count.
+/// element is drawn in world coordinates. In interactive use the controller
+/// supplies only the spatial-query hits in [elements], already in paint order.
+/// Standalone callers may omit [allElementsById] and [paintOrderById], in which
+/// case the painter performs its legacy query-and-filter fallback.
 ///
 /// Elements are painted in ascending [CanvasElement.zIndex] order (the order
 /// the controller already keeps [elements] in). The `switch` over the element
@@ -39,9 +39,9 @@ import 'package:zenno/canvas/render/shape_painter.dart';
 /// Cache for committed element pictures grouped by fixed world-space tiles.
 ///
 /// Owned by the view rather than the painter so pictures survive repaint
-/// delegate instances. A changed element/raster signature invalidates the
-/// whole cache; otherwise each visible tile is recorded once and reused while
-/// panning/zooming.
+/// delegate instances. Local element/raster changes invalidate only pictures
+/// intersecting their old/new bounds; ordering-wide and defensive events still
+/// clear every picture.
 class ElementsTileCache {
   /// Creates a tile-picture cache.
   ElementsTileCache({this.maxTiles = 96});
@@ -54,41 +54,23 @@ class ElementsTileCache {
   final Map<_TileKey, _TilePicture> _pictures = <_TileKey, _TilePicture>{};
   int _revision = 0;
   int _tick = 0;
-
-  Map<String, CanvasElement>? _elementsById;
-  Map<String, int>? _paintOrderById;
-  int? _indexRevision;
-
-  /// Id-keyed lookups over [elements], rebuilt only when the content changes.
-  ///
-  /// Both maps were previously rebuilt from scratch on every paint, on the
-  /// cached fast path, which made a supposedly free frame O(n) in the total
-  /// element count.
-  ({Map<String, CanvasElement> byId, Map<String, int> order}) indexFor(
-    List<CanvasElement> elements,
-  ) {
-    if (_indexRevision != _revision ||
-        _elementsById == null ||
-        _paintOrderById == null) {
-      final byId = <String, CanvasElement>{};
-      final order = <String, int>{};
-      for (var i = 0; i < elements.length; i += 1) {
-        final CanvasElement element = elements[i];
-        byId[element.id] = element;
-        order[element.id] = i;
-      }
-      _elementsById = byId;
-      _paintOrderById = order;
-      _indexRevision = _revision;
-    }
-    return (byId: _elementsById!, order: _paintOrderById!);
-  }
+  int _pictureBuildCount = 0;
 
   /// Number of currently retained tile pictures.
   int get tileCount => _pictures.length;
 
+  /// Committed revision currently represented by retained tile pictures.
+  int get revision => _revision;
+
+  /// Total tile pictures recorded during this cache's lifetime.
+  int get pictureBuildCount => _pictureBuildCount;
+
   /// Clears all retained pictures.
   void clear() {
+    _clearPictures();
+  }
+
+  void _clearPictures() {
     for (final picture in _pictures.values) {
       picture.picture.dispose();
     }
@@ -101,17 +83,40 @@ class ElementsTileCache {
   void _syncRevision({
     required List<CanvasElement> elements,
     required int? revision,
+    required CanvasElementDamage? damage,
   }) {
     final int nextRevision =
         revision ?? Object.hashAll(elements.map(_elementRevisionPart));
     if (nextRevision == _revision) {
       return;
     }
+    final bool canInvalidateLocally =
+        revision != null &&
+        damage != null &&
+        !damage.isFull &&
+        damage.fromRevision == _revision &&
+        damage.toRevision == nextRevision;
+    if (canInvalidateLocally) {
+      _invalidateBounds(damage.bounds ?? Rect.zero);
+    } else {
+      _clearPictures();
+    }
     _revision = nextRevision;
-    _elementsById = null;
-    _paintOrderById = null;
-    _indexRevision = null;
-    clear();
+  }
+
+  void _invalidateBounds(Rect bounds) {
+    if (bounds.isEmpty) {
+      return;
+    }
+    final int minX = (bounds.left / tileSize).floor();
+    final int maxX = (bounds.right / tileSize).floor();
+    final int minY = (bounds.top / tileSize).floor();
+    final int maxY = (bounds.bottom / tileSize).floor();
+    for (var y = minY; y <= maxY; y += 1) {
+      for (var x = minX; x <= maxX; x += 1) {
+        _pictures.remove(_TileKey(x, y))?.picture.dispose();
+      }
+    }
   }
 
   ui.Picture _pictureFor({
@@ -146,6 +151,7 @@ class ElementsTileCache {
 
     final picture = recorder.endRecording();
     _pictures[key] = _TilePicture(picture, ++_tick);
+    _pictureBuildCount += 1;
     _evictIfNeeded();
     return picture;
   }
@@ -258,16 +264,18 @@ class _TilePicture {
 class ElementsPainter extends CustomPainter {
   /// Creates a painter for the committed [elements] under [viewport].
   ///
-  /// [spatialIndex] must be the index the controller keeps in sync with
-  /// [elements]; it is used purely to cull off-screen elements. [selectedIds]
-  /// are the ids of lasso-selected elements; while [selectionDragDelta] or
-  /// [selectionTransformPreview] is active those elements are painted as live
-  /// previews before the edit is committed.
+  /// [spatialIndex] must be the index kept in sync with the full element store.
+  /// [selectedIds] are the ids of lasso-selected elements; while
+  /// [selectionDragDelta] or [selectionTransformPreview] is active those
+  /// elements are painted as live previews before the edit is committed.
   const ElementsPainter({
     required this.elements,
     required this.spatialIndex,
     required this.viewport,
+    this.allElementsById,
+    this.paintOrderById,
     this.elementsRevision,
+    this.elementDamage,
     this.selectionRevision,
     this.selectionPreviewRevision,
     this.tileCache,
@@ -280,8 +288,20 @@ class ElementsPainter extends CustomPainter {
   /// The committed elements, in paint order (ascending z-index).
   final List<CanvasElement> elements;
 
+  /// Full constant-time lookup supplied by the interactive controller.
+  ///
+  /// When this and [paintOrderById] are present, [elements] is already the
+  /// ordered viewport-visible subset and no full-list paint scan is needed.
+  final Map<String, CanvasElement>? allElementsById;
+
+  /// Full id-to-paint-order lookup paired with [allElementsById].
+  final Map<String, int>? paintOrderById;
+
   /// Monotonic token bumped when committed element content changes.
   final int? elementsRevision;
+
+  /// Bounds changed since the tile cache's current committed revision.
+  final CanvasElementDamage? elementDamage;
 
   /// Viewport-culling index over [elements], keyed by element id.
   final SpatialIndex spatialIndex;
@@ -358,18 +378,15 @@ class ElementsPainter extends CustomPainter {
       return;
     }
 
-    // The set of element ids whose world bounds intersect the visible region.
     final Rect visibleWorldRect = _visibleWorldRect(size);
-    final Set<String> visibleIds = spatialIndex.query(visibleWorldRect).toSet();
-    // Fast path: nothing visible and no selection preview that could pull an
-    // off-screen selected element into view — there is nothing to paint.
-    if (visibleIds.isEmpty && !_dragging && !_transforming) {
-      return;
-    }
 
     canvas.save();
     canvas.transform(CanvasTransform.worldToScreenMatrix(viewport).storage);
-    tileCache?._syncRevision(elements: elements, revision: elementsRevision);
+    tileCache?._syncRevision(
+      elements: elements,
+      revision: elementsRevision,
+      damage: elementDamage,
+    );
 
     if (_canUseTileCache(visibleWorldRect)) {
       final ElementsTileCache cache = tileCache!;
@@ -383,7 +400,16 @@ class ElementsPainter extends CustomPainter {
       }
     }
 
-    _paintVisibleElements(canvas, visibleIds);
+    if (allElementsById != null && paintOrderById != null) {
+      _paintVisibleElements(canvas);
+    } else {
+      final Set<String> visibleIds = spatialIndex
+          .query(visibleWorldRect)
+          .toSet();
+      if (visibleIds.isNotEmpty || _dragging || _transforming) {
+        _paintVisibleElements(canvas, visibleIds: visibleIds);
+      }
+    }
     canvas.restore();
   }
 
@@ -394,20 +420,27 @@ class ElementsPainter extends CustomPainter {
         // Pending-erase elements are faded individually, which a shared tile
         // picture cannot express.
         pendingEraseIds.isNotEmpty ||
-        tileCache == null) {
+        tileCache == null ||
+        allElementsById == null ||
+        paintOrderById == null) {
       return false;
     }
     return strokeRenderQualityForScale(viewport.scale) !=
         StrokeRenderQuality.highZoom;
   }
 
-  void _paintVisibleElements(Canvas canvas, Set<String> visibleIds) {
-    // Build the paint list from what is actually visible, then restore
-    // z-order — rather than walking every element on the canvas to discard
-    // most of them. Dragging one stroke on a large canvas used to cost a full
-    // scan per frame, because a live selection disables the tile cache.
-    for (final CanvasElement element in _paintList(visibleIds)) {
+  void _paintVisibleElements(Canvas canvas, {Set<String>? visibleIds}) {
+    // Iterate `elements` (already z-ordered) and skip the culled ones, so the
+    // surviving elements are still painted back-to-front. A selected element
+    // mid-preview is never culled — its preview copy can leave the original
+    // culled bounds.
+    for (final CanvasElement element in elements) {
       final bool selected = selectedIds.contains(element.id);
+      if (visibleIds != null &&
+          !visibleIds.contains(element.id) &&
+          !(selected && (_dragging || _transforming))) {
+        continue;
+      }
       final SelectionTransformPreview? transform = selectionTransformPreview;
       if (selected && transform != null) {
         canvas.save();
@@ -425,34 +458,6 @@ class ElementsPainter extends CustomPainter {
       }
       _paintElement(canvas, element, selected: selected);
     }
-  }
-
-  /// The visible elements, plus any selected element whose live preview can
-  /// leave its culled bounds, in ascending paint order.
-  List<CanvasElement> _paintList(Set<String> visibleIds) {
-    final bool previewing = _dragging || _transforming;
-    final ElementsTileCache? cache = tileCache;
-    if (cache == null) {
-      return <CanvasElement>[
-        for (final CanvasElement element in elements)
-          if (visibleIds.contains(element.id) ||
-              (previewing && selectedIds.contains(element.id)))
-            element,
-      ];
-    }
-
-    final index = cache.indexFor(elements);
-    final Set<String> ids = previewing
-        ? <String>{...visibleIds, ...selectedIds}
-        : visibleIds;
-    final List<CanvasElement> visible = <CanvasElement>[
-      for (final String id in ids)
-        if (index.byId[id] case final CanvasElement element) element,
-    ];
-    visible.sort(
-      (a, b) => index.order[a.id]!.compareTo(index.order[b.id]!),
-    );
-    return visible;
   }
 
   /// Opacity applied to an element the live eraser drag has crossed.
@@ -512,9 +517,8 @@ class ElementsPainter extends CustomPainter {
 
   void _paintCachedTiles(Canvas canvas, Rect visibleRect) {
     final ElementsTileCache cache = tileCache!;
-    final index = cache.indexFor(elements);
-    final Map<String, CanvasElement> elementsById = index.byId;
-    final Map<String, int> paintOrderById = index.order;
+    final Map<String, CanvasElement> elementsById = allElementsById!;
+    final Map<String, int> paintOrder = paintOrderById!;
 
     final int minX = (visibleRect.left / ElementsTileCache.tileSize).floor();
     final int maxX = (visibleRect.right / ElementsTileCache.tileSize).floor();
@@ -528,7 +532,7 @@ class ElementsPainter extends CustomPainter {
           key: key,
           tileRect: key.rect,
           elementsById: elementsById,
-          paintOrderById: paintOrderById,
+          paintOrderById: paintOrder,
           spatialIndex: spatialIndex,
           paintElement: _paintUnselectedElement,
         );

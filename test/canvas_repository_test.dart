@@ -12,6 +12,8 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/core/database/database.dart'
     hide CanvasElement, CanvasLayer;
+import 'package:zenno/core/database/tables/canvas_tables.dart'
+    show BackgroundKind, PaperTexture;
 
 const double _pointTolerance = 1e-6;
 
@@ -52,6 +54,22 @@ void main() {
 
       expect(await repo.canvasExists(deleted), isFalse);
       expect(controller.isLoaded, isFalse);
+    });
+  });
+
+  group('paper style', () {
+    test('texture and intensity persist per canvas', () async {
+      const style = CanvasPaperStyle(
+        kind: BackgroundKind.lined,
+        backgroundColor: 0xFFF7F1DE,
+        gridColor: 0xFF6B7280,
+        texture: PaperTexture.fibers,
+        textureOpacity: 0.11,
+      );
+
+      await repo.savePaperStyle(canvasId, style);
+
+      expect(await repo.loadPaperStyle(canvasId), style);
     });
   });
 
@@ -205,6 +223,40 @@ void main() {
 
     expect(await repo.loadBookmarks(canvasId), isEmpty);
   });
+
+  test(
+    'controller bulk-hydrates a large ordered store and lookup index',
+    () async {
+      final List<CanvasElement> fixtures = List<CanvasElement>.generate(
+        1000,
+        (int index) => TextElement(
+          id: 'bulk-$index',
+          zIndex: 1000 - index,
+          worldBounds: Rect.fromLTWH(index * 20, 0, 12, 12),
+          text: '$index',
+          color: 0xFFFFFFFF,
+          fontSize: 12,
+        ),
+        growable: false,
+      );
+      await repo.upsertElements(canvasId, fixtures);
+      final controller = CanvasController(repository: repo, canvasId: canvasId);
+      addTearDown(controller.dispose);
+
+      await controller.load();
+
+      expect(controller.elements, hasLength(fixtures.length));
+      expect(controller.elements.first.zIndex, 1);
+      expect(controller.elements.last.zIndex, 1000);
+      expect(controller.elementsById, hasLength(fixtures.length));
+      expect(controller.elementsById['bulk-999'], controller.elements.first);
+      expect(
+        controller.spatialIndex.query(const Rect.fromLTWH(0, 0, 13, 13)),
+        contains('bulk-0'),
+      );
+      expect(controller.canUndo, isFalse);
+    },
+  );
 
   group('ink element round-trip', () {
     test('save then load reconstructs the InkElement', () async {
@@ -545,6 +597,29 @@ void main() {
         expect(settings.toolWheelPresets[0], presets[0]);
         expect(settings.toolWheelPresets[1], presets[1]);
         expect(settings.toolWheelPresets[7].kind, ToolWheelSlotKind.pan);
+      },
+    );
+
+    test(
+      'continuous brush changes collapse to one final settings write',
+      () async {
+        final countingRepo = _CountingCanvasRepository(db);
+        final controller = CanvasController(
+          repository: countingRepo,
+          canvasId: canvasId,
+        );
+        addTearDown(controller.dispose);
+        await controller.load();
+
+        controller
+          ..setPenWidth(8)
+          ..setPenWidth(12)
+          ..setPenWidth(16)
+          ..commitToolSettings();
+        await controller.flush();
+
+        expect(countingRepo.toolSettingsWriteCount, 1);
+        expect((await repo.loadToolSettings(canvasId)).penWidth, 16);
       },
     );
   });
@@ -992,4 +1067,16 @@ class _SimulatedWriteFailure implements Exception {
 
   @override
   String toString() => 'SimulatedWriteFailure: $message';
+}
+
+class _CountingCanvasRepository extends CanvasRepository {
+  _CountingCanvasRepository(super.db);
+
+  int toolSettingsWriteCount = 0;
+
+  @override
+  Future<void> saveToolSettings(String canvasId, CanvasToolSettings settings) {
+    toolSettingsWriteCount += 1;
+    return super.saveToolSettings(canvasId, settings);
+  }
 }

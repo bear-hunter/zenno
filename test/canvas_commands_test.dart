@@ -54,6 +54,27 @@ class _NoopPdfRasterService extends PdfRasterService {
   Future<void> dispose() async {}
 }
 
+class _RecordingPdfRasterService extends PdfRasterService {
+  final List<int> requestedBuckets = <int>[];
+  final List<Completer<PdfRasterResult?>> pending =
+      <Completer<PdfRasterResult?>>[];
+
+  @override
+  Future<PdfRasterResult?> rasterizePage({
+    required String filePath,
+    required int pageNumber,
+    required int scaleBucket,
+  }) {
+    requestedBuckets.add(scaleBucket);
+    final Completer<PdfRasterResult?> completer = Completer<PdfRasterResult?>();
+    pending.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<void> dispose() async {}
+}
+
 class _ControlledCanvasImporter extends CanvasImporter {
   _ControlledCanvasImporter(PdfRasterService pdfRasterService)
     : super(pdfRasterService: pdfRasterService);
@@ -357,6 +378,57 @@ void main() {
     });
   });
 
+  group('committed element damage', () {
+    test('remove then add includes both old and new bounds', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      const TextElement original = TextElement(
+        id: 'moving-note',
+        zIndex: 0,
+        worldBounds: Rect.fromLTWH(10, 20, 100, 60),
+        text: 'Move me',
+        color: 0xFFFFFFFF,
+        fontSize: 18,
+      );
+      final TextElement moved = original.translated(const Offset(3000, 40));
+
+      controller.addElementToStore(original);
+      final int beforeMove = controller.elementsRevision;
+      controller.removeElementFromStore(original.id);
+      controller.addElementToStore(moved);
+
+      final CanvasElementDamage damage = controller.elementDamageSince(
+        beforeMove,
+      );
+      expect(damage.isFull, isFalse);
+      expect(
+        damage.bounds,
+        original.worldBounds.expandToInclude(moved.worldBounds),
+      );
+    });
+
+    test('falls back to a full clear when bounded history is exhausted', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      final int oldRevision = controller.elementsRevision;
+
+      for (var i = 0; i < 65; i += 1) {
+        controller.addElementToStore(
+          TextElement(
+            id: 'note-$i',
+            zIndex: i,
+            worldBounds: Rect.fromLTWH(i * 10, 0, 8, 8),
+            text: '$i',
+            color: 0xFFFFFFFF,
+            fontSize: 12,
+          ),
+        );
+      }
+
+      expect(controller.elementDamageSince(oldRevision).isFull, isTrue);
+    });
+  });
+
   group('live stroke repaint', () {
     test('appendToStroke grows liveStroke without reallocating it', () {
       final CanvasController controller = CanvasController();
@@ -423,59 +495,58 @@ void main() {
       expect(newPainter.shouldRepaint(oldPainter), isTrue);
     });
 
-    testWidgets('appendToStroke coalesces listener notifications per frame', (
+    testWidgets('appendToStroke coalesces live-layer repaints per frame', (
       tester,
     ) async {
       final CanvasController controller = CanvasController();
       addTearDown(controller.dispose);
-      var notifications = 0;
       var liveRepaints = 0;
-      controller.addListener(() {
-        notifications += 1;
-      });
-      controller.liveLayerListenable.addListener(() {
-        liveRepaints += 1;
-      });
+      var toolStateRebuilds = 0;
+      controller.liveStrokeListenable.addListener(() => liveRepaints += 1);
+      controller.toolStateListenable.addListener(() => toolStateRebuilds += 1);
 
       controller.beginStroke(const Offset(0, 0), 0.5);
+      final int repaintsAfterBegin = liveRepaints;
+      final int toolRebuildsAfterBegin = toolStateRebuilds;
+
       controller.appendToStroke(const Offset(10, 0), 0.5);
       controller.appendToStroke(const Offset(20, 0), 0.5);
-
-      expect(notifications, 1, reason: 'only beginStroke is a general change');
-      expect(liveRepaints, 1);
       expect(controller.liveStroke?.points, hasLength(3));
 
       await tester.pump();
 
-      // Appended samples coalesce into one repaint of the live layer, and do
-      // not wake the general channel at all: nothing outside that layer can
-      // see a stroke sample, so waking it would rebuild the whole editor.
-      expect(liveRepaints, 2);
-      expect(notifications, 1);
+      // Two samples inside one frame produce a single repaint of the live
+      // layer, and never wake the tool-state channel the toolbar listens to —
+      // waking it per sample rebuilt the entire editor while drawing.
+      expect(liveRepaints - repaintsAfterBegin, 1);
+      expect(toolStateRebuilds, toolRebuildsAfterBegin);
     });
 
-    testWidgets('hovering never wakes the general listener channel', (
-      tester,
-    ) async {
+    testWidgets('hovering never wakes the toolbar', (tester) async {
       final CanvasController controller = CanvasController();
       addTearDown(controller.dispose);
-      var notifications = 0;
-      var liveRepaints = 0;
-      controller.addListener(() => notifications += 1);
-      controller.liveLayerListenable.addListener(() => liveRepaints += 1);
+      var overlayRepaints = 0;
+      var toolStateRebuilds = 0;
+      controller.overlayListenable.addListener(() => overlayRepaints += 1);
+      controller.toolStateListenable.addListener(() => toolStateRebuilds += 1);
 
       controller.setHoverPoint(const Offset(10, 10));
       await tester.pump();
       controller.setHoverPoint(const Offset(20, 20));
       await tester.pump();
 
-      expect(notifications, 0);
-      expect(liveRepaints, 2);
+      // An S Pen hovers continuously within a centimetre of the glass.
+      expect(overlayRepaints, greaterThan(0));
+      expect(toolStateRebuilds, 0);
 
-      // An unchanged hover position is dropped outright.
+      final int settled = overlayRepaints;
       controller.setHoverPoint(const Offset(20, 20));
       await tester.pump();
-      expect(liveRepaints, 2);
+      expect(
+        overlayRepaints,
+        settled,
+        reason: 'an unchanged hover position is dropped outright',
+      );
     });
   });
 
@@ -723,6 +794,141 @@ void main() {
     }
 
     test(
+      'raster budget evicts the least-recently-used off-screen item',
+      () async {
+        final Image bRaster = await tinyRaster();
+        final Image aRaster = await tinyRaster();
+        final Image cRaster = await tinyRaster();
+        final CanvasController controller = CanvasController(
+          pdfRasterService: _NoopPdfRasterService(),
+          rasterBudgetBytes: 8,
+        )..setViewportSize(const Size(100, 100));
+        addTearDown(() {
+          controller.dispose();
+          for (final Image image in <Image>[bRaster, aRaster, cRaster]) {
+            if (!image.debugDisposed) {
+              image.dispose();
+            }
+          }
+        });
+
+        controller
+          ..addElementToStore(
+            ImageElement(
+              id: 'b',
+              zIndex: 0,
+              worldBounds: const Rect.fromLTWH(10, 10, 20, 20),
+              sourceFilePath: '/durable/b.png',
+              intrinsicSize: const Size(20, 20),
+              raster: bRaster,
+              rasterScaleBucket: 3,
+            ),
+          )
+          ..addElementToStore(
+            ImageElement(
+              id: 'a',
+              zIndex: 1,
+              worldBounds: const Rect.fromLTWH(1000, 0, 20, 20),
+              sourceFilePath: '/durable/a.png',
+              intrinsicSize: const Size(20, 20),
+              raster: aRaster,
+              rasterScaleBucket: 3,
+            ),
+          )
+          ..addElementToStore(
+            ImageElement(
+              id: 'c',
+              zIndex: 2,
+              worldBounds: const Rect.fromLTWH(2000, 0, 20, 20),
+              sourceFilePath: '/durable/c.png',
+              intrinsicSize: const Size(20, 20),
+              raster: cRaster,
+              rasterScaleBucket: 3,
+            ),
+          )
+          ..scheduleRasterWork()
+          ..setViewport(const ViewportState(translation: Offset(-3000, 0)))
+          ..debugEnforceRasterBudget();
+
+        final Map<String, ImageElement> byId = <String, ImageElement>{
+          for (final CanvasElement element in controller.elements)
+            element.id: element as ImageElement,
+        };
+        expect(byId['a']!.raster, isNull);
+        expect(byId['a']!.sourceFilePath, '/durable/a.png');
+        expect(byId['b']!.raster, same(bRaster));
+        expect(byId['c']!.raster, same(cRaster));
+        expect(aRaster.debugDisposed, isTrue);
+        expect(controller.debugRasterBytesInUse, 8);
+      },
+    );
+
+    test(
+      'zoom buckets sharpen once without decode churn inside a bucket',
+      () async {
+        final _RecordingPdfRasterService rasterService =
+            _RecordingPdfRasterService();
+        final Image initial = await tinyRaster();
+        final CanvasController controller = CanvasController(
+          pdfRasterService: rasterService,
+        )..setViewportSize(const Size(100, 100));
+        addTearDown(() {
+          controller.dispose();
+          if (!initial.debugDisposed) {
+            initial.dispose();
+          }
+        });
+        controller.addElementToStore(
+          PdfElement(
+            id: 'page',
+            zIndex: 0,
+            worldBounds: const Rect.fromLTWH(0, 0, 100, 100),
+            sourceFilePath: '/durable/document.pdf',
+            pageNumber: 1,
+            pageSize: const Size(100, 100),
+            raster: initial,
+            rasterScaleBucket: 0,
+          ),
+        );
+
+        controller
+          ..setViewport(const ViewportState(scale: 6))
+          ..scheduleRasterWork()
+          ..scheduleRasterWork();
+        await pumpEventQueue();
+
+        expect(rasterService.requestedBuckets, <int>[1]);
+
+        controller
+          ..setViewport(const ViewportState(scale: 25))
+          ..scheduleRasterWork();
+        await pumpEventQueue();
+        expect(rasterService.requestedBuckets, <int>[1]);
+
+        final Image sharper = await tinyRaster();
+        rasterService.pending.single.complete(
+          PdfRasterResult(image: sharper, scaleBucket: 1),
+        );
+        await pumpEventQueue();
+        expect(rasterService.requestedBuckets, <int>[1, 3]);
+        expect((controller.elements.single as PdfElement).rasterScaleBucket, 1);
+
+        final Image sharpest = await tinyRaster();
+        rasterService.pending.last.complete(
+          PdfRasterResult(image: sharpest, scaleBucket: 3),
+        );
+        await pumpEventQueue();
+        expect((controller.elements.single as PdfElement).rasterScaleBucket, 3);
+
+        controller
+          ..setViewport(const ViewportState(scale: 30))
+          ..scheduleRasterWork();
+        await pumpEventQueue();
+        expect(rasterService.requestedBuckets, <int>[1, 3]);
+      },
+    );
+
+    test(
       'a completed image import is discarded after controller disposal',
       () async {
         final _NoopPdfRasterService rasterService = _NoopPdfRasterService();
@@ -943,6 +1149,66 @@ void main() {
       expect(controller.hasSelection, isTrue);
     });
 
+    test('lasso selects only the stroke touched by a small crossing loop', () {
+      final CanvasController controller = CanvasController()
+        ..addElementToStore(
+          InkElement.fromStroke(
+            const Stroke(
+              id: 'touched',
+              points: <StrokePoint>[
+                StrokePoint(0, 0, 0.5),
+                StrokePoint(100, 0, 0.5),
+              ],
+              color: 0xFFFFFFFF,
+              width: 4,
+            ),
+            zIndex: 0,
+          ),
+        )
+        ..addElementToStore(
+          InkElement.fromStroke(
+            const Stroke(
+              id: 'nearby',
+              points: <StrokePoint>[
+                StrokePoint(0, 24, 0.5),
+                StrokePoint(100, 24, 0.5),
+              ],
+              color: 0xFFFFFFFF,
+              width: 4,
+            ),
+            zIndex: 1,
+          ),
+        )
+        ..setTool(CanvasTool.lasso)
+        ..beginLasso(const Offset(45, -10))
+        ..appendLasso(const Offset(55, -10))
+        ..appendLasso(const Offset(55, 10))
+        ..appendLasso(const Offset(45, 10))
+        ..endLasso();
+      addTearDown(controller.dispose);
+
+      expect(controller.selectedIds, <String>{'touched'});
+    });
+
+    test('lasso contact selection also follows a geometric line', () {
+      final CanvasController controller = CanvasController()
+        ..setTool(CanvasTool.shape)
+        ..setShapeKind(ShapeKind.line)
+        ..beginShape(Offset.zero)
+        ..updateShape(const Offset(100, 0))
+        ..endShape()
+        ..setTool(CanvasTool.lasso)
+        ..beginLasso(const Offset(45, -10))
+        ..appendLasso(const Offset(55, -10))
+        ..appendLasso(const Offset(55, 10))
+        ..appendLasso(const Offset(45, 10))
+        ..endLasso();
+      addTearDown(controller.dispose);
+
+      expect(controller.selectedElements, hasLength(1));
+      expect(controller.selectedElements.single, isA<ShapeElement>());
+    });
+
     test('lasso that encloses nothing leaves the selection empty', () {
       final CanvasController controller = CanvasController()
         ..setTool(CanvasTool.lasso);
@@ -1059,6 +1325,39 @@ void main() {
 
       controller.undo();
       expect(controller.elementCount, 1);
+    });
+
+    test('copy and paste duplicates the selection as one undoable group', () {
+      final controller = CanvasController()
+        ..addElementToStore(
+          const TextElement(
+            id: 'note',
+            zIndex: 0,
+            worldBounds: Rect.fromLTWH(10, 20, 80, 40),
+            text: 'Copy me',
+            color: 0xFFFFFFFF,
+            fontSize: 18,
+          ),
+        )
+        ..setSelection(<String>{'note'});
+
+      controller.copySelection();
+      expect(controller.hasClipboardContent, isTrue);
+
+      controller.pasteSelection();
+
+      expect(controller.elementCount, 2);
+      expect(controller.selectedIds, hasLength(1));
+      expect(controller.selectedIds, isNot(contains('note')));
+      final TextElement pasted =
+          controller.selectedElements.single as TextElement;
+      expect(pasted.text, 'Copy me');
+      expect(pasted.placementBounds, const Rect.fromLTWH(34, 44, 80, 40));
+
+      controller.undo();
+      expect(controller.elements.map((element) => element.id), <String>[
+        'note',
+      ]);
     });
 
     test('dragging a selection moves it and survives undo/redo', () {
@@ -1343,6 +1642,31 @@ void main() {
 
       expect(controller.elements.single.layerId, layer.id);
       expect(controller.activeLayerId, layer.id);
+    });
+
+    test('viewport elements contain only ordered spatial hits', () {
+      final CanvasController controller = CanvasController();
+      addTearDown(controller.dispose);
+      controller
+        ..setViewportSize(const Size(100, 100))
+        ..addElementToStore(inkElement('near', zIndex: 0))
+        ..addElementToStore(
+          inkElement('far', zIndex: 1).translated(const Offset(1000, 0)),
+        );
+
+      expect(
+        controller.viewportElements.map((CanvasElement element) => element.id),
+        <String>['near'],
+      );
+
+      controller.setViewport(
+        const ViewportState(translation: Offset(-1000, 0)),
+      );
+
+      expect(
+        controller.viewportElements.map((CanvasElement element) => element.id),
+        <String>['far'],
+      );
     });
 
     test(

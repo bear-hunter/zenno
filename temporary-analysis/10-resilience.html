@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zenno Resilience Analysis — Analyzer 10</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0c1118; --panel:#121a24; --panel2:#172230; --text:#e8eef6; --muted:#9fb0c3; --line:#2a394b; --high:#ff7b72; --med:#e6b85c; --low:#77bdfb; --good:#72d7a1; --accent:#a8c7fa; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    a { color:var(--accent); }
+    code { color:#d7e6f7; background:#0b121a; padding:.1rem .3rem; border-radius:4px; overflow-wrap:anywhere; }
+    .layout { display:grid; grid-template-columns:270px minmax(0,1fr); min-height:100vh; }
+    nav { position:sticky; top:0; height:100vh; overflow:auto; border-right:1px solid var(--line); padding:26px 20px; background:#0a1017; }
+    nav h1 { font-size:17px; margin:0 0 4px; }
+    nav p { color:var(--muted); margin:0 0 22px; font-size:13px; }
+    nav a { display:block; text-decoration:none; padding:5px 0; color:#c5d3e2; }
+    nav a:hover { color:white; }
+    main { width:min(1180px,100%); padding:42px 46px 100px; }
+    h1,h2,h3 { line-height:1.25; }
+    h1 { font-size:34px; margin:0 0 8px; }
+    h2 { margin:52px 0 18px; border-bottom:1px solid var(--line); padding-bottom:10px; }
+    h3 { margin:0 0 8px; font-size:19px; }
+    .lede,.muted { color:var(--muted); }
+    .meta,.summary-grid,.finding-grid { display:grid; gap:12px; }
+    .meta { grid-template-columns:repeat(4,minmax(0,1fr)); margin:24px 0; }
+    .summary-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .card,.finding,.control { border:1px solid var(--line); background:var(--panel); border-radius:12px; padding:18px; }
+    .card strong { display:block; font-size:24px; }
+    .card span { color:var(--muted); font-size:13px; }
+    .finding { margin:16px 0; border-left-width:5px; }
+    .finding.high { border-left-color:var(--high); }
+    .finding.medium { border-left-color:var(--med); }
+    .finding.low { border-left-color:var(--low); }
+    .tags { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 14px; }
+    .tag { border:1px solid var(--line); border-radius:999px; padding:2px 9px; font-size:12px; color:var(--muted); }
+    .tag.high { color:var(--high); border-color:#6e3534; }
+    .tag.medium { color:var(--med); border-color:#67542f; }
+    .tag.low { color:var(--low); border-color:#315678; }
+    .tag.good { color:var(--good); border-color:#2b6548; }
+    .finding-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .finding-grid > div { background:var(--panel2); border-radius:8px; padding:12px 14px; }
+    .finding-grid b { display:block; color:#b8c7d8; font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+    ul { padding-left:22px; }
+    li + li { margin-top:5px; }
+    table { border-collapse:collapse; width:100%; background:var(--panel); }
+    th,td { border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
+    th { background:var(--panel2); }
+    .iteration { border-left:3px solid var(--accent); padding-left:16px; margin:18px 0; }
+    .warning { background:#211819; border:1px solid #63383a; padding:14px 16px; border-radius:10px; }
+    @media (max-width:850px) { .layout{display:block} nav{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--line)} main{padding:28px 20px 70px}.meta,.summary-grid,.finding-grid{grid-template-columns:1fr 1fr} }
+    @media (max-width:520px) { .meta,.summary-grid,.finding-grid{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="Report navigation">
+    <h1>Analyzer 10</h1>
+    <p>Resilience, recovery, offline behavior, observability, and silent failure modes.</p>
+    <a href="#executive">Executive summary</a>
+    <a href="#method">Method and scope</a>
+    <a href="#findings">Findings</a>
+    <a href="#r01">R01 · Volatile canvas recovery</a>
+    <a href="#r02">R02 · Silent element omission</a>
+    <a href="#r03">R03 · Focus restore failure</a>
+    <a href="#r04">R04 · Startup/global crash surface</a>
+    <a href="#r05">R05 · Unowned settings writes</a>
+    <a href="#r06">R06 · Focus partial transitions</a>
+    <a href="#r07">R07 · Checkpoint overlap</a>
+    <a href="#r08">R08 · Silent media failure</a>
+    <a href="#r09">R09 · Cleanup/import race</a>
+    <a href="#r10">R10 · Indefinite web DB loading</a>
+    <a href="#r11">R11 · Best-effort cleanup opacity</a>
+    <a href="#r12">R12 · Silent decode fallback</a>
+    <a href="#r13">R13 · Reflection JSON erasure</a>
+    <a href="#r14">R14 · Link load becomes empty</a>
+    <a href="#r15">R15 · Missing boards acknowledged</a>
+    <a href="#r16">R16 · Export exceptions escape</a>
+    <a href="#r17">R17 · Focus canvas creation</a>
+    <a href="#r18">R18 · Board move partial success</a>
+    <a href="#r19">R19 · Raw errors without retry</a>
+    <a href="#r20">R20 · Volatile form drafts</a>
+    <a href="#r21">R21 · Zero-row writes succeed</a>
+    <a href="#r22">R22 · Hidden reflection cascade</a>
+    <a href="#r23">R23 · Soft links use cascades</a>
+    <a href="#r24">R24 · One invalid enum breaks reads</a>
+    <a href="#r25">R25 · Database retry reuses failure</a>
+    <a href="#r26">R26 · Invalid viewport crashes input</a>
+    <a href="#controls">Existing controls</a>
+    <a href="#coverage">Failure-path coverage</a>
+    <a href="#priorities">Priority order</a>
+    <a href="#iterations">Iteration log</a>
+  </nav>
+  <main>
+    <header>
+      <h1>Zenno resilience analysis</h1>
+      <p class="lede">Static, evidence-based review by <strong>Analyzer 10</strong>. This report is intentionally analysis-only and is updated in repeated passes.</p>
+      <div class="meta">
+        <div class="card"><strong>Iteration 6</strong><span>Database bootstrap and numeric-invariant pass</span></div>
+        <div class="card"><strong>2026-07-18 05:19</strong><span>Asia/Manila (UTC+08:00)</span></div>
+        <div class="card"><strong>26 findings</strong><span>7 high · 17 medium · 2 low</span></div>
+        <div class="card"><strong>Static only</strong><span>No builds, tests, installs, or app runs</span></div>
+      </div>
+    </header>
+
+    <section id="executive">
+      <h2>Executive summary</h2>
+      <p>Zenno has several thoughtful local recovery controls: Drift transactions protect multi-row writes, the canvas editor records failed writes and offers a full-state retry, normal canvas exit is guarded, focus runtime is checkpointed, web tabs are locked to one database client, and most direct user actions show failure feedback. The core offline posture is also favorable: runtime data is local SQLite/IndexedDB and this pass found no network-backed note persistence path.</p>
+      <p>The highest residual risks occur at boundaries those controls do not cover. Canvas recovery state exists only inside the live controller, so a process kill or forced teardown can lose changes that were visible but not durable. Structurally incomplete canvas elements are intentionally omitted without warning and can then be deleted by full-state reconciliation. Focus restoration turns a database exception into an apparently empty state and retains a failed future with no retry path. Structurally wrong reflection JSON is likewise treated as empty and can be overwritten as empty. Deleting a Goal column also cascades all saved reflections while its confirmation names only the cards. A database open/migration/seed failure is retained by both Drift and the keep-alive provider, yet visible Retry buttons only re-query that poisoned instance. Several lower-level failures are mislabeled as normal empty states or escape their UI callback entirely. Finally, there is no app-wide crash/recovery or durable diagnostic boundary around startup and uncaught asynchronous failures.</p>
+      <div class="summary-grid">
+        <div class="card"><strong style="color:var(--high)">7 high</strong><span>Possible note invisibility/loss or feature-wide recovery failure</span></div>
+        <div class="card"><strong style="color:var(--med)">17 medium</strong><span>Misleading partial success, indefinite waits, or lost preferences/media visibility</span></div>
+        <div class="card"><strong style="color:var(--low)">2 low</strong><span>Operational opacity and fallback behavior</span></div>
+        <div class="card"><strong style="color:var(--good)">11 controls</strong><span>Material safeguards already present</span></div>
+      </div>
+    </section>
+
+    <section id="method">
+      <h2>Method and scope</h2>
+      <p>Iteration 1 inventoried the repository and then traced the runtime from <code>main.dart</code> through Riverpod providers, Drift connection/migration/seeding, all feature repositories, canvas write-through and import/export, local-file ownership, focus runtime restoration/checkpointing, and user-facing async error paths. Iteration 2 challenged the high-severity claims against the checked-in tests and exact reconciliation code, then re-read reflection and attachment persistence. Generated Drift code was used only to confirm schema behavior. Existing untracked plans and reviews were preserved; stale review claims were not used as evidence of current defects.</p>
+      <p>No source, configuration, dependency, test, Git, branch, remote, PR, or external-service state was changed. No build, test, install, migration, app launch, or destructive command was run. Findings therefore describe code-supported failure paths; runtime frequency is not claimed where no telemetry exists.</p>
+      <table>
+        <thead><tr><th>Rating</th><th>Meaning in this report</th></tr></thead>
+        <tbody>
+          <tr><td>High</td><td>Could hide or lose learning content, prevent recovery of active work, or make the app unavailable without a reliable in-app path out.</td></tr>
+          <tr><td>Medium</td><td>Could interrupt flow, produce misleading state, lose non-note preferences, or leave a feature stuck until retry/restart.</td></tr>
+          <tr><td>Low</td><td>Primarily weakens diagnosis, cleanup, or graceful degradation; direct note loss is not established.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="findings">
+      <h2>Findings</h2>
+
+      <article class="finding high" id="r01">
+        <h3>R01 · Canvas recovery queue is volatile across abrupt lifecycle loss</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Data integrity</span><span class="tag">Recovery</span></div>
+        <p>The editor applies mutations to memory immediately and starts asynchronous write-through. Failed closures are retained only in <code>CanvasController._failedWrites</code>. Normal back calls <code>flush()</code>, detects the queue, and asks before leaving, but controller disposal performs an unawaited flush and then destroys the only queue. There is no app-lifecycle checkpoint, durable journal, or startup recovery record for failed canvas mutations.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/canvas/canvas_controller.dart:232-252</code>, <code>:931-943</code>, <code>:1059-1117</code>, <code>:4514-4526</code>; <code>lib/canvas/canvas_editor_page.dart:207-214</code>, <code>:258-305</code>, <code>:481-485</code>.</div>
+          <div><b>Root cause</b>Recovery ownership is coupled to a route-scoped in-memory controller. The navigation guard is strong for cooperative exits but cannot cover OS process death, app crash, forced route teardown, or a storage outage that outlives the page.</div>
+          <div><b>Impact</b>Fresh ink/text may remain visible during the session yet be absent after restart if its write failed and the process ended before full-state retry succeeded. This is the most direct threat to note-taking trust found in pass 1.</div>
+          <div><b>Analysis-only recommendation</b>Design a durable, idempotent mutation journal or draft snapshot owned above the route, with lifecycle-triggered flush, startup replay, and an explicit recovered/unsaved state. Preserve the existing normal-exit guard as a second layer.</div>
+        </div>
+      </article>
+
+      <article class="finding high" id="r02">
+        <h3>R02 · Structurally incomplete canvas elements disappear silently</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Silent failure</span><span class="tag">Data visibility</span></div>
+        <p><code>loadElements</code> reconstructs each generic element from a kind-specific detail table. If that detail row is absent, <code>_reconstruct</code> returns <code>null</code> and the caller simply omits the element. There is no placeholder, warning, quarantine record, count mismatch, or diagnostic event. Transactions make this unlikely during healthy writes, but the behavior specifically handles corruption by hiding content.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/canvas/persistence/canvas_repository.dart:77-83</code>, <code>:177-192</code>, and each silent <code>return null</code> at <code>:213-300</code>. Full-state sync computes every stored-but-not-loaded ID as stale and deletes it at <code>:575-591</code>.</div>
+          <div><b>Root cause</b>The read path treats “cannot reconstruct” as “element absent,” conflating corruption with a legitimate empty result.</div>
+          <div><b>Impact</b>A note stroke, text block, image, PDF page, link, or shape can vanish from the editor even though its generic row still exists. A later full-state retry could then synchronize the reduced in-memory set and make the omission harder to recover.</div>
+          <div><b>Analysis-only recommendation</b>Return a structured load result containing valid elements plus per-row recovery faults. Render a non-destructive placeholder, block destructive full-state sync while unresolved corruption exists, and provide export/diagnostic recovery before any cleanup.</div>
+        </div>
+      </article>
+
+      <article class="finding high" id="r03">
+        <h3>R03 · Focus restoration failure collapses into “no session” and has no retry</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Recovery</span><span class="tag">Silent failure</span></div>
+        <p>The keep-alive controller starts restoration in an unawaited microtask. <code>_restoreAtStartup</code> has a <code>finally</code> but no <code>catch</code>: any database/decode failure sets state from “restoring” to “none” while the stored future remains failed. Focus Home consequently shows “Start session,” not a retry/error state. Later <code>startFrom</code> awaits the same failed future and fails before starting, so the feature can remain poisoned for the app lifetime.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/focus/application/active_session_controller.dart:103-117</code>, <code>:131-138</code>, <code>:406-455</code>; <code>lib/features/focus/presentation/pages/focus_home_page.dart:49-59</code>.</div>
+          <div><b>Root cause</b>The state model represents “restoring” and “none,” but not “restore failed,” and the restoration future is immutable after failure.</div>
+          <div><b>Impact</b>An in-progress or review-pending study session is hidden from the user, and new sessions may fail generically until restart. The database row is not proven lost, but recovery is inaccessible.</div>
+          <div><b>Analysis-only recommendation</b>Add an explicit restoration error state with safe retry that replaces the failed future. Keep persisted sessions authoritative; never offer a fresh start until restoration either succeeds or the user explicitly resolves the stale session.</div>
+        </div>
+      </article>
+
+      <article class="finding high" id="r04">
+        <h3>R04 · Startup and uncaught async failures lack an app-wide recovery boundary</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Crash surface</span><span class="tag">Observability</span></div>
+        <p><code>main</code> awaits immersive-mode and orientation platform calls before <code>runApp</code>, without fallback. No <code>runZonedGuarded</code>, <code>FlutterError.onError</code>, <code>PlatformDispatcher.onError</code>, or <code>ErrorWidget.builder</code> is configured anywhere in runtime source. Feature-local catches are useful, but errors from discarded futures and startup/plugin boundaries can still produce a blank launch, framework error screen, or console-only failure.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/main.dart:7-15</code>. Repository-wide searches found no global Flutter/Dart error boundary; runtime diagnostics are isolated <code>debugPrint</code> calls.</div>
+          <div><b>Root cause</b>Failure handling is implemented feature-by-feature, with no last-resort presentation, correlation, or recovery layer.</div>
+          <div><b>Impact</b>A platform-channel failure before first frame can make all notes inaccessible for that launch. Later uncaught errors are not converted into a stable, actionable “reload/retry/export diagnostics” experience.</div>
+          <div><b>Analysis-only recommendation</b>Let the app render even if non-essential system UI calls fail. Add a privacy-conscious global boundary that records bounded local diagnostics and shows a recoverable shell without ever logging note contents or file paths unnecessarily.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r05">
+        <h3>R05 · Settings writes are discarded without failure feedback or retry ownership</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Async failure</span><span class="tag">Flow</span></div>
+        <p>Every settings control passes repository futures into callbacks typed as <code>void</code>. The futures are neither awaited nor caught. On storage failure, the control may snap back only when the unchanged stream re-emits—or appear accepted until restart—and the async error has no feature-local owner. The same pattern is used for canvas palette persistence; tool-wheel position is a notable exception because it catches and informs the user.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/settings/presentation/pages/settings_page.dart:112-113</code>, <code>:128-182</code>, <code>:200-240</code>, <code>:271-272</code>; <code>lib/canvas/canvas_editor_page.dart:664-671</code>. Contrast <code>lib/canvas/widgets/canvas_toolbar.dart:229-244</code>.</div>
+          <div><b>Root cause</b>UI callback signatures erase the returned <code>Future&lt;void&gt;</code>, and there is no shared settings write state/error presenter.</div>
+          <div><b>Impact</b>Theme, stylus mapping, pen response, focus defaults, keep-awake, palette, and sort preferences can silently fail. Unhandled future errors also feed the global crash/observability gap.</div>
+          <div><b>Analysis-only recommendation</b>Route all preference writes through one async command helper or controller that serializes rapid changes, exposes saving/failure state, restores confirmed values on failure, and offers unobtrusive retry.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r06">
+        <h3>R06 · Focus actions mutate the timer before persistence, then report the whole action as failed</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Partial failure</span><span class="tag">State coherence</span></div>
+        <p><code>pause</code>, <code>resume</code>, <code>endStretch</code>, and <code>skipBreak</code> mutate and emit the in-memory engine before awaiting the database checkpoint. If persistence fails, the UI says the action “could not” happen even though the visible timer has already transitioned. <code>stop</code> similarly finishes/abandons the engine and stops its ticker before the closing row is durable, though its UI permits retry.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/focus/application/active_session_controller.dart:192-220</code>, <code>:264-303</code>; user-facing catch paths in <code>lib/features/focus/presentation/pages/focus_active_page.dart:119-166</code>, <code>:199-213</code>.</div>
+          <div><b>Root cause</b>The operation has two commits—memory first, database second—but exposes one undifferentiated success/failure result.</div>
+          <div><b>Impact</b>The user may repeat an action unnecessarily or misunderstand whether the timer is paused, on break, finished, or still recoverable. A crash between the two commits restores older runtime.</div>
+          <div><b>Analysis-only recommendation</b>Model “transition applied, persistence pending/failed” explicitly. Keep the wall-clock engine responsive, but make checkpoint status visible and retryable; use idempotent transition identifiers if exact phase history matters.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r07">
+        <h3>R07 · Periodic focus checkpoints can overlap during slow or failing storage</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: medium-high</span><span class="tag">Backpressure</span><span class="tag">Recovery</span></div>
+        <p>A one-second <code>Timer.periodic</code> invokes an async <code>_onTick</code> without awaiting it. Once the 15-second threshold is reached, the counter resets only after a successful write. If a checkpoint takes longer than a tick, subsequent ticks can start additional writes; during sustained failure, each tick retries. There is no in-flight/coalescing flag.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/focus/application/active_session_controller.dart:344-370</code>, <code>:391-404</code>.</div>
+          <div><b>Root cause</b>Retry cadence is driven by a counter but not serialized around the async persistence operation.</div>
+          <div><b>Impact</b>Storage degradation can cause a retry storm, extra database pressure, noisy console errors, and potentially stale snapshots competing with newer ones. Drift may serialize execution, but the controller does not establish that guarantee.</div>
+          <div><b>Analysis-only recommendation</b>Allow at most one checkpoint in flight, coalesce to the newest runtime snapshot, and retry with bounded backoff while retaining an immediate retry for lifecycle/phase transitions.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r08">
+        <h3>R08 · Missing/corrupt media renders as a permanent placeholder with no diagnosis or recovery</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Silent failure</span><span class="tag">Attachments</span></div>
+        <p>Image decode catches every object and returns <code>null</code>; PDF rasterization catches every object and returns. The element remains present, but the UI has no terminal error state distinct from “not rendered yet,” no retry control, and no path validation during load. Failures are not even sent to <code>debugPrint</code>. The PDF service also memoizes initialization and document-open futures; a rejected future is never evicted, so a transient failure is permanent for that controller lifetime.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/canvas/canvas_controller.dart:4069-4141</code>, <code>:4269-4317</code>, <code>:4327-4338</code>; failed-future caches at <code>lib/canvas/pdf/pdf_raster_service.dart:97-113</code>. Source paths are loaded from <code>lib/canvas/persistence/canvas_repository.dart:232-263</code>.</div>
+          <div><b>Root cause</b>Raster failure is treated as an acceptable cache miss even when permanent. Failure state is not represented, and memoized futures are retained on rejection.</div>
+          <div><b>Impact</b>Imported learning material silently becomes inaccessible while its placeholder can be mistaken for transient loading. Image decode exceptions before the explicit dispose calls can also retain native buffer/descriptor/codec resources, and later viewport scheduling can retry a still-null element.</div>
+          <div><b>Analysis-only recommendation</b>Track per-element raster status and reason category; show a quiet broken-media indicator with bounded retry, relink, and metadata-only removal. Evict rejected initialization/document futures and dispose partially created image resources in <code>finally</code>. Never auto-delete the DB row or source merely because decode fails.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r09">
+        <h3>R09 · Startup orphan cleanup can race a concurrent media import</h3>
+        <div class="tags"><span class="tag medium">Medium severity</span><span class="tag">High impact / low likelihood</span><span class="tag">Confidence: medium</span><span class="tag">File integrity</span><span class="tag">Race</span></div>
+        <p>Library provider creation starts orphan cleanup in the background and does not await it. Cleanup first snapshots all database-referenced media, then later scans and deletes every file absent from that snapshot. Import independently copies a new file before its element row is durably written. With no lock or age threshold, a long-running cleanup can observe the newly copied file as unreferenced and delete it during that window.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/library/application/library_providers.dart:15-24</code>; <code>lib/features/library/data/library_repository.dart:28-45</code>; <code>lib/features/library/data/library_file_cleanup_io.dart:29-50</code>; copy-before-write at <code>lib/canvas/io/canvas_import.dart:87-107</code>, <code>:115-132</code>, <code>:151-164</code>.</div>
+          <div><b>Root cause</b>Reference snapshot, file staging, element commit, and deletion do not share synchronization or a generation/age rule.</div>
+          <div><b>Impact</b>An imported image/PDF may be committed with a path whose file has just been removed, leading directly to R08. Ordinary startup timing makes the race unlikely, but large media directories or slow storage widen it.</div>
+          <div><b>Analysis-only recommendation</b>Use a staging directory/manifest and atomic promote-after-DB-commit, or serialize cleanup with imports. Cleanup should ignore young files and recheck live DB references immediately before each deletion.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r10">
+        <h3>R10 · Web database initialization can remain in an indefinite loading state</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: medium</span><span class="tag">Offline</span><span class="tag">Availability</span></div>
+        <p>The web connection is a delayed future that sequentially acquires a browser lock, fetches/initializes SQLite WASM, and opens IndexedDB. It has no timeout, cancellation, or root-level retry owner. A rejected open normally reaches provider error UIs, and the second-tab case is handled specifically, but a promise that stalls leaves feature providers loading indefinitely.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/core/database/connection_web.dart:6-21</code>; <code>lib/core/database/web_database_lock.dart:16-41</code>; library loading fallback <code>lib/features/library/presentation/pages/library_page.dart:282-325</code>.</div>
+          <div><b>Root cause</b>Initialization is lazy and distributed across feature provider subscriptions; no database-bootstrap state machine owns timeouts and retry.</div>
+          <div><b>Impact</b>The library can show a spinner forever with no explanation. Web offline startup additionally depends on WASM/app assets being locally available; the runtime source does not establish an explicit offline readiness state.</div>
+          <div><b>Analysis-only recommendation</b>Add a bootstrap coordinator with bounded phase timeouts, named failure phases, explicit retry/reload guidance, and a locally testable “offline assets unavailable” state. Keep the existing exclusive-tab message.</div>
+        </div>
+      </article>
+
+      <article class="finding low" id="r11">
+        <h3>R11 · File cleanup suppresses all exceptions and can stop halfway without evidence</h3>
+        <div class="tags"><span class="tag low">Low</span><span class="tag">Confidence: high</span><span class="tag">Observability</span><span class="tag">Storage</span></div>
+        <p>Both owned-file deletion functions wrap the entire operation in one broad catch. A single path-resolution, permission, or deletion error ends the remaining loop and is suppressed. The repository then reports successful canvas deletion because DB deletion is intentionally authoritative. Media preparation also copies into the final owned directory before image decode/PDF probe; if a later preparation step fails or placement is no longer possible, that copy is not removed and relies on a later opportunistic orphan scan.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/library/data/library_file_cleanup_io.dart:5-26</code>, <code>:29-51</code>; caller at <code>lib/features/library/data/library_repository.dart:187-205</code>. Copy-before-decode/probe has no rollback at <code>lib/canvas/io/canvas_import.dart:87-107</code>, <code>:115-132</code>; controller early returns do not unlink the copy at <code>lib/canvas/canvas_controller.dart:3897-3948</code>, <code>:3967-4026</code>.</div>
+          <div><b>Root cause</b>“Best effort” is implemented as operation-wide exception suppression instead of per-file isolation plus bounded outcome reporting.</div>
+          <div><b>Impact</b>Orphan files can accumulate after either deletion or failed import, and failures cannot be distinguished from successful cleanup. Direct note loss is not established because DB content is either already intentionally deleted or was never committed.</div>
+          <div><b>Analysis-only recommendation</b>Continue per file, count skipped/deleted/failed paths, and record only non-sensitive reason categories. Surface storage cleanup health in diagnostics, not as disruptive modal UI.</div>
+        </div>
+      </article>
+
+      <article class="finding low" id="r12">
+        <h3>R12 · Corrupt preference/tool JSON silently falls back with no repair signal</h3>
+        <div class="tags"><span class="tag low">Low</span><span class="tag">Confidence: high</span><span class="tag">Silent fallback</span><span class="tag">Observability</span></div>
+        <p>Palette, tool-wheel position, tool-wheel presets, arrow control points, stylus mapping, and pen profile decoders intentionally fall back on malformed JSON. This keeps the app usable, but the user receives no indication that persisted settings were ignored, and diagnostics cannot distinguish corruption from intentional defaults.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/settings/data/settings_repository.dart:293-364</code>; <code>lib/canvas/persistence/canvas_repository.dart:1105-1155</code>, <code>:1186-1199</code>; <code>lib/canvas/input/stylus_button_mapping.dart:38-57</code>; <code>lib/canvas/input/pen_profile.dart:45-66</code>.</div>
+          <div><b>Root cause</b>Decoders return plain values rather than values plus validation/recovery metadata.</div>
+          <div><b>Impact</b>Unexpected tool behavior can interrupt drawing flow and persist unnoticed. This does not directly corrupt note content in the reviewed paths.</div>
+          <div><b>Analysis-only recommendation</b>Keep safe defaults, but emit a privacy-safe validation event and preserve the malformed raw value until the user explicitly saves a replacement or a deterministic migration repairs it.</div>
+        </div>
+      </article>
+
+      <article class="finding high" id="r13">
+        <h3>R13 · Structurally invalid reflection JSON becomes empty content and can be saved destructively</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Data integrity</span><span class="tag">Silent failure</span></div>
+        <p>Reflection parsers throw for invalid JSON syntax, but syntactically valid values with the wrong shape are deliberately accepted as empty. A non-array schema, non-object prompt entries, missing/wrong-typed prompt fields, a non-object answers payload, or non-string answer values can therefore remove prompts or answers from the in-memory entry with no error. Existing-entry Save remains enabled even for an empty schema and empty answers; saving writes the derived empty map back as <code>{}</code>, irreversibly replacing the original <code>answers_json</code> value.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/goal_cycle/domain/reflection_template_schema.dart:27-37</code>, <code>:89-105</code>, <code>:125-140</code>; mapping at <code>lib/features/goal_cycle/data/reflection_repository.dart:254-266</code>; unconditional existing-entry save at <code>lib/features/goal_cycle/presentation/pages/reflection_editor_page.dart:92-109</code>, <code>:125-133</code>; overwrite at <code>lib/features/goal_cycle/data/reflection_repository.dart:306-317</code>.</div>
+          <div><b>Root cause</b>Deserialization uses one plain domain value for both “legitimately empty” and “persisted value failed structural validation.” The editor has no access to the original raw JSON or a validation fault.</div>
+          <div><b>Impact</b>Saved reflective learning content can appear blank. Merely opening the entry is non-destructive, but pressing Save can convert a potentially recoverable raw payload into an empty object. Duplicate/blank prompt keys can also collapse answers into the wrong field.</div>
+          <div><b>Analysis-only recommendation</b>Return a validated parse result that preserves the raw payload and reports structural faults. Make corrupt entries read-only by default, offer raw export/recovery, reject blank or duplicate prompt keys, and never rewrite a failed parse until the user has explicitly repaired it.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r14">
+        <h3>R14 · Link-target query failure is presented as “No other canvases”</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Silent failure</span><span class="tag">Flow</span></div>
+        <p>The canvas link dialog awaits a future from <code>canvasListProvider</code>, but once that future completes it never checks <code>snapshot.hasError</code>. A failed database/provider query produces no data, is converted to an empty list, and displays the legitimate empty-state copy “No other canvases to link to.” There is no retry in the dialog.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Chooser query at <code>lib/canvas/canvas_editor_page.dart:326-346</code>; ignored error and null-to-empty conversion at <code>lib/canvas/widgets/link_target_dialog.dart:157-170</code>.</div>
+          <div><b>Root cause</b>The <code>FutureBuilder</code> branches only on completion, then conflates absent data from failure with a successful empty result.</div>
+          <div><b>Impact</b>Cross-canvas linking becomes unavailable precisely during a storage/provider fault, while the user is told their library contains no targets. This prevents informed retry and can make existing notes seem missing.</div>
+          <div><b>Analysis-only recommendation</b>Handle loading, error, and successful-empty as distinct states. Preserve the typed error privately, show calm retry copy, and recreate the options future on retry.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r15">
+        <h3>R15 · A missing seeded board becomes a normal empty board whose Add action is a no-op</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">High impact / low likelihood</span><span class="tag">Confidence: high</span><span class="tag">Silent failure</span><span class="tag">Recovery</span></div>
+        <p>Both board repositories convert zero joined rows into a synthetic board with an empty ID and no columns. The shared UI treats that as a legitimate new board and invites the user to add a column. The repository then looks up the real seeded board and, if it is absent, returns normally without inserting anything. The UI receives apparent success but remains empty.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/revision/data/revision_repository.dart:55-105</code>, <code>:302-320</code>; parallel goal behavior at <code>lib/features/goal_cycle/data/goal_repository.dart:55-112</code>, <code>:350-368</code>; empty-state action at <code>lib/shared/kanban/kanban_board_view.dart:325-378</code>.</div>
+          <div><b>Root cause</b>“Seeded board missing” is encoded as ordinary domain data, and the write API treats a missing invariant as a successful no-op.</div>
+          <div><b>Impact</b>Revision or goal organization can look freshly empty and cannot be repaired in-app. Normal seeding is transactionally protected, so this primarily matters after corruption, external DB damage, or a bad legacy state.</div>
+          <div><b>Analysis-only recommendation</b>Represent missing required boards as an invariant/recovery error, not an empty board. Make writes throw on missing ownership and offer a non-destructive repair that recreates only missing scaffolding without replacing user boards or cards.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r16">
+        <h3>R16 · Canvas export catches domain errors but lets storage/rendering exceptions escape</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Recovery output</span><span class="tag">Unhandled async</span></div>
+        <p>Export gives helpful feedback for <code>CanvasExportException</code>, including missing media and size limits. However, the service also awaits application-directory lookup, directory creation, raster/codec operations, worker encoding, and a flushed file write, any of which can throw a different exception. The toolbar starts the export future from a void method and catches only the domain type. Its <code>finally</code> closes the progress dialog, but the original error then escapes without user feedback.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Unowned call at <code>lib/canvas/widgets/canvas_toolbar.dart:711-724</code>; narrow catch at <code>:1999-2025</code>; raw I/O awaits at <code>lib/canvas/io/canvas_export.dart:130-163</code>.</div>
+          <div><b>Root cause</b>The export boundary translates expected content faults but not infrastructure faults, and its caller does not own the returned future.</div>
+          <div><b>Impact</b>Low storage, permission/path-provider failure, codec failure, or an isolate/worker error ends export with no explanation or retry. Export is an important recovery route when note durability is in doubt.</div>
+          <div><b>Analysis-only recommendation</b>Catch all export-boundary failures, map them to safe reason categories, retain the underlying exception for bounded diagnostics, and keep retry available. Avoid claiming a destination until the flushed write succeeds.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r17">
+        <h3>R17 · Creating a focus-session canvas has no busy or failure owner</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Unhandled async</span><span class="tag">Flow interruption</span></div>
+        <p>From Focus Setup, choosing “Create new canvas” closes the picker and awaits <code>LibraryRepository.createCanvas</code> inside an async callback with no catch, busy guard, or feedback. A database failure therefore becomes an uncaught asynchronous error and leaves the focus draft unchanged without explanation.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/focus/presentation/pages/focus_setup_page.dart:262-289</code>. Contrast the library create flow, which catches and shows retry copy at <code>lib/features/library/presentation/pages/library_page.dart:83-101</code>.</div>
+          <div><b>Root cause</b>The shared picker returns intent, but the consuming setup row owns neither command state nor error presentation.</div>
+          <div><b>Impact</b>Preparing a study session can be interrupted with no actionable state, and the uncaught future feeds R04. Existing-canvas selection remains local and is unaffected.</div>
+          <div><b>Analysis-only recommendation</b>Give this command explicit in-flight state, catch the repository future, preserve the setup draft, and offer retry without reopening unrelated setup controls.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r18">
+        <h3>R18 · Board moves can commit, then report failure during post-commit renormalization</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Partial success</span><span class="tag">Ordering</span></div>
+        <p>Goal and revision card moves first commit the moved row, then query and optionally renormalize the destination column. Column reorders use the same two-stage pattern. Renormalization itself is transactional, but the initial move/reorder is outside that transaction. If the later read or transaction fails, the returned future fails even though the move already became durable; the shared UI reports “Could not move/reorder.”</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/revision/data/revision_repository.dart:168-182</code>, <code>:283-290</code>, <code>:356-401</code>; mirrored at <code>lib/features/goal_cycle/data/goal_repository.dart:198-212</code>, <code>:331-338</code>, <code>:404-449</code>; UI error wrapper at <code>lib/shared/kanban/kanban_column_view.dart:914-927</code>.</div>
+          <div><b>Root cause</b>One user action spans two database commits but exposes a single all-or-nothing result.</div>
+          <div><b>Impact</b>The card/column may visibly move while a snackbar says it failed. When positions are already dense, failed normalization can leave ambiguous ordering and encourage a duplicate user action.</div>
+          <div><b>Analysis-only recommendation</b>Run move plus density check/renormalization in one transaction, or treat normalization as idempotent maintenance whose failure is surfaced separately without denying the committed move.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r19">
+        <h3>R19 · Many read failures expose raw exceptions and provide no explicit retry</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Recovery UX</span><span class="tag">Diagnostic hygiene</span></div>
+        <p>Library, Settings, canvas load, and template load have calm error copy with retry. In contrast, both boards, Focus Setup and History, recent history, reflection lists/template pickers, attachment lists, and canvas pickers interpolate <code>$error</code> directly into the UI and generally have no invalidation/retry action. Raw Drift/platform exceptions may contain SQL, local paths, or implementation details while still not telling the user what action is safe.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b><code>lib/features/revision/presentation/pages/revision_board_page.dart:95-128</code>; <code>lib/features/goal_cycle/presentation/pages/goal_board_page.dart:84-117</code>; <code>lib/features/focus/presentation/pages/focus_history_page.dart:30-37</code>; <code>lib/features/focus/presentation/pages/focus_setup_page.dart:37-45</code>, <code>:79-85</code>; <code>lib/shared/canvas_attachments/canvas_picker_dialog.dart:97-104</code>; <code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:350-369</code>.</div>
+          <div><b>Root cause</b>Each screen independently renders <code>AsyncValue</code> errors; there is no shared safe error presenter or retry contract.</div>
+          <div><b>Impact</b>A transient stream/provider error can strand an entire feature until navigation or restart, and the user sees implementation detail instead of recovery guidance. This is especially disruptive on Goal/Revision boards and Focus Setup.</div>
+          <div><b>Analysis-only recommendation</b>Standardize feature-scoped error states with safe copy, an explicit provider/stream retry, and an optional local diagnostic code. Keep raw exceptions out of primary UI and never include note contents in diagnostics.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r20">
+        <h3>R20 · Non-canvas writing drafts are protected from Back, not from process loss</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">Confidence: high</span><span class="tag">Draft recovery</span><span class="tag">Learning content</span></div>
+        <p>Goal status text, revision notes, reflection answers, custom-template prompts, and focus-review notes live in widget fields/controllers until the user explicitly saves. Their <code>PopScope</code> guards are thoughtful and prevent accidental cooperative navigation, but there is no lifecycle draft snapshot or startup restoration. A crash, OS kill, or forced route teardown discards the typed work.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Goal draft and guard at <code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:45-105</code>, <code>:261-265</code>; reflection answers at <code>lib/features/goal_cycle/presentation/pages/reflection_editor_page.dart:56-82</code>, <code>:135-139</code>; template draft at <code>lib/features/goal_cycle/presentation/pages/template_editor_page.dart:33-60</code>, <code>:210-223</code>, <code>:297-301</code>; focus review note at <code>lib/features/focus/presentation/pages/focus_review_page.dart:30-55</code>, <code>:161-187</code>.</div>
+          <div><b>Root cause</b>Draft ownership is route-local, and navigation guards are the only recovery mechanism before the final repository write.</div>
+          <div><b>Impact</b>Reflective answers or a session debrief can be lost during an exceptional lifecycle event even though the corresponding saved entry/session remains intact. Unlike R01, this is explicit unsaved form state, so severity is Medium rather than High.</div>
+          <div><b>Analysis-only recommendation</b>For long-form learning fields, persist a debounced local draft keyed by entity and editor type, restore it after restart, and clear it only after the final write succeeds or the user explicitly discards. Keep short rename dialogs ephemeral.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r21">
+        <h3>R21 · Many update/delete commands treat zero affected rows as success</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">High impact / low likelihood</span><span class="tag">Confidence: high</span><span class="tag">Silent success</span><span class="tag">Stale state</span></div>
+        <p>Drift update/delete calls return an affected-row count, but most repository commands ignore it. The clearest data-bearing example is Focus review: <code>completeReview</code> can update zero rows yet return normally, after which the controller clears the only in-memory review state and the UI navigates home as if the note were saved. Reflection entry updates, template updates, canvas renames, board edits, ritual edits, and attachment changes have the same stale-target behavior.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Focus write at <code>lib/features/focus/data/focus_repository.dart:248-275</code> followed by controller clear at <code>lib/features/focus/application/active_session_controller.dart:306-337</code>; reflection update at <code>lib/features/goal_cycle/data/reflection_repository.dart:302-325</code>. A positive counterexample checks exactly one moved canvas at <code>lib/features/library/data/library_repository.dart:142-155</code>.</div>
+          <div><b>Root cause</b>Command APIs model “SQL completed” as success instead of asserting the entity/version precondition they were asked to mutate.</div>
+          <div><b>Impact</b>In stale-route, concurrent, or corrupted states, the app can announce success and discard a draft although nothing was persisted. Ordinary single-user flows make this uncommon, but the failure is silent when it occurs.</div>
+          <div><b>Analysis-only recommendation</b>Require exactly one affected row for entity-targeted writes unless idempotent absence is explicitly intended. Throw a typed stale-entity error before clearing drafts or navigation state, and distinguish “already absent” for deletes in user copy.</div>
+        </div>
+      </article>
+
+      <article class="finding high" id="r22">
+        <h3>R22 · Goal-column deletion irreversibly removes reflections that the confirmation does not disclose</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Destructive action</span><span class="tag">Learning-content loss</span></div>
+        <p>The shared column dialog confirms deletion of the named column and its number of cards. On the Goal board, deleting that column cascades through its cards into every saved reflection entry. The repository comment knows that reflections cascade, and the single-goal dialog explicitly says “and all its reflections,” but the broader column dialog never mentions reflections or counts them. There is no archive, undo, trash, or recovery path after confirmation.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>The dialog names only cards at <code>lib/shared/kanban/kanban_column_view.dart:391-424</code>. Column deletion is a direct delete at <code>lib/features/goal_cycle/data/goal_repository.dart:370-375</code>. The FK chain is column → cards at <code>lib/core/database/tables/board_tables.dart:46-61</code> and card → reflections at <code>lib/core/database/tables/reflection_tables.dart:23-36</code>. Contrast the accurate single-goal warning at <code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:155-162</code>.</div>
+          <div><b>Root cause</b>A board-type-agnostic confirmation summarizes only the first cascade level even though Goal cards own a second, data-bearing reflection level.</div>
+          <div><b>Impact</b>A user intending to remove a workflow column and its visible cards can permanently erase weeks of reflective learning content without being told that content is in scope. The delete is intentional at the SQL layer, but consent is incomplete.</div>
+          <div><b>Analysis-only recommendation</b>Before deletion, query and display the exact number of cards and saved reflections affected. Prefer soft deletion/trash with restore for learning content; at minimum require a stronger confirmation whenever reflections exist and verify the cascade in a dedicated test.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r23">
+        <h3>R23 · Soft/optional relationships use destructive foreign-key cascades and rely on every caller to compensate</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">High impact / low likelihood</span><span class="tag">Confidence: high</span><span class="tag">Schema invariant</span><span class="tag">History preservation</span></div>
+        <p>Several nullable relationships represent categorization or historical context, but their schema action is <code>ON DELETE CASCADE</code>. Deleting a folder at the schema level can delete its canvases; deleting a linked canvas can delete focus sessions; deleting a ritual item can delete historical check snapshots. Current repositories carefully avoid the first two outcomes by nulling the link before delete, and ritual UI retires rather than deletes, but the database itself enforces the opposite of those preservation semantics.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Folder → canvas cascade at <code>lib/core/database/tables/canvas_tables.dart:18-33</code>; canvas → focus-session and ritual-item → historical-check cascades at <code>lib/core/database/tables/focus_tables.dart:74-98</code>. Manual compensation is at <code>lib/features/library/data/library_repository.dart:158-170</code> and <code>:187-199</code>; ritual items are retired at <code>lib/features/focus/data/ritual_repository.dart:111-114</code>.</div>
+          <div><b>Root cause</b>Referential cleanup was encoded as ownership even where the domain treats the reference as optional metadata. Preservation therefore depends on repository choreography instead of a matching schema invariant.</div>
+          <div><b>Impact</b>A future maintenance path, migration, raw repair, or partial refactor that deletes the parent directly can erase entire canvases or study history. Normal current UI paths mitigate this, so likelihood is low and formal severity remains Medium.</div>
+          <div><b>Analysis-only recommendation</b>Model these links as <code>SET NULL</code> (and preserve ritual snapshots independently) so the database’s default failure behavior protects content. Add direct-parent-delete tests proving canvases, focus sessions, and historical labels survive without repository pre-cleanup.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r24">
+        <h3>R24 · One out-of-range persisted enum can fail an entire query or stream</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">High impact / low likelihood</span><span class="tag">Confidence: high</span><span class="tag">Corruption isolation</span><span class="tag">Crash surface</span></div>
+        <p>Thirteen persisted enum fields use Drift’s index converter. Generated row mapping calls <code>EnumIndexConverter.fromSql</code>, whose implementation directly evaluates <code>values[fromDb]</code>. The table definitions do not add a range constraint, fallback, quarantine, or row-local recovery. Consequently a single out-of-range value from corruption, a faulty migration, or external database modification throws during row mapping and rejects the whole query/stream instead of isolating the affected row.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Examples include canvas element mapping at <code>lib/core/database/database.g.dart:3192-3258</code>, focus-session mapping at <code>:8264-8370</code>, and board mapping at <code>:10022-10052</code>. Enum columns originate at <code>lib/core/database/tables/canvas_tables.dart:47-63</code>, <code>:140-182</code>; <code>lib/core/database/tables/focus_tables.dart:51-62</code>; and <code>lib/core/database/tables/board_tables.dart:11-15</code>. Drift 2.31’s checked-in dependency implementation indexes without bounds handling at <code>/Users/karlromero/.pub-cache/hosted/pub.dev/drift-2.31.0/lib/src/runtime/types/converters.dart:242-260</code>.</div>
+          <div><b>Root cause</b>Storage validity is assumed at decode time, and read APIs return all-or-error collections rather than a result that can carry quarantined rows.</div>
+          <div><b>Impact</b>One damaged element can prevent a canvas from loading; one damaged session or board enum can take its whole history/board read offline. R19 then often presents a raw exception without a repair/retry path. No existing note is necessarily deleted, but access and recovery are feature-wide.</div>
+          <div><b>Analysis-only recommendation</b>Add database range constraints and migration validation for every enum. For content-bearing reads, provide a recovery scan that identifies row/table/column without exposing note text, quarantines only the invalid record, and blocks destructive reconciliation until the user has an export/repair option.</div>
+        </div>
+      </article>
+
+      <article class="finding high" id="r25">
+        <h3>R25 · Feature Retry buttons cannot recover the keep-alive database after open/migration/seed failure</h3>
+        <div class="tags"><span class="tag high">High</span><span class="tag">Confidence: high</span><span class="tag">Availability</span><span class="tag">Recovery trap</span><span class="tag">Database bootstrap</span></div>
+        <p>The app creates one synchronous, keep-alive <code>ZennoDatabase</code> around a delayed native/web connection. Both the delayed opener and Drift’s migration engine retain their first failure: <code>LazyDatabase</code> keeps a completed-error completer, and Drift explicitly stores a migration/before-open error and rethrows it on every later operation. Library, Settings, and canvas show Retry controls, but those controls only invalidate their feature stream or call <code>load</code> again; none closes/replaces <code>databaseProvider</code>. A transient acquisition failure or any migration/seed error is therefore unrecoverable inside the running app.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>The database is keep-alive at <code>lib/core/providers/database_provider.dart:6-14</code> and opened through one delayed connection at <code>lib/core/database/connection_native.dart:1-4</code> / <code>connection_web.dart:6-21</code>. Migration plus seed run during <code>beforeOpen</code> at <code>lib/core/database/database.dart:65-159</code>. Feature retries only invalidate list streams at <code>lib/features/library/presentation/pages/library_page.dart:302-323</code>, invalidate settings at <code>lib/features/settings/presentation/pages/settings_page.dart:49-58</code>, or rerun controller load at <code>lib/canvas/canvas_editor_page.dart:132-150</code>. No runtime call invalidates <code>databaseProvider</code>.</div>
+          <div><b>Root cause</b>Database bootstrap is hidden behind feature queries, while retry ownership stops one layer above the failed, permanently memoized resource.</div>
+          <div><b>Impact</b>All notes, boards, reflections, and focus history can remain inaccessible for the process lifetime while Retry appears available but deterministically repeats the same failure. A restart may recover a transient error, but the app does not say so and offers no safe read-only/export/repair mode.</div>
+          <div><b>Analysis-only recommendation</b>Own database bootstrap as an app-level state machine. A retry must dispose the failed instance, create a fresh connection, rerun integrity/migration checks, and atomically rebind dependent providers. Separate retryable acquisition failures from migration/corruption failures; for the latter, preserve the file and offer backup/export diagnostics before repair.</div>
+        </div>
+      </article>
+
+      <article class="finding medium" id="r26">
+        <h3>R26 · Persisted viewport values bypass the invariant that canvas transforms are invertible</h3>
+        <div class="tags"><span class="tag medium">Medium</span><span class="tag">High impact / low likelihood</span><span class="tag">Confidence: high</span><span class="tag">Crash surface</span><span class="tag">Corrupt-state recovery</span></div>
+        <p>The gesture code assumes every viewport scale has been clamped strictly positive, because screen-to-world mapping inverts its matrix. Interactive zoom does clamp new values, but canvas, bookmark, and link loaders construct <code>ViewportState</code> directly from persisted doubles without finiteness/range validation, and the schema has no positive-scale constraint. A stored zero makes the matrix singular; pointer conversion then throws. Negative or non-finite values can make content unreachable or propagate invalid geometry.</p>
+        <div class="finding-grid">
+          <div><b>Evidence</b>Raw loads at <code>lib/canvas/persistence/canvas_repository.dart:755-773</code>, <code>:825-840</code>, and <code>:1202-1218</code>; the controller adopts the saved viewport unchanged at <code>lib/canvas/canvas_controller.dart:876-905</code>. <code>CanvasTransform.toWorld</code> states the positive-scale assumption and calls <code>Matrix4.inverted</code> at <code>lib/canvas/engine/canvas_transform.dart:80-91</code>. The table declares <code>vpScale</code> as an unconstrained real at <code>lib/core/database/tables/canvas_tables.dart:39-43</code>.</div>
+          <div><b>Root cause</b>Validation exists at gesture mutation boundaries but not at persistence/import boundaries, so an engine invariant is documented rather than enforced.</div>
+          <div><b>Impact</b>A single corrupted camera record can let a canvas render into a broken state and then throw on touch/stylus input, blocking recovery from inside that canvas. Saved bookmarks/region links can reintroduce the same invalid state.</div>
+          <div><b>Analysis-only recommendation</b>Validate finite translation/rotation and clamp finite positive scale at every decode boundary. Preserve the invalid raw values in diagnostics, fall back to identity/last-known-good viewport, and add schema checks plus fixtures for zero, negative, NaN-like, and extreme values.</div>
+        </div>
+      </article>
+    </section>
+
+    <section id="controls">
+      <h2>Existing resilience controls worth preserving</h2>
+      <div class="control"><ul>
+        <li><strong>Atomic multi-row writes:</strong> canvas element/detail writes, full-state canvas sync, focus session creation, goal saves, and revision creation use Drift transactions.</li>
+        <li><strong>Canvas cooperative-exit guard:</strong> normal back flushes in-flight writes and warns before leaving with unsaved mutations.</li>
+        <li><strong>Canvas full-state retry:</strong> retry does not replay possibly stale individual closures; it synchronizes current elements, layers, bookmarks, viewport, paper, and tool state.</li>
+        <li><strong>Deleted-canvas protection:</strong> editor load checks existence and refuses to resurrect a stale route as a misleading blank note.</li>
+        <li><strong>Focus persistence:</strong> opening session and ritual snapshot are atomic, runtime is checkpointed, wall-clock time survives throttled ticks, and pending reviews restore.</li>
+        <li><strong>Single web DB client:</strong> Web Locks prevent two tabs from mutating the same direct IndexedDB-backed SQLite file; Library presents a specific message.</li>
+        <li><strong>Owned-path deletion boundary:</strong> file cleanup resolves paths and only deletes beneath app-owned media/thumbnail roots.</li>
+        <li><strong>Offline-first data plane:</strong> note/session repositories use local SQLite/IndexedDB; no runtime network persistence dependency was found in pass 1.</li>
+        <li><strong>Migration validation exists:</strong> checked-in tests construct every schema version 1–12 and validate migration to the exact v13 schema (<code>test/database_test.dart:551-569</code>). This is meaningful static evidence even though this analysis did not execute the tests.</li>
+        <li><strong>Attachment creation is atomic:</strong> create-and-attach uses one transaction, with a checked-in rollback test for a missing card (<code>test/card_canvas_attachment_repository_test.dart:43-53</code>).</li>
+        <li><strong>Canvas deletion rechecks file references:</strong> after the DB transaction, each candidate path is queried again before owned-file deletion; a checked-in test preserves a path shared by another canvas (<code>lib/features/library/data/library_repository.dart:187-205</code>; <code>test/library_repository_test.dart:128-175</code>).</li>
+      </ul></div>
+    </section>
+
+    <section id="coverage">
+      <h2>Failure-path coverage observed in checked-in tests</h2>
+      <p>These are source-reviewed test cases, not results from this analysis run. Their presence narrows several claims, but does not prove the current workspace passes.</p>
+      <table>
+        <thead><tr><th>Area</th><th>Covered evidence</th><th>Material gap relevant to this report</th></tr></thead>
+        <tbody>
+          <tr><td>Canvas atomicity</td><td>A failed replacement batch retains the original element (<code>test/canvas_repository_test.dart:804-837</code>).</td><td>No structurally incomplete detail-row fixture verifies visible quarantine instead of silent omission.</td></tr>
+          <tr><td>Canvas failed writes</td><td>Unsaved state survives banner dismissal and retry persists the newest snapshot (<code>:870-926</code>).</td><td>No abrupt route disposal/process-loss test; the queue itself remains controller-local.</td></tr>
+          <tr><td>Focus restoration</td><td>Normal active/review restoration and start-vs-restore coordination are covered (<code>test/active_session_controller_test.dart:14-63</code>, <code>:140-200</code>, <code>:236-293</code>).</td><td>No repository/decode failure case asserts an error state and successful retry.</td></tr>
+          <tr><td>Database migrations</td><td>Every recorded schema version migrates to exact v13 (<code>test/database_test.dart:551-569</code>).</td><td>No claim of execution in this review; platform storage initialization failures remain outside schema validation.</td></tr>
+          <tr><td>Reflections</td><td>UI safety tests cover dirty guards, save coordination, and normal schemas.</td><td>No direct malformed/wrong-shape schema or answers fixtures were found.</td></tr>
+          <tr><td>Kanban ordering</td><td>Checked-in tests cover successful dense-position renormalization and goal-detail rollback (<code>test/kanban_repository_test.dart:11-94</code>).</td><td>No injected failure between the initial move and post-move renormalization.</td></tr>
+          <tr><td>Link/export failures</td><td>Export tests cover empty scopes and missing media with domain exceptions.</td><td>No link-provider failure state or non-domain export I/O failure is covered.</td></tr>
+          <tr><td>Draft and stale-row recovery</td><td>UI safety tests cover several Back/discard guards and duplicate-submit gates.</td><td>No process-restart draft recovery or zero-affected-row save case was found.</td></tr>
+          <tr><td>Destructive and corrupt-state recovery</td><td>Single-goal deletion accurately warns that reflections are included; current library repositories detach optional folder/focus links before parent deletion.</td><td>No Goal-column confirmation test asserts reflection disclosure, no direct-parent-delete preservation test, and no invalid persisted-enum fixture was found.</td></tr>
+          <tr><td>Database bootstrap and numeric invariants</td><td>All recorded migration versions have exact-schema validation, and normal gesture operations clamp viewport zoom.</td><td>No failed database-open/migration retry test and no zero/negative/non-finite persisted viewport fixture was found.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="priorities">
+      <h2>Recommended priority order</h2>
+      <ol>
+        <li><strong>Protect note durability:</strong> address R01, R02, and R13 before adding new canvas/reflection features. Recovery must survive route/process boundaries and corrupt persisted content must never look legitimately empty.</li>
+        <li><strong>Make restoration an explicit state machine:</strong> resolve R03, then use the same bootstrap pattern for R10.</li>
+        <li><strong>Establish async ownership and diagnostics:</strong> R04 and R05 provide the foundation for every later failure path without adding noisy UI.</li>
+        <li><strong>Close file/media gaps:</strong> serialize staging/cleanup (R09), represent terminal raster failures (R08), and make cleanup measurable (R11).</li>
+        <li><strong>Refine focus partial failure:</strong> coalesce checkpoints and represent pending durability (R06/R07).</li>
+        <li><strong>Stop conflating errors with empty/success:</strong> separate failed link and board invariants (R14/R15), then close the export/focus async ownership gaps (R16/R17) and board post-commit ambiguity (R18).</li>
+        <li><strong>Make recovery consistent:</strong> standardize safe retry surfaces (R19), add durable long-form drafts (R20), and require affected-row invariants before clearing state (R21).</li>
+        <li><strong>Make destructive scope and schema defaults safe:</strong> disclose and recover Goal reflection cascades (R22), align optional-link foreign keys with preservation semantics (R23), and isolate malformed persisted rows instead of failing whole reads (R24).</li>
+        <li><strong>Recover the storage substrate itself:</strong> replace rather than re-query a failed database instance (R25), then enforce viewport/numeric invariants at persistence boundaries (R26).</li>
+      </ol>
+    </section>
+
+    <section id="iterations">
+      <h2>Iteration log</h2>
+      <div class="iteration">
+        <h3>Iteration 1 · 2026-07-18 05:03 UTC+08:00</h3>
+        <p>Created the first comprehensive pass from runtime source, schema, providers, repositories, and UI failure paths. Distinguished strong cooperative canvas recovery from abrupt-lifecycle risk; recorded 12 findings and 8 existing controls. No runtime claims were derived from executing the app.</p>
+        <p class="muted">Next pass: challenge high severities against tests and migrations, inspect reflection/attachment/import-export corruption boundaries, review repository-local plans/reviews for already-known evidence, and search for async callbacks or lifecycle routes missed in pass 1.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 2 · 2026-07-18 05:07 UTC+08:00</h3>
+        <p>Re-read high-risk persistence paths against checked-in failure tests. Retained R01 because the tests cover cooperative controller retry, not process-lifetime durability. Strengthened R02 after confirming full-state sync deletes every persisted generic element absent from the reconstructed list. Added R13 for reflection payloads that are structurally wrong but syntactically valid and can be rewritten as empty.</p>
+        <p>Corrections and narrowing: ordinary canvas replacement is transactionally rolled back; migration coverage statically validates every stored version through v13; card/canvas attachment creation has a rollback test; missing-media export fails explicitly, so R08 remains scoped to editor rasterization rather than export. Older repository review documents were treated as historical context only.</p>
+        <p class="muted">Next pass: inspect every provider and async UI callback for retry ownership and raw-exception leakage; trace startup seeding, stream error propagation, and destructive actions after partial reads; challenge R09 timing against provider construction and import staging.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 3 · 2026-07-18 05:11 UTC+08:00</h3>
+        <p>Traced provider errors through their actual UI builders and followed async callbacks whose returned futures are discarded. Added R14–R18 for a failed link query rendered as an empty library, missing required boards acknowledged as normal empty state, non-domain export failures escaping the UI, unowned focus-canvas creation, and board ordering operations that can commit before reporting failure.</p>
+        <p>Severity correction: R09 is now formally Medium because its race window is narrow, while retaining the explicit high-impact/low-likelihood label. This makes the summary counts consistent with the displayed finding classes. Successful board seeding and successful renormalization have checked-in tests; the new findings concern corrupted invariants and injected failures between stages, not the normal path.</p>
+        <p class="muted">Next pass: inspect raw exception presentation and retry controls across every AsyncValue/FutureBuilder; audit focus review/ritual destructive recovery; examine database shutdown, app lifecycle, and stream termination; re-evaluate export and media resource disposal under exceptions.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 4 · 2026-07-18 05:13 UTC+08:00</h3>
+        <p>Audited every visible <code>AsyncValue</code>/<code>StreamBuilder</code> error branch and compared it with the app’s strongest retry surfaces. Added R19 for raw, non-retryable feature errors; R20 for long-form route-local drafts that survive Back interception but not process loss; and R21 for entity writes that ignore zero affected rows before clearing editor/controller state.</p>
+        <p>Strengthened R08 after tracing the raster scheduler and service caches: rejected PDF initialization/document futures remain memoized, and image decode resources are disposed only on the success path. Added the library’s per-file reference recheck as a positive control, supported by the shared-file preservation test. Focus Review itself correctly awaits Save/Discard persistence before clearing normal controller state; the residual risks are pre-save draft lifetime and stale-target zero-row success.</p>
+        <p class="muted">Next pass: trace every destructive FK cascade and archive/delete invariant; inspect integer/enum/date decoding crash surfaces; review database migration failure presentation and native SQLite durability settings; challenge the form-draft scope against short vs long inputs and existing safety tests.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 5 · 2026-07-18 05:16 UTC+08:00</h3>
+        <p>Followed user-facing delete confirmations through every foreign-key level. Added R22 after confirming that Goal-column deletion warns only about visible cards while also irreversibly cascading all saved reflections; the single-goal dialog proves the narrower path already knows to disclose that impact. Added R23 for optional categorization/history links whose schema cascades contradict the repositories’ deliberate preservation choreography.</p>
+        <p>Inspected every persisted enum conversion and added R24: generated mapping uses direct index lookup with no database range constraint or row-level quarantine, so one invalid value can fail the containing read. Corrected the summary’s existing-control count from the stale first-pass value of 8 to the 11 controls actually documented. Current folder and canvas deletion paths remain positively narrowed: they null soft links before deletion inside transactions.</p>
+        <p class="muted">Next pass: inspect native and web database durability/open/close behavior, migration-start failure presentation, numeric-value validation, stream subscriptions and disposal, import/export staging rollback, and file-copy failure cleanup. Re-read all High findings for counterexamples before retaining severity.</p>
+      </div>
+      <div class="iteration">
+        <h3>Iteration 6 · 2026-07-18 05:19 UTC+08:00</h3>
+        <p>Traced connection acquisition, migration, <code>beforeOpen</code> seeding, provider lifetime, and each visible Retry button through Drift’s actual cached-failure behavior. Added R25: once the delayed open or migration/seed phase fails, the keep-alive database cannot recover, while current retries only recreate queries against it. Retained High because the whole local knowledge store is unavailable and no in-app path replaces the failed resource.</p>
+        <p>Confirmed two positive controls: the app database is closed when its provider container is disposed, and seeding is transactional. Added R26 after checking numeric persistence boundaries: live gestures clamp viewport scale, but database/bookmark/link loads bypass the clamp and can violate the invertibility assumption used by pointer mapping. Strengthened R11 with the separate failed-import orphan path; this remains Low because it establishes storage leakage, not committed-note loss.</p>
+        <p class="muted">Next pass: challenge every High finding against deletion/undo/export affordances and source tests; inspect thumbnail capture/update ordering, archive semantics and discoverability, filesystem path aliasing/symlinks, focus state restoration selection rules, and date/time corruption behavior.</p>
+      </div>
+    </section>
+
+    <p class="warning"><strong>Analysis status:</strong> ongoing. This file is the only output owned by Analyzer 10 and will be updated in place after each re-check.</p>
+  </main>
+</div>
+</body>
+</html>

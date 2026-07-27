@@ -32,7 +32,15 @@ class FocusHomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final history = ref.watch(focusHistoryProvider);
     final stats = ref.watch(focusStatsProvider);
-    final active = ref.watch(activeSessionControllerProvider);
+    final active = ref.watch(
+      activeSessionControllerProvider.select(
+        (state) => (
+          isRestoring: state.isRestoring,
+          hasSession: state.hasSession,
+          reviewPending: state.reviewPending,
+        ),
+      ),
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,

@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zenno Performance Analysis — Analyzer 08</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101416;
+      --panel: #182024;
+      --panel-2: #202a2f;
+      --text: #edf2f1;
+      --muted: #aebbb9;
+      --line: #344247;
+      --accent: #e8b84b;
+      --high: #ff796f;
+      --medium: #ffbd69;
+      --low: #7ec8e3;
+      --good: #74d19b;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: #9dd7ff; }
+    code { color: #f6d98d; overflow-wrap: anywhere; }
+    .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 24px 20px;
+      border-right: 1px solid var(--line);
+      background: #12191c;
+    }
+    nav strong { display: block; color: var(--accent); margin-bottom: 12px; }
+    nav a { display: block; padding: 5px 0; color: var(--muted); text-decoration: none; }
+    nav a:hover { color: var(--text); }
+    main { width: min(1160px, 100%); padding: 42px clamp(22px, 5vw, 72px) 100px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 46px); line-height: 1.1; }
+    h2 { margin-top: 52px; padding-top: 12px; border-top: 1px solid var(--line); }
+    h3 { margin: 0; font-size: 21px; line-height: 1.3; }
+    p { max-width: 86ch; }
+    .lede { color: var(--muted); font-size: 17px; }
+    .meta, .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .metric, .card, .finding, .iteration {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .metric { padding: 14px; }
+    .metric b { display: block; font-size: 24px; color: var(--accent); }
+    .card { padding: 18px; }
+    .finding { margin: 18px 0; padding: 22px; scroll-margin-top: 18px; }
+    .finding.high { border-left: 5px solid var(--high); }
+    .finding.medium { border-left: 5px solid var(--medium); }
+    .finding.low { border-left: 5px solid var(--low); }
+    .finding header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .badges { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+    .badge { border: 1px solid currentColor; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; }
+    .sev-high { color: var(--high); }
+    .sev-medium { color: var(--medium); }
+    .sev-low { color: var(--low); }
+    .confidence { color: #b6e4ff; }
+    .label { color: var(--accent); font-weight: 700; }
+    .evidence { margin: 12px 0; padding: 12px 14px; background: var(--panel-2); border-radius: 8px; }
+    .evidence li { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+    th { color: var(--accent); }
+    .good { color: var(--good); }
+    .muted, small { color: var(--muted); }
+    .iteration { padding: 18px; margin: 14px 0; }
+    .iteration time { color: var(--accent); font-weight: 700; }
+    @media (max-width: 820px) {
+      .layout { display: block; }
+      nav { position: static; width: auto; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      nav a { display: inline-block; margin-right: 14px; }
+      main { padding-top: 28px; }
+      .finding header { display: block; }
+      .badges { justify-content: flex-start; margin-top: 10px; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="Report navigation">
+    <strong>Analyzer 08</strong>
+    <a href="#overview">Overview</a>
+    <a href="#method">Scope &amp; method</a>
+    <a href="#priorities">Priority map</a>
+    <a href="#f01">F01 · Canvas hydration</a>
+    <a href="#f02">F02 · Notification fan-out</a>
+    <a href="#f03">F03 · Render full scans</a>
+    <a href="#f04">F04 · Cache invalidation</a>
+    <a href="#f05">F05 · Image decode memory</a>
+    <a href="#f06">F06 · Undo retention</a>
+    <a href="#f07">F07 · Live gestures</a>
+    <a href="#f08">F08 · Export peak memory</a>
+    <a href="#f09">F09 · Load round trips</a>
+    <a href="#f10">F10 · Focus history</a>
+    <a href="#f11">F11 · Goal board fan-out</a>
+    <a href="#f12">F12 · Library startup work</a>
+    <a href="#f13">F13 · Raster scheduling</a>
+    <a href="#f14">F14 · PDF document pool</a>
+    <a href="#f15">F15 · Settings fan-out</a>
+    <a href="#f16">F16 · Bulk command mutation</a>
+    <a href="#f17">F17 · Transform allocation</a>
+    <a href="#f18">F18 · Quadtree retention</a>
+    <a href="#f19">F19 · Hidden Library invalidation</a>
+    <a href="#f20">F20 · Write backlog retention</a>
+    <a href="#f21">F21 · Unbounded SQL IN lists</a>
+    <a href="#strengths">Verified strengths</a>
+    <a href="#challenge">Challenged claims</a>
+    <a href="#watchlist">Dormant watchlist</a>
+    <a href="#iterations">Iteration log</a>
+  </nav>
+
+  <main>
+    <section id="overview">
+      <p class="muted">Standalone repository analysis · analysis only · no build/test/runtime execution</p>
+      <h1>Zenno performance, scalability, and resource analysis</h1>
+      <p class="lede"><strong>Analyzer 08</strong> examined rendering, rebuild breadth, allocation pressure, database/query cost, startup, large-note behavior, and resource lifetime. The dominant risk is not one slow API: several “viewport bounded” paths still perform work proportional to the entire note, while global controller notifications amplify that work during pen and pointer input.</p>
+      <div class="meta">
+        <div class="metric"><b>21</b>supported findings</div>
+        <div class="metric"><b>12</b>high-severity findings</div>
+        <div class="metric"><b>8</b>medium-severity findings</div>
+        <div class="metric"><b>1</b>low-severity finding</div>
+        <div class="metric"><b>0</b>files changed outside this report</div>
+      </div>
+      <p><span class="label">Highest-value sequence:</span> introduce one stable id/rank map and atomic bulk element-store path; use them to make hydration, commands, spatial-hit recovery, painting, and raster scheduling linear or viewport-bounded; split controller notifications by concern; then make tile invalidation and raster decoding incremental. These changes protect handwriting flow without changing durable note semantics.</p>
+    </section>
+
+    <section id="method">
+      <h2>Scope and method</h2>
+      <div class="summary-grid">
+        <div class="card"><span class="label">Inspected</span><br>Flutter/Dart application code, Drift schemas and repositories, render/input paths, provider lifetimes, Android/web startup configuration, tests as static intent evidence, and relevant untracked review/plan material.</div>
+        <div class="card"><span class="label">Not executed</span><br>No build, test, install, app launch, benchmark, profiler, migration, network operation, or Git mutation was performed. Runtime timing and heap magnitude remain unmeasured by instruction.</div>
+        <div class="card"><span class="label">Evidence rule</span><br>A finding requires a current-code cause and an observable cost path. Old plan/review claims were treated as leads only and rechecked against current source.</div>
+        <div class="card"><span class="label">Data-integrity rule</span><br>Recommendations preserve durable note data. Memory failures are distinguished from direct database corruption; indirect risk means process death can interrupt flow or leave the newest in-flight edit awaiting normal recovery.</div>
+      </div>
+    </section>
+
+    <section id="priorities">
+      <h2>Priority map</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Severity</th><th>Primary dimension</th><th>Scaling shape</th><th>Flow/data impact</th></tr></thead>
+        <tbody>
+          <tr><td>F01</td><td class="sev-high">High</td><td>Canvas startup</td><td>O(n²) controller hydration + O(points) decode</td><td>Long blank/loading interval; possible memory pressure</td></tr>
+          <tr><td>F02</td><td class="sev-high">High</td><td>Widget rebuilds</td><td>Global fan-out per input notification</td><td>Ink/hover/pan latency and allocation churn</td></tr>
+          <tr><td>F03</td><td class="sev-high">High</td><td>Committed rendering</td><td>O(total elements) per relevant paint</td><td>Large notes jank even with few visible items</td></tr>
+          <tr><td>F04</td><td class="sev-high">High</td><td>Picture/path caching</td><td>Global invalidation per committed edit</td><td>Pen-up hitch on dense visible notes</td></tr>
+          <tr><td>F05</td><td class="sev-high">High</td><td>Raster memory</td><td>Native image dimensions, not display size</td><td>OOM/process-kill risk during image use</td></tr>
+          <tr><td>F06</td><td class="sev-high">High</td><td>Session memory</td><td>Unbounded retained edit generations</td><td>Long-session GC/OOM risk</td></tr>
+          <tr><td>F07</td><td class="sev-high">High</td><td>Live input/geometry</td><td>Repeated O(points-so-far); commit O(path × geometry)</td><td>Long-stroke/eraser/lasso slowdown</td></tr>
+          <tr><td>F08</td><td class="sev-medium">Medium</td><td>Export memory</td><td>All scoped rasters + large output buffers</td><td>Export stalls or process kill</td></tr>
+          <tr><td>F09</td><td class="sev-medium">Medium</td><td>Canvas DB startup</td><td>Sequential independent round trips</td><td>Extra open latency, worse on web DB</td></tr>
+          <tr><td>F10</td><td class="sev-high">High</td><td>Focus DB/UI</td><td>2N+1 queries every 15-second runtime update</td><td>Active timer can churn full history</td></tr>
+          <tr><td>F11</td><td class="sev-medium">Medium</td><td>Goal board DB</td><td>Rows fan out by reflection count</td><td>Board refresh cost grows with learning history</td></tr>
+          <tr><td>F12</td><td class="sev-medium">Medium</td><td>Library startup</td><td>Duplicate initial reads + full cleanup scan</td><td>Initial DB/filesystem contention</td></tr>
+          <tr><td>F13</td><td class="sev-high">High</td><td>Viewport scheduling</td><td>O(total elements) on camera changes</td><td>Pan/zoom cost even in raster-free notes</td></tr>
+          <tr><td>F14</td><td class="sev-medium">Medium</td><td>Native PDF resources</td><td>Unbounded by distinct PDF path per open note</td><td>Long-lived document handles accumulate</td></tr>
+          <tr><td>F15</td><td class="sev-low">Low</td><td>Settings rebuild/write cost</td><td>App/editor fan-out per setting emission</td><td>Settings interaction can disturb an open canvas</td></tr>
+          <tr><td>F16</td><td class="sev-high">High</td><td>Bulk edit/undo</td><td>O(k × n), O(n²) for clear/full-note replay</td><td>Selection commit, clear, import, undo can freeze</td></tr>
+          <tr><td>F17</td><td class="sev-medium">Medium</td><td>Grid/overlay allocation</td><td>One Matrix4 per transformed point</td><td>Camera and long-gesture frame GC pressure</td></tr>
+          <tr><td>F18</td><td class="sev-medium">Medium</td><td>Spatial-index lifetime</td><td>Nodes grow with historical footprint</td><td>Long-session memory/query degradation</td></tr>
+          <tr><td>F19</td><td class="sev-high">High</td><td>Cross-route reactive DB work</td><td>Full Library query per canvas-row write</td><td>Hidden grid work competes with handwriting</td></tr>
+          <tr><td>F20</td><td class="sev-medium">Medium</td><td>Persistence backlog</td><td>Unbounded pending/failed closures</td><td>Slow/failing storage retains note snapshots</td></tr>
+          <tr><td>F21</td><td class="sev-high">High</td><td>Large-note SQL limits</td><td>One bind variable per element id</td><td>Very large notes can stop opening/saving bulk edits</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section aria-label="Detailed findings">
+      <h2>Detailed findings</h2>
+
+      <article class="finding high" id="f01">
+        <header><h3>F01 · Large-canvas hydration becomes quadratic after full payload materialization</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The repository correctly batches detail-table reads by element kind, but reconstructs every element and decodes every ink point before first display. The repository order is only <code>zIndex</code>; the controller then replays that list one element at a time through an insertion API that rescans the growing list for duplicate detection and for the layer-position-plus-z insertion point. Its comparator also linearly searches layers.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/persistence/canvas_repository.dart"><code>lib/canvas/persistence/canvas_repository.dart:83-193</code></a> reads every base row, issues up to six kind-detail reads, and reconstructs the full list; ink decoding occurs at <code>:213-230</code>.</li>
+          <li><a href="../lib/canvas/persistence/ink_codec.dart"><code>lib/canvas/persistence/ink_codec.dart:76-123</code></a> creates one Dart <code>StrokePoint</code> per persisted point.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:862-923</code></a> awaits all document parts, then loops through loaded elements at <code>:897-899</code>.</li>
+          <li><code>addElementToStore</code> scans for duplicate id and insertion point at <code>canvas_controller.dart:791-807</code>; <code>_compareElements</code> calls the linear <code>_layerById</code> at <code>:635-642, 762-770</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Opening a handwritten note grows with total element and point count, not the viewport. The controller replay is O(n²); synchronous object construction increases the pre-first-frame heap. The likely result is a visibly stuck loader or process pressure on the target tablet. Durable rows are not directly corrupted, but an app kill breaks thinking flow.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Introduce a bulk hydration path: build a layer-rank map, sort once by layer position and z, assign the list once, then build an id map and spatial index and derive the next z-index in one pass. For genuinely large notes, separate light element metadata from ink payload and decode visible/near-visible ink lazily or on an isolate, while preserving deterministic durable ordering.</p>
+      </article>
+
+      <article class="finding high" id="f02">
+        <header><h3>F02 · One controller notification rebuilds the page, canvas view, toolbar, and bookmark listener</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> <code>CanvasController</code> is a single broad <code>ChangeNotifier</code>. The editor page listens around its entire loaded body; the nested view listens again around its four paint layers; the 4,841-line toolbar and bookmark menu each listen again. Notifications include high-rate hover and gesture state, not only document mutations.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/canvas_editor_page.dart"><code>lib/canvas/canvas_editor_page.dart:476-679</code></a> wraps all shortcuts, canvas, toolbar, title, and menu construction in a page-wide <code>ListenableBuilder</code>.</li>
+          <li><a href="../lib/canvas/render/canvas_view.dart"><code>lib/canvas/render/canvas_view.dart:1455-1547</code></a> adds another controller listener around layout and all paint delegates.</li>
+          <li><a href="../lib/canvas/widgets/canvas_toolbar.dart"><code>lib/canvas/widgets/canvas_toolbar.dart:322-385</code></a> listens around the toolbar layout; <a href="../lib/canvas/widgets/canvas_bookmarks_menu.dart"><code>canvas_bookmarks_menu.dart:23-76</code></a> listens independently.</li>
+          <li>Hover always notifies without an equality guard at <code>canvas_controller.dart:1973-1977</code>. Eraser and lasso append notify on every accepted raw move at <code>:2031-2038, 2594-2600</code>. Live ink is frame-coalesced, but still reaches every listener at <code>:721-738</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Handwriting, hover, panning, erasing, and lassoing repeatedly reconstruct large widget subtrees and short-lived collections. <code>RepaintBoundary</code> protects raster repaint isolation, not Dart widget build cost. On a dense editor this competes directly with input latency.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Expose small listenables or selectors for load/error, viewport, committed elements, live stroke, overlay, selection, rasters, and tool UI. Keep the page listener limited to load/save-error state; drive painters through targeted repaint/revision signals; keep static toolbar children outside builders. Add hover equality/screen-distance gating and frame-coalesce gesture overlays.</p>
+      </article>
+
+      <article class="finding high" id="f03">
+        <header><h3>F03 · “Viewport-bounded” committed painting still scans or maps the whole note</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The quadtree identifies visible ids, but the non-tile path recovers z-order by walking the entire element list. The tile path rebuilds two full-note maps on each paint before querying only visible tiles. Thus spatial culling reduces expensive draw calls, but not CPU/allocation cost to O(visible).</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/render/elements_painter.dart"><code>lib/canvas/render/elements_painter.dart:383-415</code></a> queries the spatial index, then calls <code>_paintVisibleElements</code>.</li>
+          <li><code>_paintVisibleElements</code> loops every element and tests set membership at <code>:429-456</code>.</li>
+          <li><code>_paintCachedTiles</code> creates <code>elementsById</code> and <code>paintOrderById</code> across every element at <code>:491-499</code>, even when pictures are already cached.</li>
+          <li>Viewport changes make the delegate repaint-eligible at <code>:982-1003</code>; <code>CanvasView</code> passes the entire visible-layer list at <code>canvas_view.dart:1492-1508</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Pan and zoom frame cost and garbage scale with total note size even when only a few strokes are on screen. This contradicts the painter’s O(visible) contract and makes large, spatially sparse notes degrade.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Maintain a stable controller-side <code>id → element</code> map plus paint-rank map. Convert quadtree hits directly to candidate references and sort only those candidates by stable rank. Pass these stable structures into the cache instead of allocating full maps in <code>paint</code>.</p>
+      </article>
+
+      <article class="finding high" id="f04">
+        <header><h3>F04 · Each committed stroke globally clears tile pictures and committed stroke paths</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Any structural element mutation increments one global revision. On the next paint, the tile cache treats that as a full-document invalidation, disposes every retained picture, and also clears the committed stroke-path cache. Recording then resumes for every visible tile.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/render/elements_painter.dart"><code>lib/canvas/render/elements_painter.dart:62-85</code></a> has <code>clear()</code> dispose all pictures and clear <code>strokePathCache</code>; <code>_syncRevision</code> calls it for any revision change.</li>
+          <li>The painter calls <code>_syncRevision</code> before cached painting at <code>:398-408</code>; uncached tiles are re-recorded at <code>:87-120</code>.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:669-673</code></a> increments the shared element revision; add/remove call it at <code>:807-834</code>. Ending a stroke commits via <code>AddElementCommand</code> at <code>:1307-1328</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> The cost of pen-up is proportional to all visible committed content, not the new stroke. On a dense handwritten page, the pause can land exactly between strokes and interrupt the natural writing cadence. The same invalidation discards reusable high-zoom geometry for unaffected strokes.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Invalidate only tiles overlapped by the old/new bounds of changed elements. Keep the stroke path cache independent from tile pictures and remove entries only for changed/deleted stroke ids. A command can expose its dirty world regions without altering durable data or undo semantics.</p>
+      </article>
+
+      <article class="finding high" id="f05">
+        <header><h3>F05 · Images decode at native resolution and visible rasters can exceed the nominal 96 MB budget</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Both initial import and later hydration decode the complete image without target dimensions. The cache budget evicts only off-screen elements; a single visible high-resolution photo can exceed it by itself. Unlike PDFs, images have no scale bucket or longest-edge cap.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/io/canvas_import.dart"><code>lib/canvas/io/canvas_import.dart:87-107</code></a> reads the entire file into a <code>Uint8List</code>, then calls <code>instantiateImageCodec(bytes)</code> without target size.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:4299-4317</code></a> calls <code>ImageDescriptor.instantiateCodec()</code> without <code>targetWidth</code>/<code>targetHeight</code>.</li>
+          <li>The budget is 96 MB at <code>canvas_controller.dart:446-461</code>, while enforcement skips every visible id at <code>:4447-4487</code>.</li>
+          <li><a href="../lib/canvas/pdf/pdf_raster_service.dart"><code>lib/canvas/pdf/pdf_raster_service.dart:64-76, 174-184</code></a> caps PDF raster dimensions, demonstrating the missing analogous image policy.</li>
+        </ul>
+        <p><span class="label">Impact.</span> A 12,000 × 9,000 decoded RGBA image is roughly 412 MiB before ancillary buffers. Importing or revealing such an image can cause a large frame stall or Android process kill. This is not direct database corruption, but it risks losing the newest in-flight interaction and makes image-heavy notes unreliable.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Decode into resolution buckets derived from placement size × zoom × device pixel ratio, with a hard per-raster dimension/byte cap. Re-decode upward only after zoom settles; degrade visible resolution when needed instead of exempting visible items from a hard total. Avoid the import-time whole-file byte copy where the descriptor/file path API suffices.</p>
+      </article>
+
+      <article class="finding high" id="f06">
+        <header><h3>F06 · Undo/redo history is unbounded and retains full geometry generations</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Every command is retained until the controller closes. Commands preserve full before/after element snapshots; moving, scaling, rotating, partial-erasing, or clearing ink can retain additional point-list generations. Raster fields are correctly stripped, but vector geometry remains unbudgeted.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:283-287</code></a> defines the stacks; <code>_runCommand</code> appends without a cap at <code>:1128-1134</code>.</li>
+          <li><a href="../lib/canvas/engine/canvas_commands.dart"><code>lib/canvas/engine/canvas_commands.dart:90-289</code></a> retains removed/added and original/moved or original/transformed lists. Clear snapshots all elements at <code>:292-319</code>.</li>
+          <li><a href="../lib/canvas/model/canvas_element.dart"><code>lib/canvas/model/canvas_element.dart:285-303</code></a> translates an ink element by allocating a new <code>StrokePoint</code> for every point.</li>
+          <li><code>_commandSnapshot</code> at <code>canvas_commands.dart:5-10</code> explicitly removes image/PDF rasters, a verified strength that does not bound vector memory.</li>
+        </ul>
+        <p><span class="label">Impact.</span> A long thinking session with repeated transforms or partial erases can keep large, unreachable-from-current-state ink arrays alive, increasing GC frequency and eventual OOM risk. Data remains correct while resident, but resource exhaustion threatens continuity.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Define an undo memory budget, not merely a command count. Estimate retained point bytes per command, coalesce adjacent nudges/transforms, and drop the oldest commands only after their resulting state is durable. Preserve a clear, user-consistent undo horizon; never discard current note state.</p>
+      </article>
+
+      <article class="finding high" id="f07">
+        <header><h3>F07 · Long stroke/eraser/lasso work is superlinear both during input and at commit</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The mutable live-stroke builder is an improvement over per-sample list spread, but each frame’s snapshot still copies the entire accumulated point list and invalidates the full perfect-freehand outline. Eraser and lasso getters copy their paths on every broad rebuild and notify for each move. At gesture completion, narrow-phase eraser proximity/splitting and lasso coverage compare path segments or points against complete stroke geometry, producing O(path-points × stroke-points) work for each candidate.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:100-130</code></a> invalidates the cached snapshot per append and rebuilds it with <code>List.unmodifiable</code>; frame-coalesced notification is at <code>:721-738</code>.</li>
+          <li><a href="../lib/canvas/render/live_stroke_painter.dart"><code>lib/canvas/render/live_stroke_painter.dart:24-55, 108-152</code></a> rebuilds a complete outline whenever the stroke revision changes.</li>
+          <li><a href="../lib/canvas/engine/stroke_builder.dart"><code>lib/canvas/engine/stroke_builder.dart:70-109</code></a> creates a <code>PointVector</code> list and perfect-freehand outline across all render points.</li>
+          <li>Eraser/lasso getters copy their current paths at <code>canvas_controller.dart:543-551</code>; appends notify unthrottled at <code>:2031-2038, 2594-2600</code>.</li>
+          <li><a href="../lib/canvas/tools/canvas_geometry.dart"><code>lib/canvas/tools/canvas_geometry.dart:62-107</code></a> nests polyline segment/vertex comparisons; lasso coverage repeatedly scans the polygon at <code>:116-153</code>; partial erase scans the eraser path for each stroke point/segment at <code>:195-337</code>.</li>
+          <li>Eraser and lasso broad phases query the spatial index but recover candidates by walking all elements at <code>canvas_controller.dart:2147-2170, 2622-2635</code>. Ink centerline lists are then reallocated at <code>:2202-2209, 2679-2685</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Per-frame work rises with gesture duration, creating the familiar “the longer I draw, the slower it gets” curve; pen-up for a broad erase or large lasso can then synchronously multiply gesture length by candidate geometry. Dense handwriting is the worst case and the pause lands directly in the thinking loop.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Keep a stable read-only view/version for active points, finalize immutable stroke chunks, and rebuild only a small mutable tail. Decimate gesture paths by minimum screen-space distance before exact work, notify overlays at most once per frame, map spatial hits directly, and use segment-level spatial acceleration/early coverage termination for exact commit geometry.</p>
+      </article>
+
+      <article class="finding medium" id="f08">
+        <header><h3>F08 · Export can retain every source raster plus 32 MP output and encoding buffers</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Export prepares every scoped raster before rendering and retains owned images until completion. The 32-megapixel output cap still permits a ~128 MiB RGBA surface. JPG export obtains another raw RGBA buffer, copies it, and creates a worker-side image representation. Source image decode is native resolution.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/io/canvas_export.dart"><code>lib/canvas/io/canvas_export.dart:127-180</code></a> caps only output pixels at 32 Mi pixels.</li>
+          <li><code>_prepareElements</code> accumulates decoded images/PDF pages in <code>owned</code> until the final <code>finally</code> at <code>:315-390</code>.</li>
+          <li>Image export decode has no target size at <code>:393-409</code>.</li>
+          <li>JPG takes raw RGBA then <code>Uint8List.fromList</code> before <code>compute</code> at <code>:425-444</code>. The isolate is a verified CPU-responsiveness improvement, but peak memory remains high.</li>
+        </ul>
+        <p><span class="label">Impact.</span> A deliberate large export can stall or kill a memory-constrained tablet, especially for image/PDF-heavy content. Export failure does not delete the note, but a process kill can interrupt concurrent persistence and flow.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Decode source rasters to export-required dimensions, tile the output or lower the default tablet pixel cap, release per-tile resources promptly, and avoid the extra JPG copy with transferable/worker-friendly buffers where supported. Surface the operation as explicitly heavy with progress.</p>
+      </article>
+
+      <article class="finding medium" id="f09">
+        <header><h3>F09 · Canvas open serializes independent reads and rereads the same canvas metadata row</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The controller awaits existence, layers, elements, bookmarks, viewport, rotation lock, paper, and tool settings one by one. Viewport/rotation/paper/tool methods each independently select the same <code>canvases</code> row.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:872-882</code></a> contains the sequential await chain.</li>
+          <li><a href="../lib/canvas/persistence/canvas_repository.dart"><code>lib/canvas/persistence/canvas_repository.dart:829-908</code></a> implements four separate canvas-row metadata reads; existence is another query at <code>:959-965</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Fixed DB latency is added directly to every canvas open. It matters more on the synchronous WASM/IndexedDB web path and compounds F01 before the first useful frame.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Read the canvas row once into a document-metadata value and use it for existence and all metadata fields. Run truly independent layers/elements/bookmarks reads concurrently only if the Drift connection’s transaction/ordering behavior remains explicit and safe.</p>
+      </article>
+
+      <article class="finding high" id="f10">
+        <header><h3>F10 · Active Focus checkpoints can retrigger a full 2N+1 history load every 15 seconds</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Every session-table stream emission sequentially fetches distractions and ritual checks for every session. The active timer writes runtime fields back to that same table every 15 seconds, so its own checkpoint can invalidate the full-history stream. The ritual foreign key lacks a session-id index. History UI and statistics also eagerly materialize/refold the complete history.</p>
+        <ul class="evidence">
+          <li><a href="../lib/features/focus/data/focus_repository.dart"><code>lib/features/focus/data/focus_repository.dart:367-399</code></a> watches all sessions without limit and performs two awaited child queries inside the loop.</li>
+          <li><a href="../lib/features/focus/application/active_session_controller.dart"><code>lib/features/focus/application/active_session_controller.dart:357-403</code></a> emits each second and updates the session row after 15 seconds or a phase change.</li>
+          <li><a href="../lib/core/database/tables/focus_tables.dart"><code>lib/core/database/tables/focus_tables.dart:85-103</code></a> defines ritual checks without an index on <code>sessionId</code>; distractions do have one at <code>:105-119</code>.</li>
+          <li><a href="../lib/features/focus/presentation/pages/focus_history_page.dart"><code>lib/features/focus/presentation/pages/focus_history_page.dart:47-59</code></a> uses <code>ListView(children: [...for every session])</code>.</li>
+          <li><a href="../lib/features/focus/application/focus_stats_provider.dart"><code>lib/features/focus/application/focus_stats_provider.dart:18-30</code></a> filters, copies, and folds the full history on each emission.</li>
+          <li><a href="../lib/features/focus/presentation/pages/focus_home_page.dart"><code>lib/features/focus/presentation/pages/focus_home_page.dart:31-35, 122-155</code></a> watches full history and stats but renders only <code>sessions.take(5)</code>; pushed Active/Review routes normally leave Home mounted underneath.</li>
+        </ul>
+        <p><span class="label">Impact.</span> During an active focus session, years of study history can turn a routine checkpoint into hundreds or thousands of sequential reads and allocations while the timer UI remains live. Route retention means this is likely even when the pushed Active page covers Home. The exact watcher-retention behavior is an architectural inference; the invalidation/query chain itself is direct.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Give Home a limited recent-session query, paginate History, fetch children in joined/grouped batches for only the current page, and compute aggregates in SQL or incrementally. Add the ritual-check session index. Keep runtime-only checkpoints from invalidating full detail feeds, either through narrower reactive queries or a separately watched summary.</p>
+      </article>
+
+      <article class="finding medium" id="f11">
+        <header><h3>F11 · Goal board query multiplies card rows by every historical reflection</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The live board query joins reflection entries directly only to count their ids in Dart. Each reflection duplicates its card, detail, column, and board fields in the result. Any reflection-table change invalidates and remaps the entire board stream.</p>
+        <ul class="evidence">
+          <li><a href="../lib/features/goal_cycle/data/goal_repository.dart"><code>lib/features/goal_cycle/data/goal_repository.dart:60-100</code></a> documents and executes the card × reflection fan-out.</li>
+          <li><code>_rowsToBoard</code> allocates per-card sets and walks every joined row at <code>:103-169</code> solely to derive <code>reflectionCount</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> As reflection practice succeeds, opening or refreshing the goal board transports and maps more duplicated data even when the visible card information is unchanged except for a count. This is a slower-burn learning-history scalability issue, not an immediate data-integrity defect.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Replace raw reflection rows with a grouped <code>COUNT(*) GROUP BY card_id</code> subquery/join, or keep card rows and counts in two batched reactive queries combined by id. Preserve the current set-based correctness for duplicate prevention.</p>
+      </article>
+
+      <article class="finding medium" id="f12">
+        <header><h3>F12 · Library initialization duplicates initial watch reads and launches a full DB/filesystem cleanup</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Canvas/folder watchers explicitly call <code>get()</code> before subscribing to Drift <code>watch()</code>, whose first listener performs an initial fetch in the project’s pinned Drift 2.31.0. Constructing the auto-dispose repository also launches orphan cleanup: three full table reads, path canonicalization for every reference, and directory scans. Recreating the provider can rerun this work.</p>
+        <ul class="evidence">
+          <li><a href="../lib/features/library/data/library_repository.dart"><code>lib/features/library/data/library_repository.dart:51-70, 104-108, 272-275</code></a> routes lists through <code>_watchWithInitialRead</code>.</li>
+          <li><a href="../pubspec.lock"><code>pubspec.lock:284-291</code></a> pins Drift 2.31.0; its installed <code>watch()</code> implementation registers a query fetcher whose first listener fetches and emits data, confirming the second read rather than relying on generic API recollection.</li>
+          <li><a href="../lib/features/library/application/library_providers.dart"><code>lib/features/library/application/library_providers.dart:15-24</code></a> starts cleanup from provider construction; generated metadata marks it auto-dispose at <code>library_providers.g.dart:27-36</code>.</li>
+          <li><code>cleanupOrphanedFiles</code> reads all images, PDFs, and canvases at <code>library_repository.dart:28-45</code>.</li>
+          <li><a href="../lib/features/library/data/library_file_cleanup_io.dart"><code>lib/features/library/data/library_file_cleanup_io.dart:29-59</code></a> resolves every referenced file and scans both owned directories.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Initial library presentation competes with maintenance I/O and may receive duplicate full-list emissions. The effect scales with media and canvas count. The current indexed shell likely keeps the active library subscription alive, so repeated cleanup frequency is a risk condition rather than proven constant churn.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Use Drift’s watch stream directly unless a measured platform-specific reason requires a manual initial read. Make cleanup an explicit once-per-app-start maintenance service after the first useful frame, keep its singleton lifetime explicit, and batch/canonicalize only app-owned paths.</p>
+      </article>
+
+      <article class="finding high" id="f13">
+        <header><h3>F13 · Raster scheduling scans the entire note on camera changes, even when there are no rasters</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Viewport and size changes correctly coalesce scheduling to a post-frame callback, but the scheduler’s “viewport-bounded” implementation converts spatial hits to ids and then walks every element to find visible image/PDF jobs. Every ink, text, link, and shape is visited only to be skipped. Queue draining then resolves each job through another linear id scan.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/render/canvas_view.dart"><code>lib/canvas/render/canvas_view.dart:1417-1453</code></a> schedules raster work whenever viewport or size changes, with one post-frame coalescing guard.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:4078-4141</code></a> queries visible ids, loops all <code>_elements</code>, sorts jobs, clears the queue, and repopulates it.</li>
+          <li>Queue draining calls <code>_elementById</code> at <code>canvas_controller.dart:4152-4173</code>; that helper is a full linear scan at <code>:4247-4253</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Panning or zooming a large handwritten note adds O(total elements) controller work per changed frame even when the note contains zero images or PDFs. This stacks with F03’s rendering scan and broad F02 rebuilds, making sparse-view navigation scale with hidden content.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Maintain the same stable id map proposed for F01/F03 and separately index only raster-bearing element ids. Query spatial candidates directly to elements, filter that much smaller set, and update a stable priority queue at viewport boundaries instead of clearing/rebuilding it on every camera delta.</p>
+      </article>
+
+      <article class="finding medium" id="f14">
+        <header><h3>F14 · The PDF document pool is described as capped but grows until the canvas closes</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> <code>PdfRasterService</code> memoizes every opened document future by absolute path. There is no count, byte, LRU, or visibility limit; “capped” in the class comment means only that controller disposal eventually tears down the entire map. The service lives for the canvas-controller route lifetime.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/pdf/pdf_raster_service.dart"><code>lib/canvas/pdf/pdf_raster_service.dart:57-60, 84-113</code></a> claims a capped pool, declares an unconstrained map, and inserts one future per file path.</li>
+          <li>The only removal is whole-pool disposal at <code>pdf_raster_service.dart:228-247</code>.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:421-428, 4519-4526</code></a> owns the service for the controller lifetime and disposes it when the note closes.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Scrolling across many distinct PDFs within one large canvas retains native document handles, page collections, and library-side state after their pages leave view. The growth is bounded by distinct PDF files in that currently open note, so this is medium rather than high severity; the decoded-page image budget does not cover these handles.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Use a small LRU or reference-counted document pool and close inactive documents only after their render/probe jobs settle. Keep one handle shared across pages of the same active PDF, and make lifecycle state explicit so eviction never closes a document still in use.</p>
+      </article>
+
+      <article class="finding low" id="f15">
+        <header><h3>F15 · Broad settings subscriptions propagate unrelated changes into the app root and open editor</h3><div class="badges"><span class="badge sev-low">Low</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The app root watches the complete settings record to select one theme field; the editor also watches the complete record. Settings sliders invoke repository writes on every <code>onChanged</code> sample, and each row update can emit a new full model. The editor itself persists tool-wheel position through the same global row on drag end, causing the root and editor subscriptions to receive an otherwise local chrome change.</p>
+        <ul class="evidence">
+          <li><a href="../lib/app.dart"><code>lib/app.dart:28-42</code></a> watches <code>appSettingsProvider</code> around <code>MaterialApp.router</code> but consumes only <code>themeMode</code>.</li>
+          <li><a href="../lib/canvas/canvas_editor_page.dart"><code>lib/canvas/canvas_editor_page.dart:476-480</code></a> watches the same full model in the editor build.</li>
+          <li><a href="../lib/features/settings/presentation/pages/settings_page.dart"><code>lib/features/settings/presentation/pages/settings_page.dart:625-687</code></a> wires slider <code>onChanged</code> directly to write callbacks; examples are supplied at <code>:213-239, 402-419</code>.</li>
+          <li><a href="../lib/features/settings/data/settings_repository.dart"><code>lib/features/settings/data/settings_repository.dart:230-290</code></a> persists individual settings with database updates.</li>
+          <li><a href="../lib/canvas/widgets/canvas_toolbar.dart"><code>lib/canvas/widgets/canvas_toolbar.dart:208-259</code></a> correctly defers tool-wheel persistence until drag end; <code>canvas_editor_page.dart:645-671</code> then writes it through the global settings repository.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Dragging a settings slider creates avoidable database traffic and root rebuilds. Moving the tool wheel produces only one write, but that write can rebuild <code>MaterialApp.router</code> and the open editor despite not changing theme or canvas content. Frequency and exposure are limited, so this remains low severity rather than a core note-data risk.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Select only the theme field at the app root and only editor-relevant settings in the canvas. Hold slider state locally during drag and persist on <code>onChangeEnd</code> or with a short trailing debounce, while keeping immediate visual feedback local.</p>
+      </article>
+
+      <article class="finding high" id="f16">
+        <header><h3>F16 · Bulk commands are atomic in persistence but mutate the in-memory store element by element</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The command abstraction exposes only single-element add/remove methods. Multi-element delete, replace, move, and transform commands loop through those methods. Each remove runs <code>indexWhere</code> and shifts the list; each add scans for duplicate id, scans for an ordered insertion point, shifts the list, updates the quadtree, and increments the global element revision. Persistence mutations are responsibly coalesced into one transaction, but that does not coalesce the synchronous controller work.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/engine/canvas_commands.dart"><code>lib/canvas/engine/canvas_commands.dart:13-33</code></a> exposes only scalar store mutation; command apply/revert loops are at <code>:90-289</code> and <code>ClearCommand</code> repeats the same pattern at <code>:292-321</code>.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:791-834</code></a> performs the duplicate scan, insertion scan, list insertion/removal, spatial mutation, raster bookkeeping, and revision bump for every item.</li>
+          <li><code>_applyCommandMutation</code> batches only durable writes at <code>canvas_controller.dart:945-1017, 1169-1175</code>; moved selection reconciliation adds another element-list search per moved item at <code>:1185-1203</code>.</li>
+          <li>Full editable clear uses <code>RemoveElementsCommand</code> at <code>canvas_controller.dart:2001-2012</code>; selection move/transform commits at <code>:3055-3072, 3127-3170</code>; multi-page PDF import adds every page through <code>ReplaceElementsCommand</code> at <code>:3952-4013</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Editing k elements in an n-element note is O(k × n) list work, with additional shifts; clearing or replaying most of a note approaches O(n²). Large lasso moves, transforms, deletes, partial erases, multi-page imports, and their undo/redo can synchronously freeze the editor. Repeated revision bumps also discard caches once the command notifies, compounding F04.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Add a bulk store mutation surface that accepts removals/replacements atomically: construct the next ordered list and id map once, update or rebuild the spatial index once, reconcile selection once, track/dispose rasters once, and advance one revision with explicit dirty bounds. Keep the existing single persistence transaction and command-level undo semantics so the optimization cannot expose a partially applied durable edit.</p>
+      </article>
+
+      <article class="finding medium" id="f17">
+        <header><h3>F17 · Point transforms allocate a complete Matrix4 per point in grids and gesture overlays</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> <code>CanvasTransform.toScreen</code> constructs and composes a new <code>Matrix4</code> for every point; <code>toWorld</code> constructs that matrix and an inverse. Grid painting calls this helper for every dot or line endpoint, while eraser/lasso overlays call it for every accumulated path sample. Input mapping and visible-rect calculation repeatedly use the inverse helper as well.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/engine/canvas_transform.dart"><code>lib/canvas/engine/canvas_transform.dart:68-86</code></a> allocates/composes the matrix inside each scalar transform call.</li>
+          <li><a href="../lib/canvas/render/grid_painter.dart"><code>lib/canvas/render/grid_painter.dart:38-163, 183-223</code></a> invokes the scalar helper per line endpoint or generated dot. Dots are batched into one <code>drawPoints</code> call, but the preceding transforms still allocate individually.</li>
+          <li><a href="../lib/canvas/render/canvas_overlay_painter.dart"><code>lib/canvas/render/canvas_overlay_painter.dart:105-139, 156-183</code></a> transforms the full accumulated eraser/lasso path on every overlay paint.</li>
+          <li><a href="../lib/canvas/render/canvas_view.dart"><code>lib/canvas/render/canvas_view.dart:272-274, 563-669, 697-723, 938-968</code></a> calls the inverse helper in high-rate selection and tool move paths.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Non-blank paper styles repaint during camera motion and can create hundreds to thousands of short-lived matrix objects per frame; long eraser/lasso gestures add a growing overlay cost. The issue is conditional on paper/gesture choice, so it is medium severity, but it competes directly with the canvas frame budget.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Compute the world→screen matrix and inverse once per viewport revision and reuse them. For hot scalar loops, use the already-documented direct rotate/scale/translate arithmetic or transform a point buffer with one matrix. Pass the cached transform into painters/input mapping rather than hiding allocation inside each point helper.</p>
+      </article>
+
+      <article class="finding medium" id="f18">
+        <header><h3>F18 · The quadtree retains empty historical structure and rebuilds all live entries when its root expands</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Removing an id deletes its entry but deliberately never collapses empty nodes or shrinks the root. Thus node memory follows the spatial footprint historically populated during the open session, not only current content. Inserting outside the root repeatedly doubles it; every doubling flattens and reinserts all existing entries. A <code>rebuild</code> API exists, but production code never invokes it.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/engine/spatial_index.dart"><code>lib/canvas/engine/spatial_index.dart:54-86</code></a> expands in a loop and explicitly leaves tree structure in place on removal.</li>
+          <li>Nodes split and retain children at <code>spatial_index.dart:183-221, 246-271</code>; no upward empty-child collapse exists.</li>
+          <li>Root growth collects and reinserts every entry at <code>spatial_index.dart:289-355</code>.</li>
+          <li><code>SpatialIndex.rebuild</code> is defined at <code>:113-122</code>; repository search found use only in <code>test/spatial_index_test.dart:118</code>, not the controller.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Drawing, moving, then deleting content across a wide infinite canvas can leave an increasingly sparse tree until the note closes. Memory and query traversal can degrade with session history, while far-away bulk moves can trigger O(n) rebuilds several times in one synchronous insert. This is a session resource leak, not durable note corruption.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Collapse empty child quartets on removal, track live-entry-to-node occupancy, and periodically rebuild when deleted/history node count materially exceeds live entries. For bulk commands, compute required root bounds once and rebuild once; consider activating a safe coordinate-rebasing policy only as a separate, carefully migrated data-integrity project.</p>
+      </article>
+
+      <article class="finding high" id="f19">
+        <header><h3>F19 · Canvas writes wake the full hidden Library query and grid beneath the editor</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> The full-screen editor is pushed on the root navigator above a state-retaining indexed shell; the initial Library branch remains mounted underneath. Library watches every non-archived canvas row. Each command transaction touches the current canvas’s <code>updated_at</code>, and viewport/tool/paper saves update the same table, so Drift invalidates the all-canvas query even though the Library is invisible. The resulting provider emission rebuilds Library grouping and its retained sliver tree.</p>
+        <ul class="evidence">
+          <li><a href="../lib/config/router/app_router.dart"><code>lib/config/router/app_router.dart:21-31, 75-80</code></a> uses <code>StatefulShellRoute.indexedStack</code> and pushes Canvas on the root navigator above it.</li>
+          <li><a href="../lib/features/library/presentation/pages/library_page.dart"><code>lib/features/library/presentation/pages/library_page.dart:239-276</code></a> watches canvas/folder/settings providers; the canvas emission feeds full filtering/grouping and sliver reconstruction at <code>:282-365, 519-600</code>.</li>
+          <li><a href="../lib/features/library/data/library_repository.dart"><code>lib/features/library/data/library_repository.dart:47-70</code></a> watches all non-archived canvas rows and usually sorts by <code>updatedAt</code>.</li>
+          <li><a href="../lib/canvas/persistence/canvas_repository.dart"><code>lib/canvas/persistence/canvas_repository.dart:338-376, 530-551, 1004-1008</code></a> touches the canvas row for element commands; viewport, paper, and tool settings also write <code>updatedAt</code> at <code>:868-950</code>.</li>
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:1036-1057</code></a> debounces viewport persistence to 400 ms, which limits but does not remove hidden Library invalidation after camera gestures.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Every pen-up can add a metadata write, all-canvas select/sort, model allocation, and hidden widget rebuild on the same isolate/connection serving the active note. Cost grows with Library size and directly competes with the next stroke. It also weakens the benefit of F12’s lazy visible card building because the offstage page still processes provider state and rebuilds structure.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Keep element durability per command, but coalesce noncritical recency metadata to an idle/exit checkpoint. Pause or avoid the Library subscription while its shell branch is covered/inactive, then refresh on return. Longer term, separate volatile viewport/tool fields from the row watched by Library and expose a purpose-built lightweight library summary stream; do not sacrifice content saves merely to suppress invalidation.</p>
+      </article>
+
+      <article class="finding medium" id="f20">
+        <header><h3>F20 · Persistence has no backlog bound, and failed-write closures accumulate full captured edits</h3><div class="badges"><span class="badge sev-medium">Medium</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Every tracked write starts immediately and remains in an unbounded set until the database future completes. Rapid commands are batched only within each command, not across commands, so slow storage can accumulate queued transactions and their captured element batches. On error, the original closure is appended to <code>_failedWrites</code> for every failure. Retry never replays those closures—it clears the list and writes one full current-state sync—so retaining every captured closure provides only a boolean signal while holding potentially large geometry unnecessarily.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/canvas_controller.dart"><code>lib/canvas/canvas_controller.dart:222-252</code></a> declares unbounded pending futures and failed write closures.</li>
+          <li><code>_track</code> invokes the closure immediately, adds every future, and retains every failed closure at <code>canvas_controller.dart:1099-1117</code>.</li>
+          <li>Each command ends in a new tracked <code>applyElementBatch</code> closure carrying delete/upsert lists at <code>canvas_controller.dart:991-1017, 1128-1166</code>.</li>
+          <li><code>retryFailedWrites</code> discards all captured closures and instead snapshots/synchronizes the entire current canvas at <code>canvas_controller.dart:1059-1090</code>, proving individual failed closures are not required for recovery.</li>
+          <li>Exit blocks on every pending write in waves at <code>canvas_controller.dart:926-943</code> and <code>canvas_editor_page.dart:258-299</code>.</li>
+        </ul>
+        <p><span class="label">Impact.</span> A burst of long strokes or transforms on a slow device can create database backpressure, memory retention, and a long pause when leaving. Under a persistent storage error, continuing to work accumulates failed closures and their ink snapshots; resulting memory pressure increases the chance of process death before recovery, which can lose edits that exist only in memory.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Serialize writes through a bounded/coalescing queue keyed by canvas/element while preserving command order and flush guarantees. Replace the failed-closure list with a failure generation/boolean plus the already-used full-state recovery snapshot. Apply backpressure or coalesce superseded metadata and same-element writes, but keep completed-stroke durability prompt and never drop the latest state.</p>
+      </article>
+
+      <article class="finding high" id="f21">
+        <header><h3>F21 · Unbounded element-id IN clauses eventually hit SQLite variable/query limits</h3><div class="badges"><span class="badge sev-high">High</span><span class="badge confidence">Confidence: high</span></div></header>
+        <p><span class="label">Root cause.</span> Large-note loading collects every element id per kind, then passes each complete list into one Drift <code>isIn</code> predicate. Bulk delete/sync and canvas-file cleanup do the same. In pinned Drift 2.31.0, <code>isIn(values)</code> creates one bound <code>Variable</code> per value. SQLite executors have finite host-parameter and statement-size limits, but the application does not chunk or join these lists.</p>
+        <ul class="evidence">
+          <li><a href="../lib/canvas/persistence/canvas_repository.dart"><code>lib/canvas/persistence/canvas_repository.dart:83-175</code></a> collects all ids and issues one <code>IN</code> detail query per kind; a handwriting-heavy note concentrates nearly all ids in the stroke query.</li>
+          <li>Bulk delete and recovery use whole delete-id lists at <code>canvas_repository.dart:494-551, 554-591</code>.</li>
+          <li><a href="../lib/features/library/data/library_repository.dart"><code>lib/features/library/data/library_repository.dart:207-230</code></a> repeats the all-element-id pattern before deleting a canvas to find its media.</li>
+          <li><a href="../pubspec.lock"><code>pubspec.lock:284-291</code></a> pins Drift 2.31.0; inspection of that installed version’s <code>Expression.isIn</code> confirms a list comprehension producing one variable expression per input value.</li>
+        </ul>
+        <p><span class="label">Impact.</span> Below the hard executor limit, SQL construction, binding, parsing, and large id lists still add startup memory and CPU. At the limit, a very large handwritten note can fail to open; a clear/large delete can mutate the in-memory view but fail persistence and enter recovery; deleting the note itself can also fail before the cascade. Rows are not inherently corrupted, but note accessibility and reliable save flow are compromised.</p>
+        <p><span class="label">Analysis-only recommendation.</span> Replace id fan-out with joins from each detail table to <code>canvas_elements</code> filtered by indexed <code>canvas_id</code> and kind, or chunk ids beneath a conservative cross-platform bind limit inside one read/transaction. Delete by canvas predicate or chunked ids where semantics permit. Add a static large-cardinality repository test later, but do not depend on any one platform’s current compile-time SQLite limit.</p>
+      </article>
+    </section>
+
+    <section id="strengths">
+      <h2>Verified strengths and already-applied safeguards</h2>
+      <p>These materially reduce cost or protect resources and should be preserved while addressing the findings.</p>
+      <table>
+        <thead><tr><th>Strength</th><th>Current evidence</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td class="good">Spatial quadtree exists</td><td><code>lib/canvas/engine/spatial_index.dart:22-122</code></td><td>Exact viewport candidate queries; F03 is about how hits are mapped, not removing the index.</td></tr>
+          <tr><td class="good">Stable element/selection views and revision tokens</td><td><code>canvas_controller.dart:263-308, 328-335, 669-686</code></td><td>Corrects an older allocation problem and provides primitives for narrower repainting.</td></tr>
+          <tr><td class="good">Live stroke append is mutable and frame-coalesced</td><td><code>canvas_controller.dart:100-130, 721-738, 1263-1300</code></td><td>Prevents raw-event notification storms; F07 is the remaining full-snapshot/path work.</td></tr>
+          <tr><td class="good">Selection transform is preview-only until commit</td><td><code>canvas_controller.dart:514-526, 3088-3186</code></td><td>Avoids rewriting all selected geometry on every pointer update.</td></tr>
+          <tr><td class="good">Raster queue is viewport-prioritized and concurrency-limited</td><td><code>canvas_controller.dart:463-470, 4069-4244</code></td><td>Prevents unbounded simultaneous PDF/image jobs.</td></tr>
+          <tr><td class="good">Raster resources and tile pictures are disposed</td><td><code>canvas_controller.dart:4490-4526</code>; <code>canvas_view.dart:245-263</code></td><td>No obvious lifecycle leak was found in the primary canvas resource owners.</td></tr>
+          <tr><td class="good">Undo snapshots strip runtime rasters</td><td><code>canvas_commands.dart:5-10</code></td><td>Lets raster eviction dispose native images without dangling command references.</td></tr>
+          <tr><td class="good">Element detail loads are batched per kind</td><td><code>canvas_repository.dart:93-175</code></td><td>Current code is not an N+1 detail-row query; F01 focuses on full materialization and controller replay.</td></tr>
+          <tr><td class="good">PDF raster dimensions are bucketed/capped</td><td><code>pdf_raster_service.dart:64-76, 174-184</code></td><td>A sound model for image decoding.</td></tr>
+          <tr><td class="good">Library grid and thumbnails are lazy/size-hinted</td><td><code>library_page.dart:566-600, 770-773</code>; <code>canvas_card.dart:354-391</code></td><td>Older library-scale concerns about eager cards/full thumbnail decode have been addressed.</td></tr>
+          <tr><td class="good">Timer/controller lifecycle cleanup is explicit</td><td><code>active_session_controller.dart:103-117, 344-352</code>; <code>revision_board_page.dart:62-79</code></td><td>No obvious uncancelled periodic timer leak was found.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="challenge">
+      <h2>Claims challenged or corrected during this pass</h2>
+      <div class="iteration">
+        <p><strong>Relevant untracked audit re-read:</strong> <code>plans/2026-06-01-galaxy-tab-s9-fe-efficiency-audit.html</code> was useful historical context, but multiple claims no longer describe current code.</p>
+        <ul>
+          <li>The old claim that <code>visibleElements</code> and <code>selectedIds</code> allocate on every read is now false; both are cached until their revisions change.</li>
+          <li>The old claim that live stroke append clones the point list on every pointer sample is now too strong; append is mutable and notification is frame-coalesced. The current supported issue is one whole-list snapshot and outline rebuild per rendered revision.</li>
+          <li>The old claim that canvas detail reconstruction performs a query per element is now false; current code batches ids by element kind. Startup is still full-materialization plus quadratic controller insertion. This iteration also corrected the report’s own first-pass wording: repository output is ordered only by z-index, not by the controller’s layer-position-plus-z comparator.</li>
+          <li>Raster command separation, bounded raster job concurrency, matrix selection preview, thumbnail decode hints, a 32 MP export guard, and isolate JPG encoding are present. Findings above intentionally target their remaining limits rather than re-reporting fixed work.</li>
+          <li>The PDF service comment says its document pool is capped. Source inspection found no operational cap before whole-controller disposal, so the comment is not evidence of a bounded resource policy.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="watchlist">
+      <h2>Dormant scalability watchlist</h2>
+      <div class="card">
+        <p><span class="label">Whole-document JSON codec.</span> <a href="../lib/canvas/io/zenno_document.dart"><code>lib/canvas/io/zenno_document.dart:33-83, 333-382</code></a> constructs nested maps for every element and eight scalar fields per stroke point, then layers <code>jsonEncode</code>, UTF-8 bytes, and <code>Uint8List.fromList</code>; decoding layers a UTF-8 string, decoded map/list graph, and engine objects. Repository search found production code defines but does not call <code>ZennoDocumentCodec</code>; current uses are tests at <code>test/zenno_document_test.dart:63-81</code>. It is therefore not a current runtime finding. If wired into import/export or autosave later, large-note use should be streamed/binary or isolated and memory-budgeted rather than activating this whole-document path unchanged.</p>
+      </div>
+    </section>
+
+    <section id="iterations">
+      <h2>Iteration log</h2>
+      <div class="iteration">
+        <time datetime="2026-07-18T05:17:33+08:00">Iteration 3 · 2026-07-18 05:17:33 +08:00</time>
+        <p>Re-read command apply/revert, persistence batching, selection transforms, clear, PDF import, transform math, grid/overlay painting, router retention, and quadtree internals. Added F16–F18: synchronous scalar mutation makes bulk commands O(k × n); scalar transform helpers allocate matrices inside point loops; and the spatial tree retains empty historical nodes. Refined F15 after confirming the editor’s own tool-wheel drag-end write is the relevant open-canvas invalidation path. The report now holds 18 supported findings.</p>
+      </div>
+      <div class="iteration">
+        <time datetime="2026-07-18T05:14:03+08:00">Iteration 2 · 2026-07-18 05:14:03 +08:00</time>
+        <p>Challenged the first pass against Focus runtime writes, viewport raster scheduling, native PDF lifetime, settings propagation, exact eraser/lasso geometry, the pinned Drift implementation, and production call sites. Corrected F01’s ordering description; promoted F10 from medium to high after tracing its 15-second self-invalidation path; strengthened F07 and F12; added F13–F15; and separated the unused whole-document codec into a watchlist rather than overstating it as current runtime cost. The ledger now contains 15 supported findings.</p>
+      </div>
+      <div class="iteration">
+        <time datetime="2026-07-18T05:07:07+08:00">Iteration 1 · 2026-07-18 05:07:07 +08:00</time>
+        <p>Established the repository-wide baseline. Deep-read canvas controller, persistence, input, render, raster, import/export, and editor surfaces; examined Library, Focus, Goal Cycle, Revision/Kanban, settings, shell/startup, database indexes/connections, and relevant review/plan material. Recorded 12 current-code findings, corrected four classes of stale historical claims, and documented verified safeguards. No dynamic measurements were made because builds/tests/app execution are prohibited.</p>
+      </div>
+    </section>
+
+    <footer>
+      <p class="muted">Analyzer 08 · Performance/rendering/database/startup/scalability/resource lens · This report is the only artifact written by this analyzer.</p>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

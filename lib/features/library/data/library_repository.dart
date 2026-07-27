@@ -67,7 +67,7 @@ class LibraryRepository {
         ]);
     }
 
-    return _watchWithInitialRead(query);
+    return query.watch();
   }
 
   /// Watches just one canvas title for editor chrome.
@@ -105,7 +105,7 @@ class LibraryRepository {
   Stream<List<CanvasFolder>> watchFolders() {
     final query = _db.select(_db.canvasFolders)
       ..orderBy([(f) => OrderingTerm(expression: f.position)]);
-    return _watchWithInitialRead(query);
+    return query.watch();
   }
 
   /// Creates a new one-level folder.
@@ -267,9 +267,4 @@ class LibraryRepository {
       ),
     );
   }
-}
-
-Stream<List<T>> _watchWithInitialRead<T>(Selectable<T> query) async* {
-  yield await query.get();
-  yield* query.watch();
 }

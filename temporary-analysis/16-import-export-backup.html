@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyzer 16 — Zenno Import, Export &amp; Backup Safety Audit</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #101418;
+      --panel: #171d23;
+      --panel-2: #1d252d;
+      --text: #e8edf2;
+      --muted: #aab6c2;
+      --line: #33404c;
+      --accent: #76c7ff;
+      --critical: #ff6b79;
+      --high: #ff9f5a;
+      --medium: #f3ca52;
+      --low: #78c995;
+      --good: #6bd6b2;
+      --code: #c7d7e6;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    code {
+      color: var(--code);
+      background: rgba(255,255,255,.055);
+      padding: .08rem .3rem;
+      border-radius: .25rem;
+      overflow-wrap: anywhere;
+    }
+    .layout { max-width: 1240px; margin: 0 auto; padding: 28px; }
+    header {
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #1a2530, var(--panel));
+    }
+    h1 { margin: 0 0 8px; font-size: clamp(1.65rem, 4vw, 2.55rem); line-height: 1.12; }
+    h2 { margin: 38px 0 14px; font-size: 1.45rem; }
+    h3 { margin: 0 0 8px; font-size: 1.12rem; }
+    p { margin: .55rem 0; }
+    .lede { color: var(--muted); max-width: 88ch; }
+    .meta, .metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .pill, .metric {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: rgba(0,0,0,.18);
+      color: var(--muted);
+    }
+    .metric strong { color: var(--text); }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      margin: 18px 0;
+      padding: 11px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(16,20,24,.96);
+      backdrop-filter: blur(8px);
+    }
+    nav a { white-space: nowrap; text-decoration: none; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    .panel, .finding, .iteration {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+    .panel { padding: 18px; }
+    .finding { margin: 14px 0; padding: 20px; border-left-width: 5px; }
+    .finding.critical { border-left-color: var(--critical); }
+    .finding.high { border-left-color: var(--high); }
+    .finding.medium { border-left-color: var(--medium); }
+    .finding.low { border-left-color: var(--low); }
+    .finding.good { border-left-color: var(--good); }
+    .finding-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 9px; }
+    .severity { font-weight: 800; letter-spacing: .04em; text-transform: uppercase; font-size: .77rem; }
+    .critical .severity { color: var(--critical); }
+    .high .severity { color: var(--high); }
+    .medium .severity { color: var(--medium); }
+    .low .severity { color: var(--low); }
+    .good .severity { color: var(--good); }
+    .facts { display: grid; grid-template-columns: 10rem 1fr; gap: 5px 12px; margin-top: 12px; }
+    .facts dt { color: var(--muted); font-weight: 650; }
+    .facts dd { margin: 0; }
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: .33rem; }
+    .evidence { margin-top: 12px; padding: 12px 14px; background: var(--panel-2); border-radius: 8px; }
+    .evidence strong { display: block; margin-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 10px; }
+    th, td { padding: 10px 12px; text-align: left; vertical-align: top; border: 1px solid var(--line); }
+    th { background: var(--panel-2); }
+    .iteration { padding: 16px 18px; margin: 12px 0; }
+    .muted { color: var(--muted); }
+    .callout { border-left: 4px solid var(--accent); padding: 11px 14px; background: var(--panel-2); }
+    footer { margin: 40px 0 12px; color: var(--muted); }
+    @media (max-width: 680px) {
+      .layout { padding: 14px; }
+      header { padding: 19px; }
+      .facts { grid-template-columns: 1fr; }
+      .facts dd { margin-bottom: 8px; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: white; --panel: white; --panel-2: #f5f7f9; --text: #111; --muted: #4d5964; --line: #b6c0c9; --code: #203040; }
+      nav { position: static; }
+      .finding, .panel { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main class="layout">
+  <header id="top">
+    <h1>Zenno serialization, import/export &amp; recovery audit</h1>
+    <p class="lede">Evidence-based, analysis-only review by <strong>Analyzer 16</strong>. Lens: serialization, import/export, backup/restore, file handling, compatibility, versioning, and irreversible-operation safety. The priority is preserving Karl’s notes and keeping recovery work out of the thinking flow.</p>
+    <div class="meta">
+      <span class="pill">Baseline iteration: 2026-07-18T05:03:23+08:00</span>
+      <span class="pill">Latest iteration: 10 · 2026-07-18T05:19:41+08:00</span>
+      <span class="pill">Repository: <code>/Users/karlromero/personal/zenno</code></span>
+      <span class="pill">Static inspection only</span>
+      <span class="pill">No builds or tests run by mandate</span>
+    </div>
+    <div class="metrics">
+      <span class="metric"><strong>1</strong> critical</span>
+      <span class="metric"><strong>6</strong> high</span>
+      <span class="metric"><strong>15</strong> medium</span>
+      <span class="metric"><strong>9</strong> verified safeguards</span>
+    </div>
+  </header>
+
+  <nav aria-label="Report sections">
+    <a href="#summary">Summary</a>
+    <a href="#method">Method</a>
+    <a href="#findings">Findings</a>
+    <a href="#safeguards">Safeguards</a>
+    <a href="#priorities">Priorities</a>
+    <a href="#backup-contract">Backup contract</a>
+    <a href="#iterations">Iterations</a>
+  </nav>
+
+  <section id="summary">
+    <h2>Executive summary</h2>
+    <div class="callout">
+      <strong>Bottom line:</strong> Zenno currently has durable in-place persistence, but not a recovery system. All primary data lives in one Drift/SQLite store while imported media lives beside it as absolute-path files. There is no user-controlled full backup, restore, or portable native document workflow. The visible “Export” command produces presentation images only and saves them to app-local storage.
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <article class="panel">
+        <h3>Largest data-integrity exposure</h3>
+        <p>Device loss, uninstall, app-data reset, database corruption, or a failed migration has no in-app recovery path. Android’s ambient platform backup behavior is not an explicit, verified Zenno contract.</p>
+      </article>
+      <article class="panel">
+        <h3>Largest portability trap</h3>
+        <p>The unused native document codec serializes absolute image/PDF paths, not the files. Moving the JSON to another installation would preserve references to locations that do not exist there.</p>
+      </article>
+      <article class="panel">
+        <h3>Largest flow break</h3>
+        <p>PNG/JPG/SVG export succeeds into <code>getApplicationDocumentsDirectory()/canvas_exports</code>, then reports an internal path. There is no Save As, share sheet, or file-picker destination.</p>
+      </article>
+      <article class="panel">
+        <h3>Strongest existing controls</h3>
+        <p>Element writes and multi-step deletes are transaction-backed; canvas deletion confirms permanence and detaches focus history; schema snapshots and migration fixtures exist through v13.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="method">
+    <h2>Scope and method</h2>
+    <p>Analyzer 16 read the repository inventory (including relevant untracked planning/review material), then traced storage from UI actions through controllers, repositories, Drift tables, platform database connections, file-system helpers, and codec tests. The core inspected surfaces include:</p>
+    <ul>
+      <li><code>lib/canvas/io/</code>, <code>lib/canvas/persistence/</code>, <code>lib/canvas/pdf/</code>, canvas controller/editor/toolbar call sites.</li>
+      <li><code>lib/core/database/</code>, every handwritten table definition, schema snapshots v1–v13, and migration tests.</li>
+      <li>Library cleanup/deletion, settings, reflection JSON models, Android/web platform configuration, and related tests.</li>
+    </ul>
+    <p class="muted">Constraint: this task expressly forbids builds, tests, installs, app launches, Git mutations, and external-service changes. Therefore runtime/platform conclusions are labelled as static inferences where appropriate. No credentials or secret values were inspected or reproduced.</p>
+  </section>
+
+  <section id="findings">
+    <h2>Findings</h2>
+
+    <article class="finding critical" id="f01">
+      <div class="finding-head"><span class="severity">Critical</span><h3>F01 — There is no complete, user-controlled backup or restore path</h3></div>
+      <p>Zenno’s primary records are all held by one <code>ZennoDatabase</code>; image/PDF payloads and thumbnails are separate files. The Settings UI covers appearance, stylus, focus, library sort, and About, but exposes no backup, restore, verification, or recovery action. The only export UI offers PNG/JPG/SVG rendering of one canvas.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High — exhaustive symbol search found no full-data backup/restore implementation or call site.</dd>
+        <dt>Impact</dt><dd>Catastrophic worst case: all canvases, text, ink, boards, reflections, focus history, settings, and imported media can become unrecoverable after device/app-data loss or database damage.</dd>
+        <dt>Flow effect</dt><dd>Recovery depends on outside platform behavior rather than a visible Zenno promise; the user cannot verify that a restorable copy exists.</dd>
+        <dt>Root cause</dt><dd>Durable local persistence was implemented, but recoverability was not designed as a first-class product boundary.</dd>
+        <dt>Recommendation</dt><dd>Design one versioned, self-contained backup package containing a consistent SQLite snapshot/relational export, every referenced media file, a manifest with hashes and app/schema versions, and an atomic validated restore flow. Quiesce/flush writers or use a database-native snapshot, capture the exact referenced-file generation, offer authenticated encryption for the sensitive note archive, and keep source data untouched until full validation succeeds.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/database.dart:12-56</code> registers all data tables in one database; <code>lib/core/database/connection_native.dart:1-4</code> opens the single named store; <code>lib/features/settings/presentation/pages/settings_page.dart:90-283</code> enumerates all settings panels; <code>lib/canvas/widgets/canvas_toolbar.dart:2429-2574</code> exposes only visual export formats.</div>
+    </article>
+
+    <article class="finding medium" id="f02">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F02 — The dormant native document codec is neither self-contained nor a full-fidelity backup</h3></div>
+      <p><code>ZennoDocumentCodec</code> writes each image/PDF’s absolute <code>sourceFilePath</code>, while the actual bytes remain in app-local <code>canvas_media</code>. The document also omits canvas title, folder membership, bookmarks, rotation lock, active tool settings, card attachments, and broader Zenno records. No production code calls this codec; only its unit test does.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>If later exposed as export/backup without redesign, documents with media reopen with broken images/PDFs on another install or after the media directory moves. Important canvas metadata is silently absent. There is no current production call site, which limits present reachability.</dd>
+        <dt>Root cause</dt><dd>The codec serializes the in-memory controller snapshot, whose media model stores a path and whose scope is narrower than the persisted canvas aggregate.</dd>
+        <dt>Recommendation</dt><dd>Do not expose the current codec as recovery. Define an archive manifest, embed/deduplicate assets by content hash, use package-relative asset IDs, include every canvas-owned field, and test cross-install round trips. Remap element/layer/canvas IDs on “import as copy” while preserving links deliberately.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/zenno_document.dart:13-27,45-59,191-205</code>; <code>lib/core/database/tables/canvas_tables.dart:21-69,99-116,190-234</code>; only test call sites at <code>test/zenno_document_test.dart:63-64</code>.</div>
+    </article>
+
+    <article class="finding high" id="f03">
+      <div class="finding-head"><span class="severity">High</span><h3>F03 — “Export” writes to app-local storage without a usable handoff</h3></div>
+      <p>The export service writes to <code>getApplicationDocumentsDirectory()/canvas_exports</code> using an internal generated filename. The toolbar shows that path in a SnackBar. It never asks the user for a destination and has no share/download handoff. On typical Android installations this directory is app-private, so the feature may report success while leaving the result hard or impossible to retrieve with normal file tools. Startup cleanup covers only <code>canvas_media</code> and <code>thumbnails</code>, so successful exports accumulate without an in-app list or delete control.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for code behavior; medium-high for exact visibility across OS/device variants.</dd>
+        <dt>Impact</dt><dd>The user interrupts their thinking to export, waits for rendering, then may be unable to use the file. Repeated attempts accumulate internal files.</dd>
+        <dt>Root cause</dt><dd>Rendering and persistence were implemented, but the product-level destination/handoff boundary was omitted.</dd>
+        <dt>Recommendation</dt><dd>Render to bytes/temp, then use a platform Save As/share flow; only claim success after the destination confirms. Provide an explicit filename and preserve failure/cancel semantics.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_export.dart:130-163</code> creates the app-local directory and writes the file; <code>lib/canvas/widgets/canvas_toolbar.dart:1999-2014</code> only displays the returned path; cleanup roots exclude exports at <code>lib/features/library/data/library_file_cleanup_io.dart:54-59</code>; <code>pubspec.yaml:30-53</code> has no sharing dependency.</div>
+    </article>
+
+    <article class="finding medium" id="f04">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F04 — Canvas file I/O is incompatible with the repository’s explicit web persistence path</h3></div>
+      <p>The project deliberately supports a web database via WASM + IndexedDB, yet canvas import/export directly imports <code>dart:io</code>, uses <code>File</code>/<code>Directory</code>, requires <code>PlatformFile.path</code>, and calls a documents-directory provider. There is no conditional web implementation. The current toolbar explicitly intercepts these actions on web and reports that they are Android-only, so this is an unsupported-capability/build-portability gap rather than a silent production-web picker failure.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High static incompatibility; runtime/build manifestation not executed per mandate.</dd>
+        <dt>Impact</dt><dd>The shared import/export libraries can block a web build or remain unusable even though the database and canvas UI run there. The primary product is documented as Android-tablet, so this is a secondary-platform/development-preview exposure rather than the main installed-app path.</dd>
+        <dt>Root cause</dt><dd>Platform-specific file operations were placed in shared libraries instead of behind conditional adapters.</dd>
+        <dt>Recommendation</dt><dd>Split I/O by platform. On web, consume picker bytes, persist media as IndexedDB blobs/package assets, and trigger browser downloads for exports. Keep document/media identifiers logical rather than absolute OS paths.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/connection.dart:3-10</code> and <code>connection_web.dart:6-20</code> establish web support; <code>lib/canvas/io/canvas_import.dart:1-6,87-97,135-164</code> and <code>canvas_export.dart:1-10,143-155</code> are path/IO based; <code>lib/canvas/widgets/canvas_toolbar.dart:695-724</code> deliberately gates both features on web.</div>
+    </article>
+
+    <article class="finding high" id="f05">
+      <div class="finding-head"><span class="severity">High</span><h3>F05 — One malformed ink blob can make an entire canvas fail to open; missing details disappear silently</h3></div>
+      <p><code>loadElements</code> reconstructs every element in one operation. An ink detail is decoded without per-element containment, and <code>InkCodec</code> intentionally throws on short, misaligned, or unsupported payloads. That exception aborts controller hydration and sends the entire editor to its generic load-error state. Conversely, a generic element missing its detail row is simply skipped, making saved content vanish from view without any integrity warning. Malformed shape control-point JSON is caught but replaced with an empty list, so one bad point can silently alter the rendered shape.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>A local defect affecting one stroke can block access to otherwise healthy notes. Partial relational corruption can look like legitimate deletion, which is dangerous during later backup or cleanup.</dd>
+        <dt>Root cause</dt><dd>The repository has no quarantine/reporting layer between row decoding and canvas hydration.</dd>
+        <dt>Recommendation</dt><dd>Load elements independently, collect integrity diagnostics, quarantine undecodable rows without deleting them, and open the rest of the canvas read-only with an explicit recovery banner. Back up raw rows before any repair.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/persistence/canvas_repository.dart:77-92,177-192,213-231</code>; <code>lib/canvas/persistence/ink_codec.dart:71-123</code>; generic missing-detail skips at <code>canvas_repository.dart:197-216,232-300</code>; silent shape fallback at <code>canvas_repository.dart:1180-1199</code>; UI catches only at whole-load level in <code>lib/canvas/canvas_editor_page.dart:132-144</code>.</div>
+    </article>
+
+    <article class="finding high" id="f06">
+      <div class="finding-head"><span class="severity">High</span><h3>F06 — Destructive learning-record workflows have confirmation, but no recovery window</h3></div>
+      <p>The UI clearly confirms permanent deletion of canvases, goal/revision cards, individual reflections, and board columns. That warning is a valuable safeguard, but acceptance immediately hard-deletes relational rows: a goal takes all reflections, a populated column takes all of its cards and dependent notes, and a canvas takes its elements/attachments while owned media can then be deleted. A repository <code>archiveCanvas</code> method already exists but has no production call site; no equivalent trash state exists for the other records.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>A single mistaken confirmation can irreversibly remove a canvas, a written reflection, or an entire card/column subtree. Without F01’s backup, there is no second line of defense.</dd>
+        <dt>Root cause</dt><dd>Confirmation was implemented as the only recovery control; archive/trash lifecycle was not completed.</dd>
+        <dt>Recommendation</dt><dd>Default to Trash/archive, preserve all relationships and files, show retention/restore controls, and reserve hard delete for a separate explicit purge after a verified backup or grace period.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/features/library/presentation/widgets/canvas_card.dart:171-212</code>; <code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:155-190,222-251</code>; <code>lib/shared/kanban/kanban_column_view.dart:391-425</code>; hard-delete/cascade paths at <code>lib/features/library/data/library_repository.dart:180-205</code>, <code>lib/features/goal_cycle/data/goal_repository.dart:288-292,370-374</code>, and <code>lib/core/database/tables/board_tables.dart:46-51</code>. Symbol search finds <code>archiveCanvas</code> only at its declaration.</div>
+    </article>
+
+    <article class="finding medium" id="f07">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F07 — Failed/cancelled-after-copy imports leave unreferenced app-owned files</h3></div>
+      <p>Image and PDF import copy the selected file into <code>canvas_media</code> before image decode/PDF probe and before an element is committed. Corrupt files, zero-page PDFs, controller disposal, or no editable active layer can return/fail after the copy. The immediate error path never deletes the new copy. Startup orphan cleanup will usually reclaim it later, but it is best-effort, silent, and only triggered through the library repository provider.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>Storage growth and confusing leftovers; repeated large-file failures can consume the app’s storage allocation and threaten future note saves.</dd>
+        <dt>Root cause</dt><dd>Import staging has no commit/rollback ownership contract.</dd>
+        <dt>Recommendation</dt><dd>Stage under a temporary name, validate, persist the referencing element transactionally, then promote the file. Delete the stage on every non-commit exit. Track and report cleanup failures rather than swallowing them globally.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_import.dart:87-107,115-132,146-164</code>; post-copy early exits in <code>lib/canvas/canvas_controller.dart:3897-3908,3968-3975</code>; best-effort cleanup at <code>lib/features/library/data/library_file_cleanup_io.dart:29-51</code> and trigger at <code>library_providers.dart:15-24</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f08">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F08 — Import has no preflight size/resource limits or content deduplication</h3></div>
+      <p>Image import copies the full source, reads all bytes into memory, and instantiates the image codec at native dimensions. There is no source-size, pixel-count, dimension, or available-storage check. PDF page rasterization is bounded later, but the source PDF itself is copied and probed without a file-size policy. Every import receives a fresh UUID copy even when bytes are identical; the PDF table’s long-standing nullable <code>import_hash</code> is never populated or queried.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High static evidence.</dd>
+        <dt>Impact</dt><dd>A very large or adversarial image can cause long stalls or memory pressure; repeated use of the same large PDF multiplies storage until future media or note writes fail.</dd>
+        <dt>Root cause</dt><dd>Export has an explicit pixel budget, but import lacks the corresponding admission boundary and media is addressed by copy path rather than content identity.</dd>
+        <dt>Recommendation</dt><dd>Inspect metadata/size before copying or decoding, reject unsafe limits clearly, decode a bounded preview first, check free space, and address/deduplicate app-owned media by a verified content hash with reference counting.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_import.dart:87-101,115-126,146-164</code>; <code>lib/core/database/tables/canvas_tables.dart:190-209</code> declares <code>importHash</code>, while repository-wide use is limited to generated schema/model code; contrast with export budget at <code>lib/canvas/io/canvas_export.dart:127-180</code> and PDF raster cap at <code>lib/canvas/pdf/pdf_raster_service.dart:64-76,174-184</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f09">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F09 — The v1 document decoder silently substitutes defaults for damaged required fields</h3></div>
+      <p>The codec validates only top-level <code>format</code> and version range. Missing/wrong-typed maps and lists become empty objects/lists; most missing scalars become empty strings, zeroes, or visual defaults. An ostensibly valid v1 document can therefore decode into a blank or altered note instead of failing closed.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High; currently dormant because no production import calls the codec.</dd>
+        <dt>Impact</dt><dd>If wired into restore, a damaged file may appear successfully restored while omitting elements or changing geometry, styles, IDs, and links.</dd>
+        <dt>Root cause</dt><dd>Forward-tolerant parsing is applied to identity/structural fields where strict validation is required.</dd>
+        <dt>Recommendation</dt><dd>Separate optional-field defaults from required invariants. Validate unique non-empty IDs, layer references, finite geometry, supported element payloads, and manifest hashes before constructing any persistent state.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/zenno_document.dart:62-83,142-157,229-305,419-463</code>; tests cover a happy round trip and wrong format only at <code>test/zenno_document_test.dart:14-84</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f10">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F10 — Raw filesystem failures escape the export UI’s handled error contract</h3></div>
+      <p>The toolbar catches <code>CanvasExportException</code>, but directory discovery/creation and final writes can throw other errors such as platform or filesystem exceptions. Those propagate past the UI handler. The progress dialog is removed in <code>finally</code>, but the user is not given a controlled failure message.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>Permission, space, or filesystem failures break flow and may surface as framework errors instead of actionable guidance.</dd>
+        <dt>Root cause</dt><dd>The service’s typed exception boundary covers rendering but not destination I/O.</dd>
+        <dt>Recommendation</dt><dd>Translate all expected destination failures into one typed result, distinguish cancel/no-space/permission/write failure, and write to a temp file before atomic promotion where supported.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_export.dart:130-163</code> performs unwrapped platform I/O; <code>lib/canvas/widgets/canvas_toolbar.dart:1999-2025</code> catches only <code>CanvasExportException</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f11">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F11 — Persisted PDF provenance metadata is internally inconsistent</h3></div>
+      <p>The importer captures the original filename and probes all pages, but <code>PdfElement</code> carries neither original filename nor total page count. Persistence substitutes the UUID-based app-local basename for <code>originalFilename</code> and stores each page number as that row’s <code>totalPages</code>. Reconstruction ignores total pages. Current rendering works, but the stored metadata cannot reliably support later export, inspection, or migration.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>Loss of human provenance and misleading page-count data complicate future portable document export and repair tooling.</dd>
+        <dt>Root cause</dt><dd>The engine’s per-page element model is narrower than the PDF detail table’s document metadata contract.</dd>
+        <dt>Recommendation</dt><dd>Persist one source-document record (original name, hash, page count, package-relative asset ID) and reference it from page elements; migrate existing rows conservatively without inventing unknown metadata.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_import.dart:43-58,125-132</code>; <code>lib/canvas/persistence/canvas_repository.dart:413-434</code>; <code>lib/core/database/tables/canvas_tables.dart:190-211</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f12">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F12 — Malformed reflection JSON is not contained and can make saved writing inaccessible</h3></div>
+      <p>Reflection schemas and answers are serialized as JSON text snapshots. Their documentation says malformed/nonconforming payloads are tolerated, but both entry points call <code>jsonDecode</code> without a catch. A syntactically malformed stored value throws while mapping a stream row, potentially failing the whole template or entry list rather than isolating one record.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>One damaged JSON field can hide multiple otherwise healthy reflections from the UI. No raw recovery/export path exists.</dd>
+        <dt>Root cause</dt><dd>Shape validation is lenient, but syntax-error containment was omitted at the serialization boundary.</dd>
+        <dt>Recommendation</dt><dd>Catch decode errors per row, retain raw text, surface a recoverable placeholder, and never overwrite the original during repair. Add integrity export tooling before automatic normalization.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/features/goal_cycle/domain/reflection_template_schema.dart:89-105,125-140</code>; repository mapping call sites at <code>lib/features/goal_cycle/data/reflection_repository.dart:109-139,244-266</code>.</div>
+    </article>
+
+    <article class="finding high" id="f13">
+      <div class="finding-head"><span class="severity">High</span><h3>F13 — Startup orphan cleanup can race live imports and undo-restorable media</h3></div>
+      <p>The library provider launches orphan cleanup with <code>unawaited</code>, so the Library UI becomes interactive while cleanup is still querying a snapshot of referenced paths and scanning the media directory. No lock or generation check coordinates that snapshot with canvas writes. A file copied by an import after the reference snapshot but before/during the directory scan can be deleted as “orphaned,” even if its database row is committed moments later. Similarly, an undoable image/PDF deletion can remove its row while its command still retains the path; cleanup can then delete the only payload before Undo re-adds the element.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the unsynchronized interleaving; probability depends on media-directory size and user timing.</dd>
+        <dt>Impact</dt><dd>A newly imported or undo-restored element can persist with a missing source file, leaving a permanent blank/error placeholder and blocking complete export.</dd>
+        <dt>Root cause</dt><dd>Garbage collection decides liveness from one database snapshot, while temporary/import/undo ownership exists outside that snapshot and user actions are not gated on cleanup completion.</dd>
+        <dt>Recommendation</dt><dd>Use a media ownership ledger with staged/live/trash states, or coordinate cleanup under the same repository-level lock/epoch as imports and command history. Recheck liveness immediately before each delete and never collect files still reachable from an active editor’s undo stack.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/features/library/application/library_providers.dart:15-24</code> starts cleanup without awaiting it; <code>lib/features/library/data/library_repository.dart:28-45</code> snapshots references before file cleanup; <code>lib/features/library/data/library_file_cleanup_io.dart:29-47</code> deletes every scanned file absent from that snapshot; import copies first at <code>lib/canvas/io/canvas_import.dart:151-164</code>. No cleanup-race test or coordination call site was found.</div>
+    </article>
+
+    <article class="finding high" id="f14">
+      <div class="finding-head"><span class="severity">High</span><h3>F14 — The configured release signing identity creates a future uninstall/data-loss cliff</h3></div>
+      <p>The Android <code>release</code> build is explicitly signed with the debug key. Android update compatibility is tied to the signing identity: moving later to a real durable release key does not produce an in-place upgrade of the debug-signed installation. In this repository’s current state, the practical transition is a separate install or uninstall/reinstall—and F01 means there is no Zenno backup to carry the private database/media safely across that boundary.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the configured signing mismatch; no APK was built or inspected per mandate.</dd>
+        <dt>Impact</dt><dd>The first signing-key correction can force a workflow that deletes app-private notes. This is especially dangerous because the project’s normal artifact is an Android tablet APK.</dd>
+        <dt>Root cause</dt><dd>A development convenience signing configuration is being used for the release variant before a portable backup/migration channel exists.</dd>
+        <dt>Recommendation</dt><dd>Before installing more state-bearing builds, establish one durable signing identity and a recovery drill. If an existing installed signature must change, export and verify a complete backup first, install the new identity separately where possible, restore, validate, and only then retire the old app.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>android/app/build.gradle.kts:33-38</code> maps <code>release</code> to <code>signingConfigs.getByName("debug")</code>; the app’s storage is private/local at <code>lib/core/database/connection_native.dart:1-4</code> and <code>lib/canvas/io/canvas_import.dart:151-164</code>; no complete export exists (F01).</div>
+    </article>
+
+    <article class="finding medium" id="f15">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F15 — Android backup behavior is implicit rather than a tested data contract</h3></div>
+      <p>The production manifest declares no explicit backup/data-extraction policy. That leaves any platform-managed backup coverage, exclusions, quotas, encryption, and restore behavior to defaults and device/OS policy. The database and media also live through different APIs, so a platform snapshot must capture both consistently to be useful; the repository contains no restore validation or post-restore media-integrity check.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High that no app policy/validation exists; intentionally agnostic about the exact default on a given Android version/device.</dd>
+        <dt>Impact</dt><dd>The user may overestimate recoverability, while note data may also be copied by platform policy without a deliberate privacy decision.</dd>
+        <dt>Root cause</dt><dd>Backup is delegated implicitly instead of specified, tested, and surfaced.</dd>
+        <dt>Recommendation</dt><dd>Make an explicit product decision for platform backup, declare the manifest/data-extraction rules, document what is included, and test restore across OS/app upgrades. Treat it as defense in depth, not a replacement for F01’s user-controlled package.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>android/app/src/main/AndroidManifest.xml:1-42</code> contains no backup/data-extraction attributes or rules; database opening is separate from documents-directory media at <code>lib/core/database/connection_native.dart:1-4</code> and <code>lib/canvas/io/canvas_import.dart:151-164</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f16">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F16 — Repository-default app versioning does not identify thirteen persisted schema generations</h3></div>
+      <p>The checked-in application version remains <code>1.0.0+1</code> while the database schema is v13 and the native document/ink formats have their own independent versions. No checked-in build invocation overrides the build number. This does not corrupt data by itself, but it removes a basic compatibility signal needed to distinguish installable upgrades, correlate backups with code, and diagnose which migration path created a store.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for repository defaults; an unpublished manual build command could override them.</dd>
+        <dt>Impact</dt><dd>Repeated APKs may be indistinguishable to Android/users and to future recovery tooling. A backup cannot currently state a meaningful app build provenance.</dd>
+        <dt>Root cause</dt><dd>Database/codec versioning evolved independently from release artifact versioning.</dd>
+        <dt>Recommendation</dt><dd>Adopt monotonically increasing build numbers and record app version, schema version, document format, platform, and asset-manifest version in every backup. Validate supported upgrade/restore matrices before distribution.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>pubspec.yaml:7-19</code> defaults to <code>1.0.0+1</code>; <code>android/app/build.gradle.kts:22-30</code> maps that build number to Android <code>versionCode</code>; <code>lib/core/database/database.dart:55-56</code> is schema v13; <code>lib/canvas/io/zenno_document.dart:29-31</code> and <code>lib/canvas/persistence/ink_codec.dart:28-33</code> carry separate format versions.</div>
+    </article>
+
+    <article class="finding medium" id="f17">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F17 — Normal navigation is durable, but process-lifecycle exits have no save checkpoint</h3></div>
+      <p>Most canvas mutations are written through asynchronously and normal Back navigation explicitly flushes them. However, Zenno registers no app-lifecycle observer for inactive/paused/detached states. If the route is disposed outside the guarded close path, its final flush is deliberately fire-and-forget. A process kill can therefore end the only in-memory owner of pending writes, the debounced viewport update, or failed-write retry closures before their durable outcome is known.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the missing lifecycle coordination; the exposure window depends on OS timing and whether a write has already reached SQLite.</dd>
+        <dt>Impact</dt><dd>The latest gesture, transform, viewport, or recoverable failed write can be absent after reopening even though older note content remains intact. This is a narrow but high-friction form of silent rollback.</dd>
+        <dt>Root cause</dt><dd>Durability is coupled to route navigation and controller lifetime, not to application lifecycle transitions or an app-level write coordinator.</dd>
+        <dt>Recommendation</dt><dd>Add an app-level persistence checkpoint for lifecycle transitions, make pending/failed state observable outside the route, and persist debounced state before suspension where the platform gives time. Continue write-through rather than relying on lifecycle callbacks as the sole save mechanism.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/main.dart:7-15</code> starts the app without lifecycle persistence registration; repository-wide search found no <code>WidgetsBindingObserver</code>, <code>AppLifecycleState</code>, or <code>didChangeAppLifecycleState</code>; <code>lib/canvas/canvas_controller.dart:926-980,1048-1117</code> owns pending/retry state; <code>lib/canvas/canvas_editor_page.dart:207-214,258-305,481-485</code> awaits normal close but does not await dispose.</div>
+    </article>
+
+    <article class="finding medium" id="f18">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F18 — Persisted enum ordinals are a semantic compatibility contract with no guardrail</h3></div>
+      <p>Thirteen persisted columns use Drift’s integer-enum mapping. Several more store manual enum indexes for pen width mode, shape arrow styles, and focus-engine runtime. Their meaning is the Dart declaration order, so inserting or reordering an enum member can silently reinterpret existing rows while leaving the SQL schema completely unchanged. The v1–v13 schema snapshots and exact-schema migration checks are valuable, but they cannot detect this class of semantic drift. Current declarations show no proven mismatch; this is a latent upgrade hazard that should be fixed before one is introduced.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the storage contract; no current enum reorder was asserted.</dd>
+        <dt>Impact</dt><dd>A routine-looking source edit could change element kinds, stroke tools, focus status, board type, layer kind, or settings when old notes are reopened, without a migration failure to signal the problem.</dd>
+        <dt>Root cause</dt><dd>Domain order and wire value are the same number, and compatibility relies on contributor discipline rather than explicit stable codes or semantic fixtures.</dd>
+        <dt>Recommendation</dt><dd>Assign explicit durable wire codes/converters, document that existing values never change, and add fixtures that open historic integer values and assert their domain meanings. Migrate only with an explicit old-code-to-new-code map.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/tables/settings_tables.dart:3-17,42-49</code>; <code>board_tables.dart:4-13,64-72</code>; <code>focus_tables.dart:4-11,39-78,105-116</code>; <code>canvas_tables.dart:3-16,47-63,90-91,146-182,246</code>. Manual index persistence appears at <code>lib/canvas/persistence/canvas_repository.dart:473-482,1157-1177</code> and <code>lib/features/focus/data/focus_repository.dart:101-103,197-215</code>. The exact-schema loop at <code>test/database_test.dart:551-569</code> validates structure, not these meanings.</div>
+    </article>
+
+    <article class="finding high" id="f19">
+      <div class="finding-head"><span class="severity">High</span><h3>F19 — The “idempotent” bootstrap path is unsafe for partial restores or a cleared seed flag</h3></div>
+      <p>Startup trusts one <code>db_schema_seeded</code> boolean. If the singleton is missing or that flag is false, one transaction replaces the entire settings row with defaults, replaces fixed-ID builtin templates, then creates two new boards and a ritual checklist using fresh UUIDs. Those latter inserts do not check whether equivalent user-populated rows already exist. In a partial restore this can duplicate core boards/rituals and reset preferences. Worse, replacing a builtin template that an existing reflection entry references conflicts with its <code>ON DELETE RESTRICT</code> relationship, so database opening can fail instead of repairing the partial state.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the code paths and non-idempotent random-ID inserts; the exact restricted-replace failure is a static inference from SQLite/foreign-key semantics and was not executed by mandate.</dd>
+        <dt>Impact</dt><dd>A damaged or incomplete backup can turn an otherwise repairable store into duplicated boards, lost preferences, or an app that cannot open. The current fresh-database seed test would not expose this recovery path.</dd>
+        <dt>Root cause</dt><dd>A completion flag is treated as proof of every seed invariant, while the recovery branch mixes destructive replacement with unconditional creation and calls the whole operation idempotent.</dd>
+        <dt>Recommendation</dt><dd>Make each seed invariant independently repairable: preserve an existing settings row, insert builtin rows without delete/replace semantics, find stable board/checklist identities, and reconcile only missing children. Add partial-state fixtures for every interruption point and referenced builtin before accepting restored data.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/seed/seed_data.dart:24-77</code> gates all repair on one flag and replaces settings; <code>seed_data.dart:80-145</code> replaces builtin templates; <code>seed_data.dart:148-209</code> unconditionally creates random-ID boards/checklists; <code>lib/core/database/tables/reflection_tables.dart:23-36</code> restricts deletion of referenced templates; <code>lib/core/database/database.dart:153-158</code> enables foreign keys before seeding. The only direct seed test at <code>test/database_test.dart:85-99</code> covers a fresh database.</div>
+    </article>
+
+    <article class="finding medium" id="f20">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F20 — The live database also stores installation-specific absolute media paths</h3></div>
+      <p>Absolute-path coupling is not limited to the dormant document codec. Imported image/PDF paths and generated thumbnail paths are persisted verbatim in the primary database, then used directly for rendering and liveness checks. A database plus media restore into a different documents root, application ID, platform, or container layout leaves those rows pointing at the old root. Startup cleanup makes this more hazardous: references whose old paths do not exist are omitted from the resolved live set, so files correctly restored under the new root can be classified and deleted as orphans.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the coupling and cleanup behavior; whether a particular Android restore changes the documents root is platform/device/package dependent.</dd>
+        <dt>Impact</dt><dd>A physically complete backup can still reopen with blank media and may lose the restored copies during the first cleanup pass. This defeats location-independent recovery.</dd>
+        <dt>Root cause</dt><dd>Filesystem location is the media identity. Neither the database nor cleanup resolves a stable logical asset ID against the current installation root.</dd>
+        <dt>Recommendation</dt><dd>Persist media IDs or validated package-relative paths, resolve them against the current root at runtime, and migrate legacy absolute paths before any orphan collection. Restore into a staging root, rewrite/verify all references, then atomically expose the restored store.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_import.dart:26-27,51-52,146-164</code> creates and returns absolute paths; <code>lib/canvas/persistence/canvas_repository.dart:232-258,401-434</code> reads/writes them verbatim; thumbnails do the same at <code>lib/canvas/canvas_editor_page.dart:229-236</code>; <code>lib/features/library/data/library_file_cleanup_io.dart:29-47,54-59</code> discards nonexistent old references and deletes unmatched files under the current roots.</div>
+    </article>
+
+    <article class="finding medium" id="f21">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F21 — Opening a newer database with an older build silently stamps the schema version backward</h3></div>
+      <p>Zenno’s migration callback only contains ascending guards such as <code>if (from &lt; 13)</code>. The locked Drift version invokes the same <code>onUpgrade</code> callback whenever stored and current versions differ, including downgrades. If a future v14 store is opened by this v13 code, every migration guard is false, the callback succeeds without changing the v14 schema, and Drift records version 13. Reinstalling v14 can then try its 13→14 migration against columns/tables that already exist. There is no explicit “data is from a newer app” refusal or read-only recovery path.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High for the installed Drift behavior and current callback; impact is prospective because the checked-in store version is currently 13.</dd>
+        <dt>Impact</dt><dd>Manual APK rollback or restoring a newer backup into an older build can poison the next upgrade and make the database unavailable even though the rows remain physically present.</dd>
+        <dt>Root cause</dt><dd>Forward migration logic treats all version mismatches as old-to-new and has no downgrade branch or compatibility gate.</dd>
+        <dt>Recommendation</dt><dd>If <code>versionBefore &gt; versionNow</code>, refuse normal read-write open without changing <code>user_version</code>; present a clear newer-app requirement and allow only a verified export/recovery path. Test old-build/new-store/new-build sequences before distributing rollback APKs.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/database.dart:55-152</code> has only ascending <code>from &lt; N</code> actions; <code>pubspec.lock</code> locks Drift 2.31.0; that installed package defines version mismatch as <code>hadUpgrade</code> and routes it to <code>onUpgrade</code> at <code>~/.pub-cache/hosted/pub.dev/drift-2.31.0/lib/src/runtime/query_builder/migration.dart:10-46,611-627</code> and <code>lib/src/runtime/api/db_base.dart:118-137</code>.</div>
+    </article>
+
+    <article class="finding medium" id="f22">
+      <div class="finding-head"><span class="severity">Medium</span><h3>F22 — Missing/corrupt media is displayed as an endless neutral placeholder with no repair path</h3></div>
+      <p>On canvas open, image decode and PDF raster errors are caught and discarded; a null raster always paints the same neutral rectangle used for legitimate background loading. There is no persisted error state, filename/provenance display, retry action, or “locate replacement file” workflow. Export later fails explicitly, but that is the first clear signal and still offers no way to relink the existing element.</p>
+      <dl class="facts">
+        <dt>Confidence</dt><dd>High.</dd>
+        <dt>Impact</dt><dd>After path drift, file damage, or cleanup races, the user cannot tell slow loading from permanent loss and cannot repair the note in place. Re-importing creates a different element and loses the original bounds/links unless manually reconstructed.</dd>
+        <dt>Root cause</dt><dd>Runtime raster absence represents loading, eviction, and permanent source failure; the model has no distinguishable media-health state or provenance-based recovery operation.</dd>
+        <dt>Recommendation</dt><dd>Track transient loading separately from durable source failure, show a calm inline error with original asset identity/hash, and offer retry/relink while preserving element ID, transform, layer, and page metadata. Never delete the unresolved row automatically.</dd>
+      </dl>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/canvas_controller.dart:4262-4317,4320-4341</code> swallows image/PDF failures; <code>lib/canvas/render/elements_painter.dart:705-751,927-941</code> uses the same placeholder whenever raster is null; export exposes the failure at <code>lib/canvas/io/canvas_export.dart:315-365</code>. No relink/replace-source call site was found.</div>
+    </article>
+  </section>
+
+  <section id="safeguards">
+    <h2>Verified safeguards and positive evidence</h2>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S01 — Element persistence and retry reconciliation are transaction-aware</h3></div>
+      <p>Generic and detail rows are written within transactions; command batches apply deletes/upserts atomically; failed async writes are retained and a full current-state reconciliation is available. The editor flushes and warns before leaving with unsaved writes.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/persistence/canvas_repository.dart:334-377,531-641</code>; <code>lib/canvas/canvas_controller.dart:926-943,1059-1117</code>; <code>lib/canvas/canvas_editor_page.dart:258-305</code>.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S02 — Canvas hard delete protects history and shared media references</h3></div>
+      <p>Deletion first detaches focus-session links, then deletes the canvas transactionally. Media candidates are deleted only after checking that no image, PDF, or thumbnail row still references the path, and file cleanup confines deletion to resolved app-owned roots.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/features/library/data/library_repository.dart:187-251</code>; <code>lib/features/library/data/library_file_cleanup_io.dart:5-26</code>.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S03 — Database schema evolution has explicit snapshots and broad validation fixtures</h3></div>
+      <p>Schema snapshots exist for v1 through v13, the generated helper indexes each version, migrations are additive and data-preserving in intent, and tests define exact-schema validation from every prior version. Ink blobs likewise retain v1/v2 decoders while writing v3. This structural coverage does not remove F18’s enum-semantic risk.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/database.dart:55-159</code>; <code>test/generated_migrations/schema.dart:21-56</code>; <code>test/database_test.dart:551-569</code>; <code>lib/canvas/persistence/ink_codec.dart:13-45,71-175</code>. Test source was inspected, but not executed in this analysis-only task.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S04 — Destructive scope is usually disclosed, and folder deletion preserves canvases</h3></div>
+      <p>Canvas, card, reflection, and populated-column deletes require explicit confirmation with irreversible/scope wording. Folder deletion is deliberately safer than its schema cascade: one transaction moves its canvases to Unfiled before deleting the folder, and the dialog tells the user that outcome.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/features/library/presentation/pages/library_page.dart:176-210</code> and <code>lib/features/library/data/library_repository.dart:158-170</code>; destructive confirmations in <code>lib/features/library/presentation/widgets/canvas_card.dart:171-212</code>, <code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:155-190,222-251</code>, and <code>lib/shared/kanban/kanban_column_view.dart:391-425</code>.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S05 — Active focus sessions have deliberate restart serialization</h3></div>
+      <p>The focus engine derives elapsed time from a wall clock rather than trusting ticker counts, persists a runtime snapshot every 15 seconds and on phase transitions/actions, retries failed periodic checkpoints, and reconstructs running/paused sessions plus pending reviews at startup. Repository creation also prevents a second live session, while restore source includes repair for older duplicates.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/features/focus/application/active_session_controller.dart:79-118,340-455,519-558</code>; <code>lib/features/focus/data/focus_repository.dart:55-110,197-217</code>; source fixtures at <code>test/active_session_controller_test.dart:15-285</code>, <code>test/focus_repository_test.dart:71-170</code>, and <code>test/timer_engine_test.dart:481-530</code>. Tests were inspected, not run.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S06 — The substantial user-authored editors guard navigation with unsaved changes</h3></div>
+      <p>Current source uses <code>PopScope</code> and explicit dirty/save/discard flows for canvas title/pending writes, goal and revision card text, reflection answers, template design, Focus Active, and post-session review. This supersedes older review documents that reported unguarded exits. Small picker/dialog inputs remain cancel-on-dismiss by design and are not yet persisted records.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/canvas_editor_page.dart:251-305,481-485,743</code>; <code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:194-204,261-265</code>; <code>lib/features/revision/presentation/widgets/revision_card_detail_sheet.dart:274-314</code>; <code>lib/features/goal_cycle/presentation/pages/reflection_editor_page.dart:74-138,234-246</code>; <code>template_editor_page.dart:272-301</code>; <code>lib/features/focus/presentation/pages/focus_active_page.dart:40-46</code> and <code>focus_review_page.dart:52-58,259-273</code>.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S07 — Browser database access is explicitly single-client</h3></div>
+      <p>The web connection acquires a browser-wide exclusive Web Lock before opening the IndexedDB-backed WASM file and holds it for the tab lifetime. A second tab fails before opening instead of creating two independent SQLite clients over the same virtual file. This is useful corruption prevention, although it does not solve F04’s media I/O portability.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/core/database/connection_web.dart:6-20</code>; <code>lib/core/database/web_database_lock.dart:8-42</code>; the shared database provider keeps one app-wide connection at <code>lib/core/providers/database_provider.dart:6-14</code>.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S08 — Visual export validates all source media before writing its output</h3></div>
+      <p>Export first resolves scope and pixel limits, then prepares every image/PDF at the requested scale. Missing or unrenderable media throws a typed export error before the final file write, and temporary decoded images/PDF handles are disposed. This avoids producing a deceptively “successful” composite with silent blank regions.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/io/canvas_export.dart:165-247,301-379</code>; the progress dialog is non-dismissible and typed failures surface at <code>lib/canvas/widgets/canvas_toolbar.dart:1959-2025</code>. Raw destination I/O still remains outside the typed boundary described by F10.</div>
+    </article>
+    <article class="finding good">
+      <div class="finding-head"><span class="severity">Safeguard</span><h3>S09 — Decoded media rasters are correctly treated as rebuildable runtime cache</h3></div>
+      <p>Image/PDF elements persist source identity and geometry, not decoded <code>ui.Image</code> objects or zoom-bucket rasters. Runtime images are excluded from equality/snapshots, budgeted and disposed by the controller, then reconstructed from source media. A backup therefore needs original media and metadata, not volatile raster memory.</p>
+      <div class="evidence"><strong>Evidence</strong><code>lib/canvas/model/canvas_element.dart:341-476,479-635</code>; <code>lib/canvas/persistence/canvas_repository.dart:232-263,401-434</code>; controller raster hydration at <code>lib/canvas/canvas_controller.dart:4262-4355</code>.</div>
+    </article>
+  </section>
+
+  <section id="priorities">
+    <h2>Analysis-only priority order</h2>
+    <table>
+      <thead><tr><th>Order</th><th>Outcome</th><th>Why first</th><th>Minimum acceptance evidence</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Self-contained full backup + validated restore</td><td>It limits the blast radius of every other storage defect and irreversible action.</td><td>Cross-install round trip of all tables and media; manifest/hash validation; restore rollback on injected failure; original install remains unchanged until commit.</td></tr>
+        <tr><td>2</td><td>Durable signing identity + monotonic release version</td><td>Prevents distribution changes from forcing an uninstall before recovery exists.</td><td>Stable non-debug key; upgrade install over the current state-bearing build; version/schema provenance recorded; rollback/recovery drill.</td></tr>
+        <tr><td>3</td><td>Trash/archive before hard deletion</td><td>Immediate protection against the most reachable irreversible action.</td><td>Delete routes to trash; restore returns all relationships/media; purge is separate and explicit.</td></tr>
+        <tr><td>4</td><td>Coordinated media ownership and cleanup</td><td>Closes the race that can delete newly imported or undo-restorable payloads.</td><td>Staged/live/trash states; active undo references protected; liveness rechecked at deletion; concurrency tests.</td></tr>
+        <tr><td>5</td><td>User-retrievable visual export</td><td>Existing rendering work becomes useful with a small, obvious handoff boundary.</td><td>Save/share destination receives exact bytes; cancellation and no-space errors are clear; no orphan temp output.</td></tr>
+        <tr><td>6</td><td>Portable canvas package</td><td>Enables selective transfer without pretending presentation export is backup.</td><td>Embedded/deduplicated media, strict validation, ID/link policy, complete canvas metadata, version upgrade fixtures.</td></tr>
+        <tr><td>7</td><td>Corruption containment + idempotent bootstrap recovery</td><td>Prevents one row from hiding an entire note and stops partial-state repair from making the store worse.</td><td>Malformed rows are quarantined with raw data preserved; every interrupted seed state repairs without reset, duplication, or blocked open.</td></tr>
+        <tr><td>8</td><td>Platform adapters, import staging, and lifecycle checkpoints</td><td>Completes web/native compatibility, stops file leaks/resource spikes, and narrows last-edit loss on suspension.</td><td>Conditional platform implementations; byte-based web picker/download; staged import rollback; size limits; pending writes checkpoint on lifecycle transitions.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="backup-contract">
+    <h2>Minimum viable full-backup and restore contract</h2>
+    <p>This is an analysis-only specification derived from the current persistence graph. It is intentionally stricter than copying the SQLite file or reusing <code>ZennoDocumentCodec</code>.</p>
+    <table>
+      <thead><tr><th>Stage</th><th>Required content/behavior</th><th>Failure rule</th></tr></thead>
+      <tbody>
+        <tr><td>1 · Quiesce</td><td>Flush canvas pending writes, checkpoint active focus runtime, block new mutations/imports/cleanup, and take a database-native consistent snapshot or one read transaction. Bind it to one media-reference inventory.</td><td>If any writer cannot quiesce or the snapshot cannot be proven coherent, create no backup and leave the app untouched.</td></tr>
+        <tr><td>2 · Manifest</td><td>Format version; Zenno app/version code; database schema version; platform/application ID; UTC creation time; backup UUID; encryption/KDF parameters; per-entry relative path, byte length, MIME/type, and cryptographic hash.</td><td>Reject unknown required manifest versions, duplicate paths/IDs, unsafe paths, unsupported algorithms, or a manifest claiming a newer incompatible schema.</td></tr>
+        <tr><td>3 · Relational core</td><td>All 26 handwritten tables: settings; folders/canvases/layers/bookmarks/elements and six detail tables; boards/columns/cards/details/attachments; reflection templates/entries; ritual checklists/items; focus sessions/ritual snapshots/distractions.</td><td>Do not accept “partial success.” Validate required singleton, primary/unique keys, foreign keys, enum wire values, JSON syntax, finite geometry, and ink codec version before any live write.</td></tr>
+        <tr><td>4 · Assets</td><td>Every distinct live file referenced by <code>images.file_path</code> and <code>pdf_documents.file_path</code>, stored by content ID or package-relative name. Include original filename/page count when known. Thumbnails are optional and regenerable.</td><td>A missing/hash-mismatched required asset fails the backup or marks the package explicitly incomplete; never present it as a verified recovery copy.</td></tr>
+        <tr><td>5 · Exclusions</td><td>Exclude decoded image/PDF rasters, PDF handles/cache, transient import stages, stale orphans, and <code>canvas_exports</code> presentation files unless the user explicitly requests them as separate attachments.</td><td>Derived-cache failure must not block recovery; it must also never substitute for original media.</td></tr>
+        <tr><td>6 · Package finalization</td><td>Write to a temporary archive, stream/hash entries, authenticate/encrypt, close and reopen it, verify manifest and every entry, then atomically promote to the user-selected destination.</td><td>On cancel, no-space, crash, or validation failure, remove only the temporary output and retain the prior verified backup.</td></tr>
+        <tr><td>7 · Restore preflight</td><td>Decrypt/read without mutating Zenno; verify hashes, sizes, schema/codec support, free space, path confinement, relational graph, seed invariants, and whether the operation is Replace or Merge.</td><td>Newer/unsupported or damaged packages open only in a diagnostic/export mode; never downgrade version metadata or silently default required fields.</td></tr>
+        <tr><td>8 · Restore staging</td><td>Create a new staging database/current-root asset directory. Import parents before children, rewrite legacy absolute paths, and run explicit version transforms. For Merge, allocate collision-free IDs and remap layers, attachments, focus links, and canvas-link targets according to a declared policy.</td><td>Never use parent <code>INSERT OR REPLACE</code> as a merge primitive; cascades can destroy already-imported children/history.</td></tr>
+        <tr><td>9 · Verification + commit</td><td>Recheck counts, foreign keys, asset hashes, decoder health, seed uniqueness, and representative opening of each canvas/reflection. Swap staged state into service only after all checks pass, retaining a rollback copy until post-open validation succeeds.</td><td>Any failure keeps the original live database/media authoritative and produces a specific, non-destructive diagnostic.</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">Table count derives from <code>lib/core/database/database.dart:12-47</code> and the five files under <code>lib/core/database/tables/</code>. Runtime-only raster exclusions derive from S09. Restore collision/link requirements derive from card attachments, focus canvas links, soft canvas links, compound layer/element ownership, and F18/F19/F21.</p>
+  </section>
+
+  <section id="iterations">
+    <h2>Iteration log</h2>
+    <article class="iteration">
+      <h3>Iteration 1 — 2026-07-18T05:03:23+08:00</h3>
+      <p>Completed the first repository-wide pass for this lens. Established the persistence topology, traced canvas media import and visual export, reviewed the dormant native codec, mapped database migrations v1–v13, checked deletion/file-cleanup boundaries, and inspected secondary JSON serialization. Findings are ranked from reachable data-loss exposure through compatibility and metadata drift.</p>
+      <p class="muted">Next pass: challenge platform assumptions; re-read cleanup races, generated migration semantics, document completeness, UI error surfaces, and relevant tests/plans. Correct or downgrade any claim that does not survive that pass.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 2 — 2026-07-18T05:08:19+08:00</h3>
+      <p>Challenged the baseline against provider timing, library interaction, Android packaging, version defaults, and existing test coverage. Added F13 after proving orphan cleanup is launched without awaiting or coordinating its reference snapshot; added F14 because changing the configured debug release signature creates an uninstall boundary with no recovery channel; added F15–F16 for implicit Android backup policy and weak release provenance.</p>
+      <p>Corrections: retained F03 but explicitly limited Android directory visibility to a platform-dependent inference; retained F04 as a static compatibility conclusion rather than claiming a build was observed. The old UI review’s “silent import failure” and canvas-clear findings are stale against current source and were not imported into this report.</p>
+      <p class="muted">Next pass: audit process-lifecycle durability, relational enum/version semantics, media-reference invariants, restore ordering, and test gaps. Re-rank if a narrower failure boundary is proven.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 3 — 2026-07-18T05:10:56+08:00</h3>
+      <p>Traced durability past normal navigation and added F17: Back is explicitly flushed, but background/process lifecycle transitions have no persistence checkpoint and dispose cannot await its final flush. Audited all twelve <code>intEnum</code> columns and added F18 as a latent semantic-migration hazard, while retaining the positive structural migration evidence with a narrower claim.</p>
+      <p>Added F19 after challenging the seed routine’s “idempotent” contract against partial restore states. A false/missing completion flag resets settings and unconditionally creates random-ID boards/checklists; fixed-ID template replacement can also conflict with referenced reflections. Priority 7 now includes nondestructive bootstrap recovery.</p>
+      <p class="muted">Next pass: verify media path canonicalization and deduplication, thumbnail lifecycle, import/add atomicity, database-file snapshot assumptions, and restore ordering across relational and filesystem state. Revisit severity after checking reachability.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 4 — 2026-07-18T05:12:39+08:00</h3>
+      <p>Extended the media trace from picker through app-owned copies, database rows, renderers, thumbnails, deletion, and orphan collection. Added F20 because the primary store—not just the unused JSON codec—persists installation-specific absolute paths, and a root-changing restore can have its remapped files deleted by orphan cleanup. Expanded F08 with the unused <code>import_hash</code> evidence and lack of content deduplication.</p>
+      <p>Corrected F06’s scope: irreversible deletion also covers reflections, cards, and whole populated columns, all of which are learning records. Recorded S04 so the report does not hide the existing confirmation copy or the folder-delete transaction that explicitly preserves canvases.</p>
+      <p class="muted">Next pass: inspect relational restore ordering and every foreign-key action, assess date/time and numeric serialization compatibility, review export naming/overwrite behavior, and test report claims against source-level negative evidence. Continue deduplicating rather than inflating finding count.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 5 — 2026-07-18T05:14:20+08:00</h3>
+      <p>Mapped all handwritten foreign keys and secondary JSON/index encodings. Corrected F18 from twelve to thirteen direct <code>intEnum</code> columns and added the separate manual index contracts for focus runtime and shape/pen styles. Extended F05 with the silent control-point fallback rather than creating a duplicate corruption finding.</p>
+      <p>Downgraded F04 from High to Medium after reconciling the deliberate web database code with the README’s explicit Android-tablet product scope; the incompatibility remains material to web preview/secondary use but is not the primary installed-user path. Added S05 after verifying that focus sessions, unlike canvas edits, have explicit periodic runtime serialization and startup reconstruction.</p>
+      <p class="muted">Next pass: audit upgrade/downgrade boundaries, restore collision/merge policy, database snapshot consistency, file-write atomicity, and whether every persisted user-authored text surface has an exit guard. Revise existing findings before adding new ones.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 6 — 2026-07-18T05:16:09+08:00</h3>
+      <p>Verified the locked Drift downgrade behavior and added F21: current ascending-only migration guards can accept a newer store, stamp its schema version backward without undoing newer structure, and cause a later forward migration to collide. This is a prospective rollback/restore compatibility defect, explicitly labelled as such.</p>
+      <p>Audited the main text-authoring surfaces and added S06 because current code now guards every substantial editor against navigation loss; older review findings were not treated as current evidence. Also checked Drift’s ISO-8601 text mapping: local values are stored with an explicit UTC offset and UTC values with <code>Z</code>, so cross-timezone interpretation did not support a new finding.</p>
+      <p class="muted">Next pass: inspect consistent-snapshot prerequisites for SQLite and IndexedDB, restore identity collisions and cross-record links, asset hash/integrity opportunities, and file-write durability. Re-evaluate F01’s minimum backup contract with the full data graph.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 7 — 2026-07-18T05:16:56+08:00</h3>
+      <p>Traced the application-wide database lifetime, native connection, IndexedDB/WASM connection, web lock, media files, and soft/hard canvas relationships as one backup graph. Tightened F01’s acceptance contract: a safe package must snapshot a quiescent database and the exact corresponding media generation, not merely copy a live database file and directory independently.</p>
+      <p>Link/identity review reinforced existing recommendations rather than creating duplicates: selective canvas import must remap element/layer IDs and define behavior for soft target-canvas links, while full restore must preserve card attachments and focus links in parent-before-child order. Added S07 for the exclusive browser lock. Direct thumbnail/export writes are not atomically promoted, but export atomicity was already covered by F10 and thumbnail damage is regenerable, so no inflated duplicate finding was added.</p>
+      <p class="muted">Next pass: challenge corruption reachability in JSON and BLOB fields, inspect all migration fixtures for missing semantic cases, evaluate backup privacy/confidentiality boundaries, and validate the report’s internal consistency and source references.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 8 — 2026-07-18T05:17:56+08:00</h3>
+      <p>Re-ran the serialization-boundary inventory and reconciled every <code>jsonDecode</code>, ink BLOB decode, settings fallback, manual enum decode, and migration fixture against existing findings. Settings and focus runtime contain bounded fallbacks; reflection syntax errors, ink blobs, shape control points, and the dormant document decoder remain accurately separated by failure mode in F05, F09, F12, and F18.</p>
+      <p>Migration source includes exact-schema validation from every v1–v12 snapshot plus targeted data-preservation fixtures for material transitions; no additional structural gap was claimed beyond the semantic enum and downgrade cases already recorded. Added authenticated-encryption guidance to F01 because a portable archive contains private notes and media. Report checks confirmed unique finding IDs, all navigation anchors present, and displayed severity totals matching the 21 finding articles and seven safeguards. Legacy <code>tidy</code>/<code>xmllint</code> on this machine do not recognize HTML5 semantic elements, so their HTML4 parser noise was not misreported as an artifact defect.</p>
+      <p class="muted">Next pass: re-read import/export UI state transitions and cancellation semantics, review media rendering failure recovery, inspect APK/package identity compatibility, and challenge the top-four severity rankings against practical reachability.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 9 — 2026-07-18T05:18:40+08:00</h3>
+      <p>Traced picker cancellation, import busy/error state, export option cancellation, progress routing, source preparation, and result messaging. Corrected F04 because web actions are explicitly intercepted as Android-only rather than silently reaching a pathless picker. Downgraded F02 to Medium because the incomplete document codec is dormant and only reachable from tests; its design remains unsafe to expose.</p>
+      <p>Added F22 after proving that permanent image/PDF failures collapse into the same neutral state as normal loading with no retry/relink workflow. Added S08 because export refuses to write a partial visual file when any required media cannot be prepared. Rechecked Android package identity: <code>com.bearhunter.zenno</code> is consistent between namespace and application ID; the remaining package transition risk is signing, already covered by F14.</p>
+      <p class="muted">Next pass: inspect storage-space failure behavior, generated export accumulation/cleanup, media sharing across undo/delete/import, and full-backup manifest completeness. Recompute counts and ordering after any correction.</p>
+    </article>
+    <article class="iteration">
+      <h3>Iteration 10 — 2026-07-18T05:19:41+08:00</h3>
+      <p>Checked disk-full/error behavior across database writes, focus checkpoints, imports, thumbnails, and exports. Existing save retry paths, F07, and F10 already cover the material boundaries. Tightened F03 because <code>canvas_exports</code> is excluded from the only file cleanup roots and has no management UI, so successful but inaccessible outputs accumulate.</p>
+      <p>Verified shared-file behavior: multi-page PDF rows intentionally share one source; canvas deletion queries remaining references before file deletion; editor erases defer physical collection; the remaining live race is already F13. Added S09 for the correct exclusion of decoded rasters from durable state. Added the full nine-stage backup/restore contract so F01 is actionable across all 26 handwritten tables, media, IDs, links, versions, staging, privacy, and rollback.</p>
+      <p class="muted">Next pass: verify the table count and every graph edge in the backup contract, challenge restore merge semantics against unique/composite keys, inspect schema constraints that are absent from Dart validation, and audit report references after line shifts.</p>
+    </article>
+  </section>
+
+  <footer>
+    <p><strong>Analyzer 16</strong> · analysis-only artifact · no source, configuration, dependency, test, or Git metadata was modified; only this assigned report was updated.</p>
+    <p><a href="#top">Back to top</a></p>
+  </footer>
+</main>
+</body>
+</html>

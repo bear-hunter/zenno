@@ -26,13 +26,20 @@ import 'package:zenno/canvas/render/selection_overlay_geometry.dart';
 /// and its latest [position] in surface-local coordinates so per-move deltas
 /// can be computed.
 class _ActivePointer {
-  _ActivePointer({required this.kind, required this.position});
+  _ActivePointer({
+    required this.kind,
+    required this.position,
+    required this.buttons,
+  });
 
   /// The canvas-relevant category of this pointer.
   final CanvasInputKind kind;
 
   /// The pointer's most recent surface-local position.
   Offset position;
+
+  /// Button mask from the pointer's most recent event.
+  int buttons;
 }
 
 /// The interactive infinite-canvas surface.
@@ -179,7 +186,9 @@ class _CanvasViewState extends State<CanvasView> {
   /// starts rendering; an element zoomed into is re-rasterised sharper).
   ViewportState? _lastRasterViewport;
   Size? _lastRasterSize;
+  double? _lastRasterDevicePixelRatio;
   Size? _pendingRasterSyncSize;
+  double? _pendingRasterDevicePixelRatio;
   bool _rasterSyncScheduled = false;
 
   /// Pointer id currently driving a tool gesture, or `null`.
@@ -194,6 +203,7 @@ class _CanvasViewState extends State<CanvasView> {
   StylusButtonAction? _stylusButtonDragAction;
   bool _toolGestureUsesTemporaryTool = false;
   bool _stylusLongPressToolActive = false;
+  bool _stylusButtonConvertedStroke = false;
   _SelectionPointerSession? _selectionPointerSession;
   Set<String>? _selectionBeforeBackgroundGesture;
 
@@ -302,6 +312,7 @@ class _CanvasViewState extends State<CanvasView> {
     _pointers[event.pointer] = _ActivePointer(
       kind: kind,
       position: event.localPosition,
+      buttons: event.buttons,
     );
 
     // A finger normally transforms the viewport — never draws or erases. When
@@ -520,7 +531,9 @@ class _CanvasViewState extends State<CanvasView> {
       _markStylusActivity(event);
     }
     final Offset previous = pointer.position;
+    final int previousButtons = pointer.buttons;
     pointer.position = event.localPosition;
+    pointer.buttons = event.buttons;
     final Offset? touchDown = _touchDownPositions[event.pointer];
     if (touchDown != null &&
         (event.localPosition - touchDown).distance > CanvasController.tapSlop) {
@@ -549,6 +562,7 @@ class _CanvasViewState extends State<CanvasView> {
         _stylusLongPressTimer?.cancel();
         _stylusButtonHoldTimer?.cancel();
       }
+      _convertActiveStrokeToArrow(event, previousButtons);
       if (_selectionPointerSession != null) {
         _routeSelectionPointerMove(event);
         return;
@@ -603,7 +617,15 @@ class _CanvasViewState extends State<CanvasView> {
       case SelectionOverlayTarget.rotation:
         _updateSinglePointerRotation(session, event.localPosition);
       case SelectionOverlayTarget.done:
-        // Done is deliberately tap-only; dragging away leaves the selection.
+      case SelectionOverlayTarget.copy:
+      case SelectionOverlayTarget.paste:
+      case SelectionOverlayTarget.delete:
+        if (_controller.selectionMode != SelectionMode.replace) {
+          _resumeSelectionLasso(session, event.localPosition);
+          return;
+        }
+        // Selection actions are tap-only in replace mode; dragging away keeps
+        // the selection unchanged.
         break;
       case SelectionOverlayTarget.outside:
         _resumeBackgroundToolFromSelection(session, event);
@@ -707,6 +729,16 @@ class _CanvasViewState extends State<CanvasView> {
     _routeToolMove(event, session.downLocal);
   }
 
+  void _resumeSelectionLasso(
+    _SelectionPointerSession session,
+    Offset currentLocal,
+  ) {
+    _selectionPointerSession = null;
+    _controller.beginLasso(_toWorld(session.downLocal));
+    _controller.appendLasso(_toWorld(currentLocal));
+    _toolGesture = _ToolGesture.lasso;
+  }
+
   /// Routes a move of the active tool pointer to the controller per
   /// [_toolGesture].
   void _routeToolMove(PointerMoveEvent event, Offset previous) {
@@ -752,6 +784,36 @@ class _CanvasViewState extends State<CanvasView> {
     }
   }
 
+  void _convertActiveStrokeToArrow(
+    PointerMoveEvent event,
+    int previousButtons,
+  ) {
+    final _ActivePointer? pointer = _pointers[event.pointer];
+    final Offset? startWorld = _controller.liveStroke?.points.first.offset;
+    if (pointer?.kind != CanvasInputKind.stylus ||
+        _toolGesture != _ToolGesture.draw ||
+        widget.stylusButtonMapping.drag != StylusButtonAction.arrow ||
+        hasStylusButton(previousButtons) ||
+        !hasStylusButton(event.buttons) ||
+        startWorld == null) {
+      return;
+    }
+
+    _stylusLongPressTimer?.cancel();
+    _stylusButtonHoldTimer?.cancel();
+    _controller.cancelStroke();
+    _penInputProcessor?.reset();
+    _stylusButtonDragAction = StylusButtonAction.arrow;
+    _stylusButtonConvertedStroke = true;
+    _toolGestureUsesTemporaryTool = _pushTemporaryToolFor(
+      StylusButtonAction.arrow,
+    );
+    _controller
+      ..beginShape(startWorld)
+      ..updateShape(_toWorld(event.localPosition));
+    _toolGesture = _ToolGesture.shape;
+  }
+
   void _onPointerUp(PointerUpEvent event) {
     if (_pointers[event.pointer]?.kind == CanvasInputKind.stylus) {
       // Starts the palm-rejection window covering the lift-off, where the
@@ -777,6 +839,8 @@ class _CanvasViewState extends State<CanvasView> {
     }
     _controller.appendToStroke(
       _toWorld(event.localPosition),
+      // A PointerUpEvent reports zero pressure; carrying it through would
+      // collapse the stroke's final point to zero width.
       _controller.liveStrokeLastPressure ?? _pressure(event),
       tiltX: _tiltX(event),
       tiltY: _tiltY(event),
@@ -1049,6 +1113,7 @@ class _CanvasViewState extends State<CanvasView> {
     }
     if (_stylusButtonDragAction != null &&
         !_stylusLongPressToolActive &&
+        !_stylusButtonConvertedStroke &&
         !cancelled &&
         !_toolPointerMoved) {
       _cancelToolGesture();
@@ -1164,6 +1229,18 @@ class _CanvasViewState extends State<CanvasView> {
       case SelectionOverlayTarget.done:
         if (!cancelled && !_toolPointerMoved) {
           _controller.clearSelection();
+        }
+      case SelectionOverlayTarget.copy:
+        if (!cancelled && !_toolPointerMoved) {
+          _controller.copySelection();
+        }
+      case SelectionOverlayTarget.paste:
+        if (!cancelled && !_toolPointerMoved) {
+          _controller.pasteSelection();
+        }
+      case SelectionOverlayTarget.delete:
+        if (!cancelled && !_toolPointerMoved) {
+          _controller.deleteSelection();
         }
       case SelectionOverlayTarget.outside:
         if (!cancelled) {
@@ -1301,6 +1378,7 @@ class _CanvasViewState extends State<CanvasView> {
     }
     _toolGestureUsesTemporaryTool = false;
     _stylusLongPressToolActive = false;
+    _stylusButtonConvertedStroke = false;
     _stylusButtonDragAction = null;
   }
 
@@ -1440,10 +1518,14 @@ class _CanvasViewState extends State<CanvasView> {
   void _syncTouchGesture() {
     final touches = _touchPositions;
     if (touches.length < 2) {
+      final bool endedPinch = _pinchStartViewport != null;
       _pinchStartViewport = null;
       _pinchStartMidpoint = null;
       _pinchStartDistance = null;
       _pinchStartAngle = null;
+      if (endedPinch) {
+        _controller.snapRotationToCardinalIfClose();
+      }
       return;
     }
     final Offset a = touches[0];
@@ -1497,24 +1579,30 @@ class _CanvasViewState extends State<CanvasView> {
   /// elements into rasterisation, and a zoom-in re-rasterises PDF pages
   /// sharper. Image/PDF raster loads are the only viewport-driven async work;
   /// scheduling is cheap (a spatial-index query) and idempotent.
-  void _syncRasterScheduling(Size size) {
+  void _syncRasterScheduling(Size size, double devicePixelRatio) {
     final bool sizeChanged = _lastRasterSize != size;
+    final bool pixelRatioChanged =
+        _lastRasterDevicePixelRatio != devicePixelRatio;
     _lastRasterSize = size;
+    _lastRasterDevicePixelRatio = devicePixelRatio;
     _controller.setViewportSize(size);
+    _controller.setDevicePixelRatio(devicePixelRatio);
     final ViewportState viewport = _controller.viewport;
-    if (_lastRasterViewport != viewport || sizeChanged) {
+    if (_lastRasterViewport != viewport || sizeChanged || pixelRatioChanged) {
       _lastRasterViewport = viewport;
       _controller.scheduleRasterWork();
     }
   }
 
-  void _queueRasterScheduling(Size size) {
+  void _queueRasterScheduling(Size size, double devicePixelRatio) {
     if (_lastRasterSize == size &&
         _lastRasterViewport == _controller.viewport &&
+        _lastRasterDevicePixelRatio == devicePixelRatio &&
         !_rasterSyncScheduled) {
       return;
     }
     _pendingRasterSyncSize = size;
+    _pendingRasterDevicePixelRatio = devicePixelRatio;
     if (_rasterSyncScheduled) {
       return;
     }
@@ -1522,128 +1610,175 @@ class _CanvasViewState extends State<CanvasView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _rasterSyncScheduled = false;
       if (mounted) {
-        _syncRasterScheduling(_pendingRasterSyncSize ?? Size.zero);
+        _syncRasterScheduling(
+          _pendingRasterSyncSize ?? Size.zero,
+          _pendingRasterDevicePixelRatio ?? 1,
+        );
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Color(_controller.paperStyle.backgroundColor),
-      child: ClipRect(
-        child: Listener(
-          onPointerDown: _onPointerDown,
-          onPointerMove: _onPointerMove,
-          onPointerUp: _onPointerUp,
-          onPointerCancel: _onPointerCancel,
-          onPointerHover: _onPointerHover,
-          onPointerSignal: _onPointerSignal,
-          child: MouseRegion(
-            onExit: (_) => _controller.setHoverPoint(null),
-            child: ListenableBuilder(
-              listenable: _controller,
-              builder: (context, _) {
-                final ViewportState viewport = _controller.viewport;
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final Size size = constraints.biggest;
-                    final bool hasFiniteSize =
-                        size.width.isFinite && size.height.isFinite;
-                    _queueRasterScheduling(hasFiniteSize ? size : Size.zero);
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: GridPainter(
-                              viewport: viewport,
-                              style: _controller.paperStyle,
-                            ),
-                          ),
-                        ),
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: ElementsPainter(
-                              elements: _controller.visibleElements,
-                              spatialIndex: _controller.spatialIndex,
-                              viewport: viewport,
-                              elementsRevision: _controller.elementsRevision,
-                              selectionRevision: _controller.selectionRevision,
-                              selectionPreviewRevision:
-                                  _controller.selectionPreviewRevision,
-                              tileCache: _elementsTileCache,
-                              selectedIds: _controller.selectedIds,
-                              pendingEraseIds: _controller.pendingEraseIds,
-                              selectionDragDelta:
-                                  _controller.selectionDragDelta,
-                              selectionTransformPreview:
-                                  _controller.selectionTransformPreview,
-                            ),
-                          ),
-                        ),
-                        // The live and overlay layers redraw at pen report
-                        // rate. They subscribe to the controller's live-layer
-                        // channel so a stroke sample rebuilds these two
-                        // painters only, never the surrounding editor.
-                        RepaintBoundary(
-                          child: ListenableBuilder(
-                            listenable: _controller.liveLayerListenable,
-                            builder: (context, _) => CustomPaint(
-                              // Freehand ink and the in-progress shape preview
-                              // share the live layer — only one is ever
-                              // non-null at once.
-                              painter: LiveStrokePainter(
-                                liveStroke: _controller.liveStroke,
-                                liveStrokeRevision:
-                                    _controller.liveStrokeRevision,
-                                liveShape: _controller.liveShapeElement,
-                                viewport: _controller.viewport,
-                                pathCache: _liveStrokePathCache,
+    final double devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final Listenable backgroundListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.canvasStyleListenable,
+    ]);
+    final Listenable elementsListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.elementsListenable,
+      _controller.selectionListenable,
+    ]);
+    final Listenable liveListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.liveStrokeListenable,
+      _controller.overlayListenable,
+    ]);
+    final Listenable overlayListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.overlayListenable,
+      _controller.selectionListenable,
+      _controller.toolStateListenable,
+    ]);
+    final Listenable rasterListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.elementsListenable,
+    ]);
+
+    return ClipRect(
+      child: Listener(
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerCancel,
+        onPointerHover: _onPointerHover,
+        onPointerSignal: _onPointerSignal,
+        child: MouseRegion(
+          onExit: (_) => _controller.setHoverPoint(null),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final Size size = constraints.biggest;
+              final bool hasFiniteSize =
+                  size.width.isFinite && size.height.isFinite;
+              final Size rasterSize = hasFiniteSize ? size : Size.zero;
+              _controller.setViewportSize(rasterSize);
+              _queueRasterScheduling(rasterSize, devicePixelRatio);
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  ListenableBuilder(
+                    listenable: backgroundListenable,
+                    builder: (context, _) {
+                      final ViewportState viewport = _controller.viewport;
+                      return ColoredBox(
+                        color: Color(_controller.paperStyle.backgroundColor),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                painter: PaperTexturePainter(
+                                  viewport: viewport,
+                                  style: _controller.paperStyle,
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        RepaintBoundary(
-                          child: ListenableBuilder(
-                            listenable: _controller.liveLayerListenable,
-                            builder: (context, _) {
-                              final bool erasing =
-                                  _controller.activeTool == CanvasTool.eraser;
-                              return CustomPaint(
-                                painter: CanvasOverlayPainter(
-                                  viewport: _controller.viewport,
-                                  hoverPointWorld: _controller.hoverPointWorld,
-                                  hoverRadius: erasing
-                                      ? _controller.eraserRadius
-                                      : _controller
-                                            .resolvedPenHoverRadiusScreen(),
-                                  isEraserHover: erasing,
-                                  eraserPath: _controller.eraserPath,
-                                  eraserRadius: _controller.eraserRadius,
-                                  lassoPath: _controller.lassoPath,
-                                  selectionBounds: _controller.selectionBounds,
-                                  accentColor: Theme.of(
-                                    context,
-                                  ).colorScheme.primary,
-                                  paperIsLight:
-                                      Color(
-                                        _controller
-                                            .paperStyle
-                                            .backgroundColor,
-                                      ).computeLuminance() >
-                                      0.5,
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                painter: GridPainter(
+                                  viewport: viewport,
+                                  style: _controller.paperStyle,
                                 ),
-                              );
-                            },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  ListenableBuilder(
+                    listenable: elementsListenable,
+                    builder: (context, _) => RepaintBoundary(
+                      child: CustomPaint(
+                        painter: ElementsPainter(
+                          elements: _controller.viewportElements,
+                          spatialIndex: _controller.spatialIndex,
+                          allElementsById: _controller.elementsById,
+                          paintOrderById: _controller.paintOrderById,
+                          viewport: _controller.viewport,
+                          elementsRevision: _controller.elementsRevision,
+                          elementDamage: _controller.elementDamageSince(
+                            _elementsTileCache.revision,
+                          ),
+                          selectionRevision: _controller.selectionRevision,
+                          selectionPreviewRevision:
+                              _controller.selectionPreviewRevision,
+                          tileCache: _elementsTileCache,
+                          selectedIds: _controller.selectedIds,
+                          pendingEraseIds: _controller.pendingEraseIds,
+                          selectionDragDelta: _controller.selectionDragDelta,
+                          selectionTransformPreview:
+                              _controller.selectionTransformPreview,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ListenableBuilder(
+                    listenable: liveListenable,
+                    builder: (context, _) => RepaintBoundary(
+                      child: CustomPaint(
+                        painter: LiveStrokePainter(
+                          liveStroke: _controller.liveStroke,
+                          liveStrokeRevision: _controller.liveStrokeRevision,
+                          liveShape: _controller.liveShapeElement,
+                          viewport: _controller.viewport,
+                          pathCache: _liveStrokePathCache,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ListenableBuilder(
+                    listenable: overlayListenable,
+                    builder: (context, _) {
+                      final bool eraserActive =
+                          _controller.activeTool == CanvasTool.eraser;
+                      return RepaintBoundary(
+                        child: CustomPaint(
+                          painter: CanvasOverlayPainter(
+                            viewport: _controller.viewport,
+                            hoverPointWorld: _controller.hoverPointWorld,
+                            hoverRadius: eraserActive
+                                ? _controller.eraserRadius
+                                : _controller.resolvedPenHoverRadiusScreen(),
+                            isEraserHover: eraserActive,
+                            eraserPath: _controller.eraserPath,
+                            eraserRadius: _controller.eraserRadius,
+                            lassoPath: _controller.lassoPath,
+                            selectionBounds: _controller.selectionBounds,
+                            hasClipboardContent:
+                                _controller.hasClipboardContent,
+                            accentColor: Theme.of(context).colorScheme.primary,
+                            paperIsLight:
+                                Color(
+                                  _controller.paperStyle.backgroundColor,
+                                ).computeLuminance() >
+                                0.5,
                           ),
                         ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
+                      );
+                    },
+                  ),
+                  ListenableBuilder(
+                    listenable: rasterListenable,
+                    builder: (context, _) {
+                      _queueRasterScheduling(rasterSize, devicePixelRatio);
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),

@@ -11,6 +11,8 @@ import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/canvas_layer.dart';
 import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
+import 'package:zenno/canvas/model/viewport_state.dart';
+import 'package:zenno/canvas/render/grid_painter.dart';
 import 'package:zenno/config/theme/app_spacing.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
@@ -105,6 +107,9 @@ class CanvasToolbar extends StatefulWidget {
   static const String toolButtonKeyPrefix = 'canvas-tool';
   static const String widthButtonKeyPrefix = 'canvas-width';
   static const String penWidthModeButtonKeyPrefix = 'canvas-pen-width-mode';
+  static const Key adaptivePenToggleKey = ValueKey<String>(
+    'canvas-adaptive-pen-toggle',
+  );
   static const String swatchButtonKeyPrefix = 'canvas-swatch';
   static const String palettePresetButtonKeyPrefix = 'canvas-palette-preset';
   static const String paperKindButtonKeyPrefix = 'canvas-paper-kind';
@@ -112,6 +117,8 @@ class CanvasToolbar extends StatefulWidget {
       'canvas-paper-background-preset';
   static const String paperGridPresetButtonKeyPrefix =
       'canvas-paper-grid-preset';
+  static const String paperMoodButtonKeyPrefix = 'canvas-paper-mood';
+  static const String paperTextureButtonKeyPrefix = 'canvas-paper-texture';
   static const Key importImageKey = ValueKey<String>('canvas-import-image');
   static const Key importPdfKey = ValueKey<String>('canvas-import-pdf');
   static const Key paperSettingsPanelKey = ValueKey<String>(
@@ -302,8 +309,6 @@ class _CanvasToolbarContent extends StatelessWidget {
 
   static const String toolButtonKeyPrefix = CanvasToolbar.toolButtonKeyPrefix;
   static const String widthButtonKeyPrefix = CanvasToolbar.widthButtonKeyPrefix;
-  static const String penWidthModeButtonKeyPrefix =
-      CanvasToolbar.penWidthModeButtonKeyPrefix;
   static const String swatchButtonKeyPrefix =
       CanvasToolbar.swatchButtonKeyPrefix;
   static const Key importImageKey = CanvasToolbar.importImageKey;
@@ -335,7 +340,7 @@ class _CanvasToolbarContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: controller.toolStateListenable,
       builder: (context, _) {
         return SafeArea(
           child: LayoutBuilder(
@@ -934,6 +939,7 @@ class _CanvasToolbarContent extends StatelessWidget {
           onDragDelta: (delta) => controller.setPenWidth(
             (controller.penWidth + delta / 8).clamp(0.5, 96).toDouble(),
           ),
+          onDragEnd: controller.commitToolSettings,
         ),
       _WheelPropertyAction(
         icon: Icons.opacity_outlined,
@@ -944,6 +950,7 @@ class _CanvasToolbarContent extends StatelessWidget {
         onDragDelta: (delta) => controller.setPenOpacity(
           (controller.penOpacity + delta / 140).clamp(0, 1).toDouble(),
         ),
+        onDragEnd: controller.commitToolSettings,
       ),
       _WheelPropertyAction(
         icon: Icons.gesture,
@@ -956,7 +963,18 @@ class _CanvasToolbarContent extends StatelessWidget {
               .clamp(0, 1)
               .toDouble(),
         ),
+        onDragEnd: controller.commitToolSettings,
       ),
+      if (controller.activeToolWheelPreset.kind != ToolWheelSlotKind.fill)
+        _WheelPropertyAction(
+          icon: Icons.line_weight,
+          label: 'Adaptive pen',
+          valueLabel: controller.adaptivePenEnabled ? 'On' : 'Off',
+          angle: math.pi / 2,
+          onTap: () => controller.setAdaptivePenEnabled(
+            enabled: !controller.adaptivePenEnabled,
+          ),
+        ),
     ];
   }
 
@@ -1072,6 +1090,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         onTap: controller.clearSelection,
       ),
       _WheelAction(
+        icon: Icons.content_copy,
+        label: 'Copy selection',
+        onTap: controller.copySelection,
+      ),
+      _WheelAction(
+        icon: Icons.content_paste,
+        label: 'Paste selection',
+        onTap: controller.hasClipboardContent
+            ? controller.pasteSelection
+            : null,
+      ),
+      _WheelAction(
         icon: Icons.delete_outline,
         label: 'Delete selection',
         destructive: true,
@@ -1140,6 +1170,11 @@ class _CanvasToolbarContent extends StatelessWidget {
         icon: Icons.file_download_outlined,
         label: 'Export',
         onTap: () => _runMoreAction(context, _MoreAction.export),
+      ),
+      _WheelAction(
+        icon: Icons.wallpaper_outlined,
+        label: 'Paper',
+        onTap: () => _runMoreAction(context, _MoreAction.paper),
       ),
       _WheelAction(
         icon: Icons.palette_outlined,
@@ -1279,15 +1314,12 @@ class _CanvasToolbarContent extends StatelessWidget {
           onTap: () => _stepPenWidth(1),
         ),
         _WheelAction(
-          icon: Icons.aspect_ratio,
-          label: controller.penWidthMode == PenWidthMode.screen
-              ? 'Screen width'
-              : 'Canvas width',
-          selected: controller.penWidthMode == PenWidthMode.screen,
-          onTap: () => controller.setPenWidthMode(
-            controller.penWidthMode == PenWidthMode.screen
-                ? PenWidthMode.canvas
-                : PenWidthMode.screen,
+          icon: Icons.line_weight,
+          label: 'Adaptive pen',
+          valueLabel: controller.adaptivePenEnabled ? 'On' : 'Off',
+          selected: controller.adaptivePenEnabled,
+          onTap: () => controller.setAdaptivePenEnabled(
+            enabled: !controller.adaptivePenEnabled,
           ),
         ),
       ],
@@ -1309,7 +1341,10 @@ class _CanvasToolbarContent extends StatelessWidget {
             icon: Icons.circle_outlined,
             label: 'Eraser ${radius.round()}',
             selected: controller.eraserRadius.round() == radius.round(),
-            onTap: () => controller.setEraserRadius(radius),
+            onTap: () {
+              controller.setEraserRadius(radius);
+              controller.commitToolSettings();
+            },
           ),
       ],
       CanvasTool.lasso => <_WheelAction>[
@@ -1472,6 +1507,7 @@ class _CanvasToolbarContent extends StatelessWidget {
     }
     final next = (closest + direction).clamp(0, _widths.length - 1);
     controller.setPenWidth(_widths[next]);
+    controller.commitToolSettings();
   }
 
   Future<void> _showToolSettings(BuildContext context) {
@@ -1502,7 +1538,7 @@ class _CanvasToolbarContent extends StatelessWidget {
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(12),
                         child: ListenableBuilder(
-                          listenable: controller,
+                          listenable: controller.toolStateListenable,
                           builder: (context, _) => Wrap(
                             key: controller.activeTool == CanvasTool.pen
                                 ? penDockKey
@@ -1563,7 +1599,7 @@ class _CanvasToolbarContent extends StatelessWidget {
             enabled: !controller.pressureEnabled,
           ),
         ),
-        _widthModePicker(),
+        _adaptivePenToggle(),
       ],
       CanvasTool.eraser => <Widget>[
         const _ContextLabel(
@@ -1594,6 +1630,7 @@ class _CanvasToolbarContent extends StatelessWidget {
             divisions: 15,
             label: controller.eraserRadius.round().toString(),
             onChanged: controller.setEraserRadius,
+            onChangeEnd: (_) => controller.commitToolSettings(),
           ),
         ),
         _HudLabel(controller.eraserRadius.round().toString()),
@@ -1725,6 +1762,18 @@ class _CanvasToolbarContent extends StatelessWidget {
         onPressed: () => controller.scaleSelection(1.1, 1.1),
       ),
       _HudButton(
+        icon: Icons.content_copy,
+        tooltip: 'Copy selection',
+        onPressed: controller.copySelection,
+      ),
+      _HudButton(
+        icon: Icons.content_paste,
+        tooltip: 'Paste selection',
+        onPressed: controller.hasClipboardContent
+            ? controller.pasteSelection
+            : null,
+      ),
+      _HudButton(
         icon: Icons.close,
         tooltip: 'Clear selection',
         onPressed: controller.clearSelection,
@@ -1768,7 +1817,10 @@ class _CanvasToolbarContent extends StatelessWidget {
     return PopupMenuButton<double>(
       tooltip: 'Width ${controller.penWidth.toStringAsFixed(0)}',
       initialValue: controller.penWidth,
-      onSelected: controller.setPenWidth,
+      onSelected: (width) {
+        controller.setPenWidth(width);
+        controller.commitToolSettings();
+      },
       itemBuilder: (context) => <PopupMenuEntry<double>>[
         for (final double width in _widths)
           PopupMenuItem<double>(
@@ -1802,41 +1854,19 @@ class _CanvasToolbarContent extends StatelessWidget {
     );
   }
 
-  Widget _widthModePicker() {
-    final String label = controller.penWidthMode == PenWidthMode.screen
-        ? 'Screen'
-        : 'Canvas';
-    return PopupMenuButton<PenWidthMode>(
-      tooltip: 'Width behavior: $label',
-      initialValue: controller.penWidthMode,
-      onSelected: controller.setPenWidthMode,
-      itemBuilder: (context) => <PopupMenuEntry<PenWidthMode>>[
-        PopupMenuItem<PenWidthMode>(
-          key: ValueKey<String>(
-            '$penWidthModeButtonKeyPrefix-${PenWidthMode.screen}',
-          ),
-          value: PenWidthMode.screen,
-          child: const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.aspect_ratio),
-            title: Text('Screen width'),
-            subtitle: Text('Looks the same size while zooming'),
-          ),
-        ),
-        PopupMenuItem<PenWidthMode>(
-          key: ValueKey<String>(
-            '$penWidthModeButtonKeyPrefix-${PenWidthMode.canvas}',
-          ),
-          value: PenWidthMode.canvas,
-          child: const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.draw_outlined),
-            title: Text('Canvas width'),
-            subtitle: Text('Scales with the canvas'),
-          ),
-        ),
-      ],
-      child: _ToolbarValueButton(icon: Icons.straighten, label: label),
+  Widget _adaptivePenToggle() {
+    final bool enabled = controller.adaptivePenEnabled;
+    return Tooltip(
+      message: enabled
+          ? 'Adaptive pen is on: brush size stays visually constant while zooming'
+          : 'Adaptive pen is off: brush size scales with the canvas',
+      child: FilterChip(
+        key: CanvasToolbar.adaptivePenToggleKey,
+        avatar: const Icon(Icons.line_weight, size: 16),
+        label: const Text('Adaptive pen'),
+        selected: enabled,
+        onSelected: (value) => controller.setAdaptivePenEnabled(enabled: value),
+      ),
     );
   }
 
@@ -2325,7 +2355,7 @@ class _LayerDialog extends StatelessWidget {
       content: SizedBox(
         width: 420,
         child: ListenableBuilder(
-          listenable: controller,
+          listenable: controller.toolStateListenable,
           builder: (context, _) {
             final layers = controller.layers;
             return Column(
@@ -2664,7 +2694,8 @@ class _WheelPropertyAction {
     required this.valueLabel,
     required this.angle,
     required this.onTap,
-    required this.onDragDelta,
+    this.onDragDelta,
+    this.onDragEnd,
   });
 
   final IconData icon;
@@ -2672,7 +2703,8 @@ class _WheelPropertyAction {
   final String valueLabel;
   final double angle;
   final VoidCallback onTap;
-  final ValueChanged<double> onDragDelta;
+  final ValueChanged<double>? onDragDelta;
+  final VoidCallback? onDragEnd;
 }
 
 class _RadialWheel extends StatelessWidget {
@@ -2941,10 +2973,20 @@ class _RadialWheel extends StatelessWidget {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: property.onTap,
-                        onHorizontalDragUpdate: (details) =>
-                            property.onDragDelta(details.delta.dx),
-                        onVerticalDragUpdate: (details) =>
-                            property.onDragDelta(-details.delta.dy),
+                        onHorizontalDragUpdate: property.onDragDelta == null
+                            ? null
+                            : (details) =>
+                                  property.onDragDelta!(details.delta.dx),
+                        onHorizontalDragEnd: property.onDragEnd == null
+                            ? null
+                            : (_) => property.onDragEnd!(),
+                        onVerticalDragUpdate: property.onDragDelta == null
+                            ? null
+                            : (details) =>
+                                  property.onDragDelta!(-details.delta.dy),
+                        onVerticalDragEnd: property.onDragEnd == null
+                            ? null
+                            : (_) => property.onDragEnd!(),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
@@ -3601,7 +3643,7 @@ class _PresetPropertySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: ListenableBuilder(
-        listenable: controller,
+        listenable: controller.toolStateListenable,
         builder: (context, _) {
           final double value = switch (property) {
             _PresetProperty.size => controller.penWidth,
@@ -3659,6 +3701,7 @@ class _PresetPropertySheet extends StatelessWidget {
                   divisions: divisions,
                   label: _propertyValueLabel(property, value),
                   onChanged: setValue,
+                  onChangeEnd: (_) => controller.commitToolSettings(),
                 ),
                 Wrap(
                   spacing: 8,
@@ -3668,7 +3711,10 @@ class _PresetPropertySheet extends StatelessWidget {
                       ChoiceChip(
                         label: Text(_propertyValueLabel(property, preset)),
                         selected: (value - preset).abs() < 0.01,
-                        onSelected: (_) => setValue(preset),
+                        onSelected: (_) {
+                          setValue(preset);
+                          controller.commitToolSettings();
+                        },
                       ),
                   ],
                 ),
@@ -4283,6 +4329,18 @@ class _PresetSwatchButton extends StatelessWidget {
   }
 }
 
+class _PaperMood {
+  const _PaperMood({
+    required this.name,
+    required this.description,
+    required this.style,
+  });
+
+  final String name;
+  final String description;
+  final CanvasPaperStyle style;
+}
+
 class _PaperDialog extends StatefulWidget {
   const _PaperDialog({required this.initial});
 
@@ -4294,6 +4352,80 @@ class _PaperDialog extends StatefulWidget {
 
 class _PaperDialogState extends State<_PaperDialog> {
   late CanvasPaperStyle _style = widget.initial;
+
+  static const List<_PaperMood> _moods = <_PaperMood>[
+    _PaperMood(
+      name: 'Midnight',
+      description: 'Quiet graph',
+      style: CanvasPaperStyle(),
+    ),
+    _PaperMood(
+      name: 'Warm notes',
+      description: 'Soft ruled paper',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.lined,
+        backgroundColor: 0xFFF7F1DE,
+        gridColor: 0xFF6B7280,
+        gridSpacing: 36,
+        gridOpacity: 0.24,
+        texture: PaperTexture.fibers,
+        textureOpacity: 0.08,
+      ),
+    ),
+    _PaperMood(
+      name: 'Blueprint',
+      description: 'Technical grid',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.grid,
+        backgroundColor: 0xFF0B3A5B,
+        gridColor: 0xFF8EC5FF,
+        gridSpacing: 40,
+        gridOpacity: 0.24,
+        graphMajorInterval: 5,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.05,
+      ),
+    ),
+    _PaperMood(
+      name: 'Dot journal',
+      description: 'Bright and open',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.dotted,
+        backgroundColor: 0xFFFFFFFF,
+        gridColor: 0xFF111820,
+        gridSpacing: 36,
+        gridOpacity: 0.34,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.035,
+      ),
+    ),
+    _PaperMood(
+      name: 'Forest',
+      description: 'Isometric sketch',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.isometric,
+        backgroundColor: 0xFF10322B,
+        gridColor: 0xFF91C7B1,
+        gridSpacing: 48,
+        gridOpacity: 0.18,
+        texture: PaperTexture.grain,
+        textureOpacity: 0.05,
+      ),
+    ),
+    _PaperMood(
+      name: 'Charcoal',
+      description: 'Dim triangular grid',
+      style: CanvasPaperStyle(
+        kind: BackgroundKind.triangle,
+        backgroundColor: 0xFF101016,
+        gridColor: 0xFFB7CFE3,
+        gridSpacing: 56,
+        gridOpacity: 0.16,
+        texture: PaperTexture.crosshatch,
+        textureOpacity: 0.045,
+      ),
+    ),
+  ];
 
   static const List<int> _backgroundPresets = <int>[
     0xFF172331,
@@ -4383,6 +4515,32 @@ class _PaperDialogState extends State<_PaperDialog> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                _PaperPreview(style: _style, height: 96),
+                const SizedBox(height: 14),
+                Text('Quick papers', style: labelStyle),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 118,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _moods.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final _PaperMood mood = _moods[index];
+                      return _PaperMoodCard(
+                        key: ValueKey<String>(
+                          '${CanvasToolbar.paperMoodButtonKeyPrefix}-$index',
+                        ),
+                        mood: mood,
+                        selected: _style == mood.style,
+                        onTap: () => setState(() => _style = mood.style),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text('Structure', style: labelStyle),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -4432,6 +4590,57 @@ class _PaperDialogState extends State<_PaperDialog> {
                   ],
                 ),
                 const SizedBox(height: 14),
+                Text('Texture', style: labelStyle),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _PaperTextureButton(
+                      texture: PaperTexture.clean,
+                      icon: Icons.texture_outlined,
+                      label: 'Clean',
+                      selected: _style.texture == PaperTexture.clean,
+                      onTap: () => _setTexture(PaperTexture.clean),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.grain,
+                      icon: Icons.grain,
+                      label: 'Grain',
+                      selected: _style.texture == PaperTexture.grain,
+                      onTap: () => _setTexture(PaperTexture.grain),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.fibers,
+                      icon: Icons.horizontal_rule,
+                      label: 'Fibers',
+                      selected: _style.texture == PaperTexture.fibers,
+                      onTap: () => _setTexture(PaperTexture.fibers),
+                    ),
+                    _PaperTextureButton(
+                      texture: PaperTexture.crosshatch,
+                      icon: Icons.grid_3x3,
+                      label: 'Hatch',
+                      selected: _style.texture == PaperTexture.crosshatch,
+                      onTap: () => _setTexture(PaperTexture.crosshatch),
+                    ),
+                  ],
+                ),
+                if (_style.texture != PaperTexture.clean) ...[
+                  const SizedBox(height: 8),
+                  _ExportSlider(
+                    label: 'Texture strength',
+                    value: _style.textureOpacity.clamp(0.01, 0.2),
+                    min: 0.01,
+                    max: 0.2,
+                    divisions: 19,
+                    valueLabel: '${(_style.textureOpacity * 100).round()}%',
+                    onChanged: (value) => setState(
+                      () => _style = _style.copyWith(textureOpacity: value),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
                 _PaperPresetSection(
                   title: 'Background',
                   value: Color(_style.backgroundColor),
@@ -4446,7 +4655,7 @@ class _PaperDialogState extends State<_PaperDialog> {
                 ),
                 const SizedBox(height: 12),
                 _PaperPresetSection(
-                  title: 'Graph',
+                  title: 'Guides',
                   value: Color(_style.gridColor),
                   presets: _gridPresets,
                   keyPrefix: CanvasToolbar.paperGridPresetButtonKeyPrefix,
@@ -4456,7 +4665,7 @@ class _PaperDialogState extends State<_PaperDialog> {
                   onCustom: _pickGrid,
                 ),
                 const SizedBox(height: 14),
-                Text('Graph options', style: labelStyle),
+                Text('Guide options', style: labelStyle),
                 const SizedBox(height: 8),
                 _ExportSlider(
                   label: 'Spacing',
@@ -4517,6 +4726,170 @@ class _PaperDialogState extends State<_PaperDialog> {
 
   void _setKind(BackgroundKind kind) {
     setState(() => _style = _style.copyWith(kind: kind));
+  }
+
+  void _setTexture(PaperTexture texture) {
+    setState(() => _style = _style.copyWith(texture: texture));
+  }
+}
+
+class _PaperPreview extends StatelessWidget {
+  const _PaperPreview({required this.style, required this.height});
+
+  final CanvasPaperStyle style;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Color(style.backgroundColor),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: PaperTexturePainter(
+              viewport: ViewportState.initial,
+              style: style,
+            ),
+          ),
+          CustomPaint(
+            painter: GridPainter(viewport: ViewportState.initial, style: style),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaperMoodCard extends StatelessWidget {
+  const _PaperMoodCard({
+    required this.mood,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final _PaperMood mood;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 146,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: selected
+              ? colors.primary.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? colors.primary : colors.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PaperPreview(style: mood.style, height: 62),
+            const SizedBox(height: 5),
+            Text(
+              mood.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              mood.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaperTextureButton extends StatelessWidget {
+  const _PaperTextureButton({
+    required this.texture,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final PaperTexture texture;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final Color foreground = selected
+        ? colors.primary
+        : colors.onSurfaceVariant;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        key: ValueKey<String>(
+          '${CanvasToolbar.paperTextureButtonKeyPrefix}-$texture',
+        ),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 92,
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.primary.withValues(alpha: 0.16)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected
+                  ? colors.primary.withValues(alpha: 0.58)
+                  : colors.outlineVariant,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: foreground),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

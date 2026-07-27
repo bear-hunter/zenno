@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:zenno/app.dart';
-import 'package:zenno/features/library/application/library_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,13 +22,5 @@ Future<void> main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  final container = ProviderContainer();
-  unawaited(runLibraryStartupCleanup(container));
-
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const ZennoApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: ZennoApp()));
 }

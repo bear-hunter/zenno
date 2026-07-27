@@ -7,6 +7,100 @@ import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
+/// Paints a deterministic, world-anchored paper surface beneath the guide grid.
+class PaperTexturePainter extends CustomPainter {
+  const PaperTexturePainter({required this.viewport, required this.style});
+
+  final ViewportState viewport;
+  final CanvasPaperStyle style;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty ||
+        viewport.scale <= 0 ||
+        style.texture == PaperTexture.clean ||
+        style.textureOpacity <= 0) {
+      return;
+    }
+
+    final Rect world = _visibleWorldBounds(viewport, size);
+    final double step = _textureStep(viewport.scale);
+    final int minCellX = (world.left / step).floor() - 1;
+    final int maxCellX = (world.right / step).ceil() + 1;
+    final int minCellY = (world.top / step).floor() - 1;
+    final int maxCellY = (world.bottom / step).ceil() + 1;
+    final Paint paint = Paint()
+      ..color = Color(
+        style.gridColor,
+      ).withValues(alpha: style.textureOpacity.clamp(0.0, 0.3))
+      ..strokeWidth = 1
+      ..strokeCap = StrokeCap.round;
+
+    if (style.texture == PaperTexture.grain) {
+      final List<Offset> points = <Offset>[];
+      for (int x = minCellX; x <= maxCellX; x++) {
+        for (int y = minCellY; y <= maxCellY; y++) {
+          final int hash = _paperHash(x, y);
+          final Offset point = Offset(
+            (x + 0.12 + _hashUnit(hash, 0) * 0.76) * step,
+            (y + 0.12 + _hashUnit(hash, 8) * 0.76) * step,
+          );
+          points.add(CanvasTransform.toScreen(viewport, point));
+        }
+      }
+      canvas.drawPoints(PointMode.points, points, paint);
+      return;
+    }
+
+    for (int x = minCellX; x <= maxCellX; x++) {
+      for (int y = minCellY; y <= maxCellY; y++) {
+        final int hash = _paperHash(x, y);
+        final Offset anchor = Offset(
+          (x + 0.18 + _hashUnit(hash, 0) * 0.64) * step,
+          (y + 0.18 + _hashUnit(hash, 8) * 0.64) * step,
+        );
+        final double angle = switch (style.texture) {
+          PaperTexture.fibers => (_hashUnit(hash, 16) - 0.5) * 0.18,
+          PaperTexture.crosshatch =>
+            (hash & 1) == 0 ? math.pi / 4 : -math.pi / 4,
+          PaperTexture.clean || PaperTexture.grain => 0,
+        };
+        final double length = step * (0.24 + _hashUnit(hash, 20) * 0.3);
+        final Offset direction = Offset(math.cos(angle), math.sin(angle));
+        canvas.drawLine(
+          CanvasTransform.toScreen(viewport, anchor - direction * (length / 2)),
+          CanvasTransform.toScreen(viewport, anchor + direction * (length / 2)),
+          paint,
+        );
+      }
+    }
+  }
+
+  double _textureStep(double scale) {
+    double step = 16;
+    while (step * scale < 14) {
+      step *= 2;
+    }
+    while (step * scale > 28 && step > 1) {
+      step /= 2;
+    }
+    return step;
+  }
+
+  static int _paperHash(int x, int y) {
+    int value = (x * 374761393) ^ (y * 668265263);
+    value = (value ^ (value >> 13)) * 1274126177;
+    return (value ^ (value >> 16)) & 0x7FFFFFFF;
+  }
+
+  static double _hashUnit(int hash, int shift) =>
+      ((hash >> shift) & 0xFF) / 255;
+
+  @override
+  bool shouldRepaint(PaperTexturePainter oldDelegate) =>
+      oldDelegate.viewport != viewport || oldDelegate.style != style;
+}
+
 /// Paints an infinite dotted grid that stays fixed in world space.
 ///
 /// The grid step is chosen from powers of two so the on-screen dot spacing
@@ -40,26 +134,11 @@ class GridPainter extends CustomPainter {
       return;
     }
 
-    // Bounding box of the visible region, in world coordinates. The four
-    // screen corners are mapped back to world space; rotation means the world
-    // rect must be the bounds of those (possibly skewed) points.
-    final corners = <Offset>[
-      CanvasTransform.toWorld(viewport, Offset.zero),
-      CanvasTransform.toWorld(viewport, Offset(size.width, 0)),
-      CanvasTransform.toWorld(viewport, Offset(0, size.height)),
-      CanvasTransform.toWorld(viewport, Offset(size.width, size.height)),
-    ];
-
-    var minX = corners.first.dx;
-    var maxX = corners.first.dx;
-    var minY = corners.first.dy;
-    var maxY = corners.first.dy;
-    for (final corner in corners) {
-      if (corner.dx < minX) minX = corner.dx;
-      if (corner.dx > maxX) maxX = corner.dx;
-      if (corner.dy < minY) minY = corner.dy;
-      if (corner.dy > maxY) maxY = corner.dy;
-    }
+    final Rect world = _visibleWorldBounds(viewport, size);
+    final double minX = world.left;
+    final double maxX = world.right;
+    final double minY = world.top;
+    final double maxY = world.bottom;
 
     if (style.kind == BackgroundKind.blank) {
       return;
@@ -228,4 +307,24 @@ class GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(GridPainter oldDelegate) =>
       oldDelegate.viewport != viewport || oldDelegate.style != style;
+}
+
+Rect _visibleWorldBounds(ViewportState viewport, Size size) {
+  final List<Offset> corners = <Offset>[
+    CanvasTransform.toWorld(viewport, Offset.zero),
+    CanvasTransform.toWorld(viewport, Offset(size.width, 0)),
+    CanvasTransform.toWorld(viewport, Offset(0, size.height)),
+    CanvasTransform.toWorld(viewport, Offset(size.width, size.height)),
+  ];
+  double minX = corners.first.dx;
+  double maxX = corners.first.dx;
+  double minY = corners.first.dy;
+  double maxY = corners.first.dy;
+  for (final Offset corner in corners.skip(1)) {
+    minX = math.min(minX, corner.dx);
+    maxX = math.max(maxX, corner.dx);
+    minY = math.min(minY, corner.dy);
+    maxY = math.max(maxY, corner.dy);
+  }
+  return Rect.fromLTRB(minX, minY, maxX, maxY);
 }

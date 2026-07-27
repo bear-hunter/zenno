@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyzer 14 — Zenno accessibility analysis</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #111210;
+      --panel: #181a17;
+      --panel-2: #20231f;
+      --text: #f1eee6;
+      --muted: #b1ada3;
+      --line: #42463e;
+      --accent: #d8946c;
+      --high: #ff9b86;
+      --medium: #e9bd70;
+      --low: #8ab6d6;
+      --good: #9bc895;
+      --code: #272a25;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    header, main, footer { width: min(1180px, calc(100% - 32px)); margin-inline: auto; }
+    header { padding: 40px 0 22px; }
+    h1 { margin: 0 0 8px; font-size: clamp(1.85rem, 4vw, 3rem); line-height: 1.12; }
+    h2 { margin-top: 42px; padding-top: 12px; border-top: 1px solid var(--line); }
+    h3 { margin: 0 0 10px; line-height: 1.3; }
+    p, li { max-width: 88ch; }
+    code {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: .08em .32em;
+      overflow-wrap: anywhere;
+    }
+    .lede { color: var(--muted); font-size: 1.08rem; }
+    .meta, .summary-grid, .finding, .note, .positive, .iteration {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .meta { padding: 16px 18px; margin-top: 22px; }
+    .meta dl, .finding dl { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; margin: 0; }
+    dt { color: var(--muted); font-weight: 650; }
+    dd { margin: 0; }
+    nav { margin-top: 24px; }
+    nav ul { columns: 2; padding-left: 22px; }
+    nav li { break-inside: avoid; margin: 4px 0; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; overflow: hidden; }
+    .metric { padding: 16px; background: var(--panel); }
+    .metric strong { display: block; font-size: 1.7rem; }
+    .metric span { color: var(--muted); }
+    .finding { padding: 20px; margin: 18px 0; border-left-width: 6px; }
+    .finding.high { border-left-color: var(--high); }
+    .finding.medium { border-left-color: var(--medium); }
+    .finding.low { border-left-color: var(--low); }
+    .finding h3 { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .badge { border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+    .high .badge { color: var(--high); }
+    .medium .badge { color: var(--medium); }
+    .low .badge { color: var(--low); }
+    .finding dl { margin: 12px 0 16px; }
+    .finding ul { margin-bottom: 0; }
+    .evidence { padding: 12px 14px; background: var(--panel-2); border-radius: 8px; }
+    .note, .positive, .iteration { padding: 16px 18px; margin: 14px 0; }
+    .positive { border-left: 6px solid var(--good); }
+    table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel-2); }
+    .small { color: var(--muted); font-size: .92rem; }
+    footer { color: var(--muted); padding: 36px 0 60px; }
+    @media (max-width: 760px) {
+      nav ul { columns: 1; }
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+      .meta dl, .finding dl { grid-template-columns: 1fr; }
+      dd { margin-bottom: 7px; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f7f3ea; --panel: #fffaf1; --panel-2: #efe8db; --text: #292620;
+        --muted: #6e675c; --line: #c8bdab; --accent: #8f4d32; --high: #9f2f23;
+        --medium: #795410; --low: #285e7d; --good: #356b32; --code: #eee6d7;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Zenno accessibility analysis</h1>
+    <p class="lede">Analyzer 14 · static, evidence-based review of semantics, keyboard navigation, screen-reader behavior, evidenced contrast/target sizing, and inclusive interaction flow.</p>
+    <section class="meta" aria-label="Report metadata">
+      <dl>
+        <dt>Current iteration</dt><dd>6</dd>
+        <dt>Written</dt><dd><time datetime="2026-07-18T05:19:33+08:00">2026-07-18 05:19:33 +08:00</time></dd>
+        <dt>Repository state</dt><dd><code>feat/intuitive-tool-wheel</code>; analysis only</dd>
+        <dt>Method</dt><dd>Static source inspection. No builds, tests, installs, app launches, Git mutations, or external writes.</dd>
+        <dt>Scope sampled</dt><dd>Tracked Flutter runtime, web/Android manifests, presentation widgets, custom canvas/kanban interactions, tests, and relevant untracked design/review material. Generated persistence code and binary assets were inventoried but are not accessibility behavior surfaces.</dd>
+      </dl>
+    </section>
+    <nav aria-label="Report navigation">
+      <strong>Jump to</strong>
+      <ul>
+        <li><a href="#summary">Executive summary</a></li>
+        <li><a href="#findings">Current findings</a></li>
+        <li><a href="#positives">Verified strengths</a></li>
+        <li><a href="#coverage">Coverage and limitations</a></li>
+        <li><a href="#iterations">Iteration history</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section id="summary">
+      <h2>Executive summary</h2>
+      <div class="summary-grid" aria-label="Finding counts">
+        <div class="metric"><strong>6</strong><span>high severity</span></div>
+        <div class="metric"><strong>13</strong><span>medium severity</span></div>
+        <div class="metric"><strong>3</strong><span>low severity / risk</span></div>
+        <div class="metric"><strong>22</strong><span>current findings</span></div>
+      </div>
+      <p>The dominant issue is architectural: Zenno’s primary note surface is four painted layers driven by raw pointer events, with no semantic representation of the notes on that surface. Screen-reader users cannot inspect typed notes, links, images, PDFs, shapes, selection, or viewport state, while keyboard users cannot traverse or select canvas objects. Keyboard shortcuts help only after a pointer-created selection and therefore do not close the access gap. Painted typed notes also bypass the system text scaler and silently clip vertical overflow.</p>
+      <p>The next most consequential gaps are interaction equivalence. Kanban columns and within-column card order remain drag-only; the radial tool wheel exposes some screen-reader actions but its gesture-based actions are not in the physical-keyboard focus model; viewport pan/zoom has no keyboard command path; and both Android and the installed web app restrict orientation, in opposite directions. Several custom controls—including the keyboard-focusable canvas settings fallback—communicate selection or checked state visually without exposing it semantically. Reflection/focus prompts also use nearby visual labels without programmatically naming their fields, while page and section headings are plain text across the app.</p>
+      <p><strong>Data integrity:</strong> iteration 6 found one direct inclusive-input risk: keyboard edits can remain enabled during asynchronous saves, after which an older snapshot is treated as final and the newer draft can be discarded. Separately, failed canvas writes are retained for retry and guarded on exit, but the failure is not announced when it first occurs. Other findings primarily create indirect wrong-target or unverifiable-edit risk. Recommendations below are analysis only and prioritize preserving every newer draft.</p>
+    </section>
+
+    <section id="findings">
+      <h2>Current findings</h2>
+
+      <article class="finding high" id="a14-001">
+        <h3><span class="badge">High</span> A14-001 — The infinite canvas has no accessible object model</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Core note content cannot be read, navigated, selected, opened, or edited without pointer/visual access.</dd><dt>Data-integrity impact</dt><dd>No direct corruption; high wrong-target and unverifiable-edit risk for partial-access users.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> <code>lib/canvas/render/canvas_view.dart:1455-1551</code> builds a raw <code>Listener</code> around four <code>CustomPaint</code> layers. Repository-wide searches found no <code>semanticsBuilder</code> in the canvas painters. The model explicitly includes typed text, links, images and PDFs (<code>lib/canvas/model/canvas_element.dart:16-37</code>), but none are emitted as semantic nodes. It also has no authorable description field for an image (path, intrinsic size and raster only at <code>lib/canvas/model/canvas_element.dart:363-399</code>; persistence fields at <code>lib/core/database/tables/canvas_tables.dart:214-233</code>) or PDF page (path, page number and page size at <code>.../canvas_element.dart:501-547</code>; filename/page metadata only at <code>.../canvas_tables.dart:190-211</code>). Links do carry a human label (<code>.../canvas_element.dart:735-762</code>), showing that accessible identity already fits one element type. <code>lib/canvas/canvas_editor_page.dart:550-623</code> adds tool and transform shortcuts, yet every object-transform shortcut requires an already-selected object and there is no next/previous/select/open object command.</div>
+        <p><strong>Root cause.</strong> Rendering, hit testing, and commands are modeled only in world/pointer coordinates; accessibility was not made a parallel consumer of the element/spatial-index model.</p>
+        <p><strong>Analysis-only recommendation.</strong> Build a stable semantic object layer from visible canvas elements, with meaningful roles/labels/actions for text notes and links, persisted user-authored descriptions for images/PDF pages, selection state, and ordered keyboard traversal. Add keyboard commands to move focus among objects, select the focused object, follow/edit it, and pan/zoom without a pointer. Expose PDF filename/page and any extracted text separately from an optional author description; never present OCR as authorial meaning. Keep ink/shapes summarized unless the user supplies a description, and never infer note meaning from geometry.</p>
+      </article>
+
+      <article class="finding high" id="a14-002">
+        <h3><span class="badge">High</span> A14-002 — Column order and same-column card order are drag-only</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Keyboard and screen-reader users cannot fully organize revision or goal boards.</dd><dt>Data-integrity impact</dt><dd>No deletion; users can be left with an order they cannot repair independently.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> The column handle is a <code>LongPressDraggable</code> with a button label but no invokable reorder action (<code>lib/shared/kanban/kanban_column_view.dart:279-299</code>). Cards are wrapped in another <code>LongPressDraggable</code> (<code>.../kanban_column_view.dart:492-535</code>). The accessible card move menu is a good partial alternative, but targets explicitly exclude the current column (<code>.../kanban_column_view.dart:235-244</code>) and the menu only moves to another column’s tail (<code>.../kanban_column_view.dart:604-629</code>). Column drop slots are pointer <code>DragTarget</code>s (<code>lib/shared/kanban/kanban_board_view.dart:208-237</code>).</div>
+        <p><strong>Root cause.</strong> Drag/drop is the sole command surface for ordering, while the fallback menu models only cross-column placement.</p>
+        <p><strong>Analysis-only recommendation.</strong> Add explicit “Move before/after/to start/to end” actions for both columns and cards, including within the current column. Reuse the same normalized positioning commands as drag/drop, announce the new position, and retain drag as the fast pointer path.</p>
+      </article>
+
+      <article class="finding high" id="a14-003">
+        <h3><span class="badge">High</span> A14-003 — Core radial-wheel actions are outside physical-keyboard focus traversal</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Keyboard-only users cannot traverse the wheel’s page/context/property actions even though the canvas editor itself advertises keyboard shortcuts.</dd><dt>Data-integrity impact</dt><dd>None direct; missing access to selection and tool properties can force imprecise work.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Main wheel actions are 40×40 positioned <code>GestureDetector</code>s wrapped in <code>Semantics(onTap: ...)</code> (<code>lib/canvas/widgets/canvas_toolbar.dart:2733-2856</code>), and property actions are 34×34 <code>GestureDetector</code>s (<code>.../canvas_toolbar.dart:2857-2909</code>). Unlike <code>InkWell</code>, these controls have no <code>Focus</code>/<code>Actions</code>/<code>FocusableActionDetector</code>. The unmodified-letter shortcuts cover seven base tools only (<code>lib/canvas/canvas_editor_page.dart:609-622</code>), not wheel pages, selection actions, property changes, color choices, or wheel movement.</div>
+        <p><strong>Root cause.</strong> Screen-reader semantics were added as an overlay, but the same actions were not exposed through Flutter’s keyboard focus/action system.</p>
+        <p><strong>Analysis-only recommendation.</strong> Make each semantic wheel action a real focusable action with Enter/Space activation, visible focus, directional navigation appropriate to radial layout, and increase/decrease actions for numeric properties. Publish a discoverable shortcut reference and avoid unmodified-letter shortcuts when a text-entry descendant can retain focus.</p>
+      </article>
+
+      <article class="finding high" id="a14-004">
+        <h3><span class="badge">High</span> A14-004 — Installed app orientation is restricted, inconsistently by platform</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Users who mount or hold a device in one orientation cannot use the app in that orientation.</dd><dt>Data-integrity impact</dt><dd>None.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Android forces <code>android:screenOrientation="userLandscape"</code> in <code>android/app/src/main/AndroidManifest.xml:13</code>. The web app manifest independently requests <code>"orientation": "portrait-primary"</code> in <code>web/manifest.json:9</code>. The opposite restrictions also demonstrate that neither orientation is universally essential to the product.</div>
+        <p><strong>Root cause.</strong> Platform manifests encode product-layout preferences as hard device-orientation requirements.</p>
+        <p><strong>Analysis-only recommendation.</strong> Permit sensor/user orientation on both platforms. Let the responsive shell adapt navigation and toolbar placement; if a particular canvas workflow genuinely needs more width, offer a non-blocking suggestion rather than locking the whole app.</p>
+      </article>
+
+      <article class="finding high" id="a14-016">
+        <h3><span class="badge">High</span> A14-016 — The infinite-canvas viewport cannot be explored with the keyboard</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Keyboard-only users cannot pan to off-screen notes or incrementally zoom the workspace, independently blocking discovery even if canvas objects later gain semantics.</dd><dt>Data-integrity impact</dt><dd>No direct mutation; users cannot verify content outside the current viewport and may work in the wrong spatial context.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Canvas panning is implemented only from touch/stylus/mouse movement (<code>lib/canvas/render/canvas_view.dart:550-559, 719-730</code>); zoom is driven by pointer scroll (<code>.../canvas_view.dart:1302-1313</code>) or two-touch pinch (<code>.../canvas_view.dart:1361-1410</code>). The editor shortcut map uses Ctrl+Arrow and Ctrl+Minus/Equal to transform the current selection, not the viewport, and contains no viewport navigation commands (<code>lib/canvas/canvas_editor_page.dart:550-623</code>). Zoom in/out, fit content and reset view exist inside the non-keyboard-focusable wheel identified in A14-003 (<code>lib/canvas/widgets/canvas_toolbar.dart:1179-1221, 1354-1378</code>); the visible HUD provides only a button that resets zoom to 100% (<code>.../canvas_toolbar.dart:429-456</code>).</div>
+        <p><strong>Root cause.</strong> Viewport navigation is modeled as a pointer gesture, while keyboard shortcuts were designed only for tools and already-selected objects.</p>
+        <p><strong>Analysis-only recommendation.</strong> Add non-conflicting keyboard commands for viewport pan, zoom in/out, fit content and reset view; keep selection transforms separately modified. Anchor zoom to the focused object or viewport center, announce the resulting zoom/region at useful boundaries, and document the commands in a keyboard-accessible help surface.</p>
+      </article>
+
+      <article class="finding high" id="a14-022">
+        <h3><span class="badge">High</span> A14-022 — Keyboard edits made during asynchronous save can be discarded as “saved”</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Fast keyboard users can continue editing while a save is in flight; the screen then closes or marks the newer draft clean even though only the earlier snapshot was persisted.</dd><dt>Data-integrity impact</dt><dd>High: the last keystrokes in goals, revision notes, reflections, templates, or focus reviews can be lost without a warning.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Goal saving snapshots three controllers, sets <code>_saving</code>, awaits persistence, and unconditionally pops on success (<code>lib/features/goal_cycle/presentation/widgets/goal_card_detail_sheet.dart:107-134</code>). Its busy guard is only <code>AbsorbPointer</code> around still-enabled <code>TextField</code>s (<code>.../goal_card_detail_sheet.dart:261-320</code>). Flutter documents and implements <code>AbsorbPointer</code> as pointer hit-test blocking, not keyboard focus/input blocking (<code>packages/flutter/lib/src/widgets/basic.dart:7831-7846</code>; <code>packages/flutter/lib/src/rendering/proxy_box.dart:3974-4050</code>). Template and reflection editors repeat the snapshot/await/pop pattern behind <code>AbsorbPointer</code> (<code>lib/features/goal_cycle/presentation/pages/template_editor_page.dart:230-269, 297-329</code>; <code>lib/features/goal_cycle/presentation/pages/reflection_editor_page.dart:92-120, 135-159</code>). Revision editing has no input absorber: after awaiting the captured title/notes, it sets persisted values and <code>_textDirty = false</code> even if controllers changed during the await (<code>lib/features/revision/presentation/widgets/revision_card_detail_sheet.dart:128-151, 305-360</code>). Focus review captures energy/note, leaves both controls enabled, awaits, then pops to the first route (<code>lib/features/focus/presentation/pages/focus_review_page.dart:70-78, 150-187, 232-255</code>).</div>
+        <p><strong>Root cause.</strong> Async save treats the draft captured at start as the final UI state, and pointer absorption is mistaken for a complete interaction lock; keyboard focus/editing remains a separate path.</p>
+        <p><strong>Analysis-only recommendation.</strong> Prefer a revision-token approach over a blanket lock: capture a draft revision with the save, and on completion pop/mark clean only if the current draft still matches; otherwise keep the newer draft open and dirty. During operations that truly must freeze input, set fields <code>readOnly</code>/<code>enabled: false</code> and prevent focus traversal as well as pointer hits. Preserve newer text in memory and never discard it merely because an older write succeeded.</p>
+      </article>
+
+      <article class="finding medium" id="a14-005">
+        <h3><span class="badge">Medium</span> A14-005 — Checklist state is visual only</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>A screen-reader user cannot tell which pre-focus ritual items are checked.</dd><dt>Data-integrity impact</dt><dd>The persisted ritual snapshot can contain a state the user could not verify.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> <code>lib/features/focus/presentation/widgets/ritual_checklist.dart:133-190</code> uses an <code>InkWell</code> and swaps between checked/unchecked <code>Icon</code>s. It does not provide <code>Semantics(checked: ...)</code>, a checkbox role, or an explicit toggled value. The icon has no semantic label, so the row exposes an activation action and label but not state.</div>
+        <p><strong>Root cause.</strong> A checkbox was visually reimplemented instead of using <code>CheckboxListTile</code> or equivalent toggle semantics.</p>
+        <p><strong>Analysis-only recommendation.</strong> Prefer a native checkbox control, or expose checked state, toggle role/action, enabled state, and a single merged label on the entire 48dp row.</p>
+      </article>
+
+      <article class="finding medium" id="a14-006">
+        <h3><span class="badge">Medium</span> A14-006 — Timer-mode and mastery choices do not announce selection</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Screen-reader users can activate options but cannot reliably confirm the active mode/mastery value.</dd><dt>Data-integrity impact</dt><dd>Wrong study mode or mastery classification can be saved.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Timer mode is an <code>InkWell</code> whose selection is represented only by color, border and check icon (<code>lib/features/focus/presentation/widgets/timer_type_picker.dart:68-123</code>). Mastery choices do the same (<code>lib/features/revision/presentation/widgets/revision_card_detail_sheet.dart:463-516</code>). Neither uses <code>selected</code>, radio/check semantics, or an in-group value. In contrast, <code>EnergyRatingSelector</code> correctly exposes exactly one <code>selected</code> pip at <code>lib/features/focus/presentation/widgets/energy_rating_selector.dart:99-129</code>.</div>
+        <p><strong>Root cause.</strong> Custom selectable cards/chips do not share a semantic selection primitive.</p>
+        <p><strong>Analysis-only recommendation.</strong> Add a reusable selectable-control wrapper with button/radio role, label, selected state, group context, and keyboard activation; use it for mode and mastery choices.</p>
+      </article>
+
+      <article class="finding medium" id="a14-007">
+        <h3><span class="badge">Medium</span> A14-007 — Flowmodoro ratio can announce a different percentage from the displayed value</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>A screen-reader user may choose the wrong earned-break ratio.</dd><dt>Data-integrity impact</dt><dd>The saved session configuration can differ from the perceived choice.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Setup displays <code>percent = flowBreakRatio * 100</code>, but its slider has no <code>semanticFormatterCallback</code> or semantic value wrapper (<code>lib/features/focus/presentation/pages/focus_setup_page.dart:330-357</code>). Flutter 3.41.6 reports the normalized slider position as a percentage when no formatter exists (<code>packages/flutter/lib/src/material/slider.dart:1929-1943</code> in the installed SDK). For example, value 0.20 on range 0.05–0.50 is visually “20%” but normalizes to roughly “33%”. Settings avoids this by wrapping sliders with the domain value at <code>lib/features/settings/presentation/pages/settings_page.dart:677-687</code>.</div>
+        <p><strong>Root cause.</strong> The visual value is a domain percentage, while default slider semantics describe relative position within a non-zero-based range.</p>
+        <p><strong>Analysis-only recommendation.</strong> Supply a semantic formatter that returns the domain value (for example “20 percent break ratio”) and meaningful increased/decreased values.</p>
+      </article>
+
+      <article class="finding medium" id="a14-008">
+        <h3><span class="badge">Medium</span> A14-008 — The live timer exposes two unlabeled progress bars</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Screen-reader traversal encounters an unexplained 100% ring plus a second percentage before the timer figure.</dd><dt>Data-integrity impact</dt><dd>None.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> The timer stack contains one determinate <code>CircularProgressIndicator(value: 1)</code> and another determinate indicator for phase progress, neither with <code>semanticsLabel</code> (<code>lib/features/focus/presentation/widgets/timer_display.dart:63-91</code>). Flutter emits each determinate indicator as a progress-bar semantic node with a default numeric value (<code>packages/flutter/lib/src/material/progress_indicator.dart:146-160</code> in the installed SDK). The time and “work remaining” text are separate at <code>.../timer_display.dart:92-120</code>.</div>
+        <p><strong>Root cause.</strong> A decorative track is implemented as a semantic progress widget, and the meaningful arc lacks a purpose label.</p>
+        <p><strong>Analysis-only recommendation.</strong> Exclude the decorative 100% track from semantics. Give the meaningful timer one coherent semantic node containing phase, formatted time, paused/running state and progress; announce phase transitions deliberately rather than making every one-second repaint a live announcement.</p>
+      </article>
+
+      <article class="finding medium" id="a14-009">
+        <h3><span class="badge">Medium</span> A14-009 — Repeated overflow controls lack item context</h3>
+        <dl><dt>Confidence</dt><dd>Medium-high</dd><dt>Flow impact</dt><dd>Control-list and swipe navigation yields multiple indistinguishable “options/actions” buttons.</dd><dt>Data-integrity impact</dt><dd>Raises wrong-item rename/delete/retire risk, although destructive dialogs reduce the worst outcomes.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Repeated rows/cards use generic tooltips: “Canvas options” (<code>lib/features/library/presentation/widgets/canvas_card.dart:274-280</code>), “Folder options” (<code>lib/features/library/presentation/pages/library_page.dart:697-700</code>), “Column actions” (<code>lib/shared/kanban/kanban_column_view.dart:341-344</code>), “Edit ritual item” (<code>lib/features/focus/presentation/widgets/ritual_checklist.dart:161-164</code>), “Reflection actions” (<code>lib/features/goal_cycle/presentation/widgets/reflection_entry_tile.dart:120-134</code>), and “Template actions” (<code>lib/features/goal_cycle/presentation/widgets/template_tile.dart:122-134</code>). Attached-canvas rows repeat both “Open canvas” and “Canvas actions” without the attachment label (<code>lib/shared/canvas_attachments/card_canvas_attachments_section.dart:119-151</code>). The card move menu demonstrates the clearer pattern with <code>Move ${card.title}</code> at <code>.../kanban_column_view.dart:615-629</code>.</div>
+        <p><strong>Root cause.</strong> Menu components receive callbacks but not the owning item’s accessible name.</p>
+        <p><strong>Analysis-only recommendation.</strong> Include the item label in each tooltip/semantic label (for example “Options for Anatomy notes”) and make confirmation text equally specific.</p>
+      </article>
+
+      <article class="finding medium" id="a14-010">
+        <h3><span class="badge">Medium</span> A14-010 — Canvas cards deliberately hide recency metadata from assistive technology</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>A screen-reader user cannot use “Edited …” information to resume the right canvas.</dd><dt>Data-integrity impact</dt><dd>None; discovery and recall are impaired.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> <code>lib/features/library/presentation/widgets/canvas_card.dart:228-273</code> wraps the entire open surface in <code>Semantics(label: 'Open canvas …', excludeSemantics: true)</code>. This suppresses the title and the visible <code>Edited ${relativeTime(...)}</code> at lines 252-266, replacing both with only the open-action label.</div>
+        <p><strong>Root cause.</strong> Duplicate title announcement was prevented by excluding all child semantics, unintentionally discarding useful metadata.</p>
+        <p><strong>Analysis-only recommendation.</strong> Keep one concise node but include recency as value/hint (for example “Anatomy, edited 2 hours ago, button”), or preserve the metadata as a separate readable node without duplicating the action label.</p>
+      </article>
+
+      <article class="finding medium" id="a14-013">
+        <h3><span class="badge">Medium</span> A14-013 — Visible prompt labels are not programmatically associated with their fields</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Direct form-control navigation can land on an unnamed answer, study-goal, session-note, framework, canvas-title, note-body, or column-name field.</dd><dt>Data-integrity impact</dt><dd>Answers, titles, and organization labels can be entered under the wrong context and then saved.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Reflection prompts render <code>Text(prompt.label)</code> as a sibling before a <code>TextField</code> whose decoration contains only an optional hint (<code>lib/features/goal_cycle/presentation/widgets/reflection_form.dart:122-150</code>). The framework picker repeats that pattern (<code>lib/features/goal_cycle/presentation/pages/reflection_editor_page.dart:317-348</code>). Focus setup’s “What are you studying?” field (<code>lib/features/focus/presentation/pages/focus_setup_page.dart:94-104</code>) and review’s “Session note” field (<code>lib/features/focus/presentation/pages/focus_review_page.dart:160-171</code>) likewise use nearby headings plus placeholder text rather than <code>labelText</code> or an explicit semantic relationship. Re-audit found the inline canvas-title editor has no label or hint at all (<code>lib/canvas/canvas_editor_page.dart:795-823</code>); the text-note body relies on a placeholder and dialog title (<code>.../canvas_editor_page.dart:364-382</code>); and the shared column-name dialog similarly has only an optional hint plus a separate dialog title (<code>lib/shared/kanban/kanban_column_view.dart:731-803</code>).</div>
+        <p><strong>Root cause.</strong> Visual grouping is treated as sufficient labeling; Flutter does not infer an accessible-name relationship from a preceding sibling <code>Text</code>.</p>
+        <p><strong>Analysis-only recommendation.</strong> Put the prompt/question into <code>InputDecoration.labelText</code> or provide one merged semantic field node whose label is the prompt and whose hint remains secondary. Preserve visible editorial labels if desired, but suppress duplicate announcements and test direct control navigation with populated fields.</p>
+      </article>
+
+      <article class="finding medium" id="a14-014">
+        <h3><span class="badge">Medium</span> A14-014 — Visual page and section headings are not exposed as headings</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Screen-reader users cannot jump among major areas of long settings, setup, review, and detail pages.</dd><dt>Data-integrity impact</dt><dd>None; navigation and comprehension cost increase.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> A repository-wide search found no <code>Semantics(header: true)</code> or <code>SemanticsRole.header</code>. The shared top bar renders eyebrow/title/subtitle as plain <code>Text</code> widgets (<code>lib/core/widgets/aurora.dart:89-135</code>), and settings panel titles are also plain text (<code>lib/features/settings/presentation/pages/settings_page.dart:303-358</code>). Many long forms use private <code>_SectionTitle</code> widgets that return only <code>Text</code>, for example <code>lib/features/focus/presentation/pages/focus_setup_page.dart:426-435</code>.</div>
+        <p><strong>Root cause.</strong> Typography encodes document hierarchy visually, but the same hierarchy is absent from the semantic tree.</p>
+        <p><strong>Analysis-only recommendation.</strong> Add semantic heading roles to page titles and meaningful section titles through the shared top-bar/section-title components. Avoid marking every styled label as a heading; preserve a shallow, useful outline.</p>
+      </article>
+
+      <article class="finding medium" id="a14-015">
+        <h3><span class="badge">Medium</span> A14-015 — Color swatches do not expose selection state or consistent color identity</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Screen-reader and color-vision users cannot reliably confirm the current ink/paper color.</dd><dt>Data-integrity impact</dt><dd>Notes can be created in an unintended or low-contrast color, though existing content is not deleted.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> The compact palette identifies swatches only by hex tooltip and renders selection as a border/check icon (<code>lib/canvas/widgets/canvas_toolbar.dart:3128-3199</code>). The larger swatch control has a <code>selected</code> parameter used only for border styling (<code>.../canvas_toolbar.dart:3397-3438</code>). Palette slots announce only “Palette color N,” omitting the color value and selected state (<code>.../canvas_toolbar.dart:4147-4188</code>). Paper preset swatches again expose hex only and put the selected check solely in the visual child (<code>.../canvas_toolbar.dart:4594-4639</code>).</div>
+        <p><strong>Root cause.</strong> Tooltips were used as the only non-visual identity, while selection stayed entirely decorative.</p>
+        <p><strong>Analysis-only recommendation.</strong> Give each swatch a stable human-friendly name plus hex value, expose <code>selected</code>, group the choices, and announce ink versus paper/background purpose. Keep the checkmark and border for sighted users; add a contrast preview/warning for typed text without blocking expressive drawing colors.</p>
+      </article>
+
+      <article class="finding medium" id="a14-017">
+        <h3><span class="badge">Medium</span> A14-017 — Fixed status colors fail text contrast in supported default-theme contexts</h3>
+        <dl><dt>Confidence</dt><dd>High for the default palettes and cited widgets</dd><dt>Flow impact</dt><dd>Low-vision users can miss whether a focus session is completed, abandoned, in progress, under review, or in a break phase.</dd><dt>Data-integrity impact</dt><dd>None direct; diminished status perception can lead users to resume or review the wrong session.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> The three fixed status colors are green <code>#718D68</code>, yellow <code>#C49B49</code>, and red <code>#B85F50</code> (<code>lib/config/theme/app_colors.dart:64-66</code>). Recent-session status text is 12px <code>labelSmall</code> in one of those colors directly on the page surface (<code>lib/features/focus/presentation/pages/focus_home_page.dart:494-540</code>; size defined at <code>lib/config/theme/app_text_styles.dart:108-113</code>). Exact sRGB calculations against the default light paper <code>#F7F3EA</code> yield 3.32:1 green, 2.33:1 yellow and 3.96:1 red, all below 4.5:1 for normal text. History chips put the same 12px text over a 16%-tinted fill (<code>lib/features/focus/presentation/pages/focus_history_page.dart:319-345</code>), reducing the light-theme ratios further to approximately 2.83:1, 2.06:1 and 3.27:1. The shared phase pill similarly places 13px accent text over a 9%-tinted fill (<code>lib/core/widgets/aurora.dart:232-269</code>); the green break chip chosen at <code>lib/features/focus/presentation/widgets/timer_display.dart:28-36, 164-176</code> is approximately 3.04:1 in the default light theme. In the default dark theme, red is also below 4.5:1 in these contexts (4.29:1 direct; approximately 3.66:1 on the 16% fill).</div>
+        <p><strong>Root cause.</strong> One immutable semantic palette is used as foreground text across light/dark surfaces, and translucent same-hue fills reduce rather than guarantee foreground separation.</p>
+        <p><strong>Analysis-only recommendation.</strong> Define theme-aware on-status text colors (or use normal <code>onSurface</code> text with color confined to a redundant icon/border), and test the final composited foreground/background pairs rather than raw swatches. Keep the written status labels so meaning never depends on color alone.</p>
+      </article>
+
+      <article class="finding medium" id="a14-018">
+        <h3><span class="badge">Medium</span> A14-018 — Keyboard-focusable canvas settings still hide their selected state</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>A keyboard or screen-reader user can reach the linear tool-settings controls but cannot confirm the current pen, eraser, selection, shape, pressure, or paper mode.</dd><dt>Data-integrity impact</dt><dd>Notes can be drawn, erased, or selected with an unintended mode; undo limits but does not eliminate disruption.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> The shared <code>_HudButton</code> accepts <code>selected</code> but applies it only to foreground/background colors; it creates an <code>IconButton</code> without <code>isSelected</code> and without an enclosing selected/toggled semantic node (<code>lib/canvas/widgets/canvas_toolbar.dart:3283-3327</code>). This primitive represents pressure, the mutually exclusive eraser modes, pen kinds, selection modes and shape kinds in the linear settings surface (<code>.../canvas_toolbar.dart:1531-1621, 1635-1673, 1725-1748</code>). Flutter’s own <code>IconButton.isSelected</code> path would emit <code>Semantics(selected: ...)</code> (<code>packages/flutter/lib/src/material/icon_button.dart:939-953</code> in Flutter 3.41.6), but Zenno does not pass it. Paper-kind buttons similarly use <code>selected</code> only for color, border and weight on an <code>InkWell</code> (<code>.../canvas_toolbar.dart:4460-4524</code>).</div>
+        <p><strong>Root cause.</strong> The full-controls fallback reused visual selection styling without routing state into the native toggle/selection semantics already available in Flutter.</p>
+        <p><strong>Analysis-only recommendation.</strong> Pass <code>isSelected</code> for toggle icon buttons or wrap each group in explicit radio/selected semantics. Distinguish momentary actions from mutually exclusive modes, announce group purpose, and update paper-kind buttons the same way. Keep the existing changing action labels for pressure/lock toggles as useful redundancy.</p>
+      </article>
+
+      <article class="finding medium" id="a14-020">
+        <h3><span class="badge">Medium</span> A14-020 — Typed notes on the canvas ignore the system text scaler and clip overflow</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Low-vision users who enlarge system text receive no enlargement for the actual typed notes in the thinking workspace.</dd><dt>Data-integrity impact</dt><dd>None direct; note content can be visually inaccessible or clipped without indication.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Typed notes are painted directly with <code>TextPainter</code> using only the persisted <code>element.fontSize</code>; no <code>MediaQuery.textScalerOf</code> value is passed (<code>lib/canvas/render/elements_painter.dart:839-880</code>). Flutter 3.41.6 therefore resolves the unspecified scaler to a linear factor of 1.0 (<code>packages/flutter/lib/src/painting/text_painter.dart:596-625</code>). The painter lays out unlimited lines, then clips them to the fixed note rectangle without an ellipsis or overflow signal (<code>elements_painter.dart:864-880</code>). Fresh notes always start with font size 22 and a 320×180 screen-derived placement rectangle (<code>lib/canvas/canvas_controller.dart:481-482, 3703-3729, 3768-3775</code>).</div>
+        <p><strong>Root cause.</strong> Canvas text is treated as zoomable drawing geometry rather than readable text that also participates in the user’s accessibility text-size preference.</p>
+        <p><strong>Analysis-only recommendation.</strong> Apply the current nonlinear <code>TextScaler</code> when rendering typed notes and define a deterministic layout policy: reflow/expand the note, offer an explicit accessible reading view, or clearly expose overflow. Preserve author-set world size separately so accessibility scaling does not silently mutate persisted geometry. Coordinate this with A14-016 so keyboard users can also zoom and frame the focused note.</p>
+      </article>
+
+      <article class="finding medium" id="a14-021">
+        <h3><span class="badge">Medium</span> A14-021 — A failed canvas autosave appears visually but is not announced</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>A screen-reader user can continue thinking under the assumption that notes are safely persisted and may not discover the retry action until leaving.</dd><dt>Data-integrity impact</dt><dd>High potential, mitigated by a blocking leave confirmation: failed writes remain queued, but the user lacks timely awareness while staying in the editor.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> A persistence failure is caught, stored and surfaced only by <code>notifyListeners()</code> (<code>lib/canvas/canvas_controller.dart:1099-1116</code>). The toolbar responds by inserting a “Canvas not saved” icon button (<code>lib/canvas/widgets/canvas_toolbar.dart:420-427, 654-662</code>); repository-wide searches found no <code>liveRegion</code>, <code>SemanticsService.announce</code>, or focus move for that transition. Import errors use a <code>SnackBar</code> instead (<code>lib/canvas/canvas_editor_page.dart:492-500</code>), and Flutter’s SnackBar is explicitly a semantic live region (<code>packages/flutter/lib/src/material/snack_bar.dart:828-833</code>). The exit path does correctly flush and show a blocking “Canvas not saved” dialog before allowing departure (<code>lib/canvas/canvas_editor_page.dart:258-289</code>), so this finding is about timely in-editor status rather than an absent last-resort guard.</div>
+        <p><strong>Root cause.</strong> The persistence state transition is represented as a passive HUD decoration; visual tree insertion is assumed to notify users.</p>
+        <p><strong>Analysis-only recommendation.</strong> Announce the transition into save failure exactly once with a concise live status and expose the retry button persistently. Announce retry success/failure, but do not announce routine autosaves or each failed operation repeatedly. Keep the existing leave guard and queued-write recovery behavior intact.</p>
+      </article>
+
+      <article class="finding low" id="a14-011">
+        <h3><span class="badge">Low</span> A14-011 — Several canvas controls fall below the project’s own 48dp target</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Motor and low-vision users face small, dense controls in the app’s most frequent workspace.</dd><dt>Data-integrity impact</dt><dd>Mis-taps can select the wrong tool/color; undo reduces but does not remove disruption.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> The project defines <code>AppSpacing.touchTarget = 48</code> at <code>lib/config/theme/app_spacing.dart:33-35</code>. The wheel instead uses 40dp action overlays and 34dp property controls (<code>lib/canvas/widgets/canvas_toolbar.dart:2708-2709, 2756-2768, 2857-2870</code>), 34dp side buttons (<code>.../canvas_toolbar.dart:3089-3125</code>), a 32dp palette whose items may be 28dp wide (<code>.../canvas_toolbar.dart:3128-3199</code>), 30–42dp palette swatches (<code>.../canvas_toolbar.dart:4147-4218</code>), and 34dp paper swatches (<code>.../canvas_toolbar.dart:4594-4639</code>). Visible wheel labels are explicitly 6.2–7px and property values 6.5px (<code>.../canvas_toolbar.dart:2709, 2814-2845, 2894-2902</code>).</div>
+        <p><strong>Root cause.</strong> The radial/docked geometry is optimized for density and stylus precision, overriding the global target token.</p>
+        <p><strong>Analysis-only recommendation.</strong> Preserve visual density if desired, but enlarge semantic/hit regions to at least 48dp without overlap, support text scaling without clipping, and provide a linear “full controls” mode with full-size controls. Stylus optimization should not remove touch accessibility.</p>
+      </article>
+
+      <article class="finding low" id="a14-012">
+        <h3><span class="badge">Low</span> A14-012 — Automated accessibility coverage is concentrated on one card flag</h3>
+        <dl><dt>Confidence</dt><dd>High</dd><dt>Flow impact</dt><dd>Regressions in the core canvas and custom control states are unlikely to be caught automatically.</dd><dt>Data-integrity impact</dt><dd>Indirect quality risk only.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Repository-wide test search found one explicit semantics assertion: <code>test/kanban_board_view_test.dart:110-133</code> verifies only that a card node has the button flag. There are no semantics-tree assertions for <code>CanvasView</code>, the radial wheel, ritual checks, timer mode, mastery choices, timer display, or route orientation. Existing canvas shortcut tests validate bindings, not keyboard focus reachability.</div>
+        <p><strong>Root cause.</strong> Widget tests emphasize visible copy and callback behavior rather than accessible names, roles, values, actions, focus order and guideline checks.</p>
+        <p><strong>Analysis-only recommendation.</strong> Add focused semantics-tree and keyboard-navigation tests for every custom control, plus tap-target and text-scaling checks. Treat the canvas semantic object model as an acceptance criterion, not a test-only patch.</p>
+      </article>
+
+      <article class="finding low" id="a14-019">
+        <h3><span class="badge">Low</span> A14-019 — Custom canvas modal surfaces omit dialog roles and closed-loop focus containment</h3>
+        <dl><dt>Confidence</dt><dd>High for route configuration; runtime focus destination is platform/tree dependent</dd><dt>Flow impact</dt><dd>Screen-reader users receive weaker context when settings open, and Tab/Shift+Tab are allowed to climb out of the modal’s local focus scope instead of cycling predictably.</dd><dt>Data-integrity impact</dt><dd>None direct.</dd></dl>
+        <div class="evidence"><strong>Evidence.</strong> Tool settings, paper settings and the stylus quick wheel use <code>showGeneralDialog</code> (<code>lib/canvas/widgets/canvas_toolbar.dart:1461-1522, 1883-1924, 2056-2136</code>). Their returned surfaces are <code>SafeArea</code>/<code>_FloatingSurface</code>/<code>_Cluster</code>/<code>Stack</code>, not <code>Dialog</code> widgets or explicit dialog/menu semantic roles. In Flutter 3.41.6, <code>showGeneralDialog</code> creates a <code>RawDialogRoute</code> without a traversal-edge override (<code>packages/flutter/lib/src/widgets/routes.dart:2746-2772</code>), so the Navigator default is <code>TraversalEdgeBehavior.parentScope</code> (<code>packages/flutter/lib/src/widgets/navigator.dart:1251-1258</code>). In contrast, <code>showDialog</code> explicitly defaults to <code>closedLoop</code> (<code>packages/flutter/lib/src/material/dialog.dart:1484-1527</code>). The framework does provide a route-scoped dismiss action for dismissible modal routes, so this is not a claim that Escape is absent (<code>packages/flutter/lib/src/widgets/routes.dart:975-990, 1199-1203</code>).</div>
+        <p><strong>Root cause.</strong> Visually positioned popovers were implemented as raw modal routes without reintroducing the dialog semantics and focus policy supplied by Material dialog routes.</p>
+        <p><strong>Analysis-only recommendation.</strong> Use an aligned <code>Dialog</code>/<code>DialogRoute</code> for settings panels, with a semantic title, initial focus and closed-loop traversal; model the quick wheel as a focusable menu if that better matches its behavior. Preserve Escape/barrier dismissal and restore focus to the invoking control after close.</p>
+      </article>
+    </section>
+
+    <section id="positives">
+      <h2>Verified strengths and corrected prior assumptions</h2>
+      <div class="positive"><strong>Core default text contrast is strong.</strong> Static WCAG contrast calculations for defined palette pairs found: dark <code>onSurface/surface</code> 16.20:1, dark muted/container-low 7.82:1, dark primary/surface 7.49:1, light ink/paper 13.62:1, light muted/paper 5.05:1, and light primary/paper 5.79:1. A14-017 is narrowly about fixed status-color text and does not contradict the theme-role pairs.</div>
+      <div class="positive"><strong>Native Material controls are used extensively.</strong> App navigation, dialogs, text fields, standard buttons, segmented buttons, switches, sliders, menus and date picking generally inherit keyboard and screen-reader behavior. The global theme sets padded tap targets and 48dp minimum sizes at <code>lib/config/theme/app_theme.dart:129-138, 224-303</code>.</div>
+      <div class="positive"><strong>Several old review issues have been fixed.</strong> Energy rating now marks only the exact selected pip (<code>energy_rating_selector.dart:47-52, 99-129</code>); settings steppers include the setting name in tooltips (<code>settings_page.dart:591-617</code>); the kanban card move menu provides a keyboard/screen-reader-friendly cross-column alternative; the column drag handle now has a label/tooltip; distraction capture no longer autofocuses the optional note field.</div>
+      <div class="positive"><strong>Template prompt reordering has framework semantics.</strong> Although its drag handle is custom, <code>ReorderableListView</code> wraps items with move-to-start/up/down/end semantic actions in Flutter 3.41.6. This pass therefore does not repeat the stale claim that prompt order is screen-reader drag-only. A future pass will still assess direct physical-keyboard discoverability.</div>
+      <div class="positive"><strong>Dismissible modal routes retain Escape support.</strong> Flutter’s modal scope maps <code>DismissIntent</code> to <code>maybePop</code> whenever the route barrier is dismissible. A14-019 is therefore limited to semantic role and focus containment, not keyboard dismissal.</div>
+      <div class="positive"><strong>Canvas links already retain author-facing labels.</strong> <code>LinkElement</code> persists a short human-readable label alongside its destination, so a future canvas semantic layer can expose link identity without inventing it. Image/PDF elements need an equivalent optional description field.</div>
+      <div class="positive"><strong>SnackBar feedback is announced by the framework.</strong> Flutter wraps SnackBars in a semantic live region, so Zenno’s many save/error/import completion SnackBars have a built-in announcement path. A14-021 is limited to the canvas persistence failure that bypasses SnackBar/live-region feedback; the editor also retains failed writes and blocks an unacknowledged exit.</div>
+    </section>
+
+    <section id="coverage">
+      <h2>Coverage and limitations</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Iteration 1 coverage</th><th>Current assessment</th></tr></thead>
+        <tbody>
+          <tr><td>Shell, router, theme</td><td>Read app scaffold, routes, palette, typography and component themes.</td><td>Native navigation is a strength; orientation manifests are a high issue.</td></tr>
+          <tr><td>Infinite canvas</td><td>Read editor host, pointer surface, element/persistence models, painters, text layout, viewport gestures, modal settings surfaces and toolbar interaction code.</td><td>Highest-priority semantic/object-navigation gap; keyboard viewport exploration, selected-state reporting, media descriptions and accessible text scaling are independently absent.</td></tr>
+          <tr><td>Library and attachments</td><td>Read search/sort/folders/cards, move alternatives, picker and attachment controls.</td><td>Mostly native; recency suppression and generic action names remain.</td></tr>
+          <tr><td>Focus</td><td>Read home/setup/active/review/history and all focus widgets, including async review save.</td><td>Timer, ratio, custom state semantics, status-text contrast and save-time draft preservation need correction.</td></tr>
+          <tr><td>Revision and goal cycle</td><td>Read shared kanban, cards, detail sheets, reflection/template editors, lists and async save guards.</td><td>Reorder equivalence, selected-state semantics and keyboard edits during save are main gaps.</td></tr>
+          <tr><td>Tests</td><td>Searched all tests for semantics, keyboard, focus and guideline assertions; read relevant widget tests.</td><td>Very limited accessibility assertions.</td></tr>
+          <tr><td>Relevant untracked material</td><td>Inventoried <code>AGENTS.md</code>, reviews, plans, prototypes and gaps; used historical reviews only after verifying current runtime code.</td><td>Several review findings were stale and were not carried forward.</td></tr>
+        </tbody>
+      </table>
+      <div class="note"><strong>Static-analysis boundary.</strong> No runtime semantics tree, TalkBack/VoiceOver session, switch-control session, high-contrast mode, large-font render, keyboard traversal capture, or color-blind simulation was performed because the delegated task forbids running the app and tests. Claims above are limited to behavior directly supported by source and the installed Flutter framework source. Dynamic-only issues remain unverified.</div>
+    </section>
+
+    <section id="iterations">
+      <h2>Iteration history</h2>
+      <article class="iteration">
+        <h3>Iteration 1 · <time datetime="2026-07-18T05:04:46+08:00">2026-07-18 05:04:46 +08:00</time></h3>
+        <p>Established the repository map and first evidence baseline. Added twelve findings, verified default contrast pairs, and rejected stale claims about energy-rating selection, context-free settings steppers, missing kanban column labels, distraction autofocus, and screen-reader prompt reordering. Next pass: inspect semantics merging/focus behavior in repeated card/menu composites; challenge severity for wheel targets and orientation; review line-by-line custom interactions not yet represented in the findings; and reassess contrast only where exact foreground/background composition is provable.</p>
+      </article>
+      <article class="iteration">
+        <h3>Iteration 2 · <time datetime="2026-07-18T05:08:23+08:00">2026-07-18 05:08:23 +08:00</time></h3>
+        <p>Re-read the tool-wheel implementation and confirmed that “full controls” changes the wheel page rather than providing a separate linear keyboard-accessible surface. Verified framework focus behavior: <code>InkWell</code>/<code>InkResponse</code> are keyboard focusable, so the keyboard finding remains limited to wheel <code>GestureDetector</code> actions. Added three medium findings for unassociated form labels, absent heading semantics, and color-swatch identity/state. Reconfirmed the timer and ratio findings against Flutter 3.41.6 source. No prior finding was removed or downgraded. Next pass: inspect modal-route focus/escape behavior, semantic composition of cards and menus, high-text-scale constraints, and keyboard alternatives for viewport navigation.</p>
+      </article>
+      <article class="iteration">
+        <h3>Iteration 3 · <time datetime="2026-07-18T05:10:40+08:00">2026-07-18 05:10:40 +08:00</time></h3>
+        <p>Confirmed that pan, incremental zoom, fit and reset lack a physical-keyboard command path, separating viewport access from the existing object-model and radial-wheel findings. Added A14-016 because the gap would remain even after semantic canvas objects were introduced. Recomputed fixed status colors against their actual default light/dark surfaces and translucent chip fills; added the narrowly scoped A14-017 while retaining the positive conclusion for core theme-role text pairs. Next pass: inspect modal focus/escape and restoration against Flutter route behavior, challenge semantic grouping in list/card composites, and audit text-scaling constraints only where fixed geometry proves content loss.</p>
+      </article>
+      <article class="iteration">
+        <h3>Iteration 4 · <time datetime="2026-07-18T05:14:48+08:00">2026-07-18 05:14:48 +08:00</time></h3>
+        <p>Traced all three custom <code>showGeneralDialog</code> surfaces through Flutter 3.41.6 route/focus code. Added low-severity A14-019 for omitted roles and parent-scope traversal while explicitly correcting the stronger hypothesis that Escape was unavailable: dismissible modal routes inherit a working <code>DismissIntent</code>. Added A14-018 after confirming that the keyboard-focusable linear canvas settings still keep mode state visual, despite Flutter’s native <code>IconButton.isSelected</code> semantic path. Re-read fixed-size/text-scaling sites; retained those concerns under A14-011 because static geometry proves pressure and likely truncation but not a broader app-wide content-loss claim at exactly 200%. Next pass: challenge nested card/button semantic composition, inspect focus restoration after async dialogs/sheets, and review image/PDF description and attachment naming paths.</p>
+      </article>
+      <article class="iteration">
+        <h3>Iteration 5 · <time datetime="2026-07-18T05:17:05+08:00">2026-07-18 05:17:05 +08:00</time></h3>
+        <p>Followed image, PDF, link and typed-note identity through model and persistence. Strengthened A14-001 with the absence of authorable image/PDF descriptions while recording the existing link-label field as a useful design foothold. Added A14-020 after verifying from Flutter source that raw <code>TextPainter</code> defaults to 1.0 scaling and that Zenno clips unlimited note lines inside a fixed rectangle. Expanded A14-013 with the completely unnamed inline canvas-title field plus note/column dialogs, and expanded A14-009 with generic attached-canvas controls. Nested Material list/card controls were not promoted to a new finding because exact merged announcement order remains runtime-dependent under the task’s no-run constraint. Next pass: inspect live-region/status announcements for saving, errors, imports and timer transitions; challenge disabled/busy state communication; and re-read navigation order around responsive shell breakpoints.</p>
+      </article>
+      <article class="iteration">
+        <h3>Iteration 6 · <time datetime="2026-07-18T05:19:33+08:00">2026-07-18 05:19:33 +08:00</time></h3>
+        <p>Audited save/import/status paths against Flutter semantics. Added A14-021 for the canvas save failure that inserts only a passive HUD button, while recording that import/error SnackBars are framework live regions and that unsaved canvas writes are retained and guarded on exit. More importantly, added high-severity A14-022 after following keyboard input across async save windows: <code>AbsorbPointer</code> blocks pointer hit tests, not physical-keyboard editing, and several flows pop or mark clean based on an older captured draft. This is the first direct data-integrity risk in the accessibility lens. Next pass: verify responsive shell traversal and destination naming, inspect date/status controls and error-state announcements, then challenge severity/deduplication across all 22 findings.</p>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    Analyzer 14 · Zenno accessibility report · current findings are deduplicated; iteration notes preserve corrections and evidence growth.
+  </footer>
+</body>
+</html>
