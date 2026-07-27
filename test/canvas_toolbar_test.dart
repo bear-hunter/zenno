@@ -179,6 +179,12 @@ void main() {
     expect(find.byTooltip('Size: 4 pt'), findsOneWidget);
     expect(find.byTooltip('Opacity: 100%'), findsOneWidget);
     expect(find.byTooltip('Smoothing: 35%'), findsOneWidget);
+    expect(find.byTooltip('Adaptive pen: On'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Adaptive pen: On'));
+    await tester.pump();
+    expect(controller.adaptivePenEnabled, isFalse);
+    expect(find.byTooltip('Adaptive pen: Off'), findsOneWidget);
 
     await tester.tap(find.byKey(CanvasToolbar.wheelCenterKey));
     await tester.pumpAndSettle();
