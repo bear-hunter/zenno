@@ -102,9 +102,20 @@ Path buildStrokeOutline(
     return _dotPath(renderPoints.first, size);
   }
 
-  final path = Path()..moveTo(outline.first.dx, outline.first.dy);
-  for (var i = 1; i < outline.length; i++) {
-    path.lineTo(outline[i].dx, outline[i].dy);
+  final Offset closingMidpoint = Offset(
+    (outline.last.dx + outline.first.dx) / 2,
+    (outline.last.dy + outline.first.dy) / 2,
+  );
+  final path = Path()..moveTo(closingMidpoint.dx, closingMidpoint.dy);
+  for (var i = 0; i < outline.length; i++) {
+    final Offset current = outline[i];
+    final Offset next = outline[(i + 1) % outline.length];
+    path.quadraticBezierTo(
+      current.dx,
+      current.dy,
+      (current.dx + next.dx) / 2,
+      (current.dy + next.dy) / 2,
+    );
   }
   return path..close();
 }
