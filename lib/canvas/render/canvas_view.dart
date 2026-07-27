@@ -1575,6 +1575,9 @@ class _CanvasViewState extends State<CanvasView> {
                           paintOrderById: _controller.paintOrderById,
                           viewport: _controller.viewport,
                           elementsRevision: _controller.elementsRevision,
+                          elementDamage: _controller.elementDamageSince(
+                            _elementsTileCache.revision,
+                          ),
                           selectionRevision: _controller.selectionRevision,
                           selectionPreviewRevision:
                               _controller.selectionPreviewRevision,

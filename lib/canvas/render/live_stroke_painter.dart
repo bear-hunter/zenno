@@ -7,11 +7,26 @@ import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/shape_painter.dart';
 
 class LiveStrokePathCache {
+  static const int _stableBatchSize = 64;
+  static const int _tailPointLimit = 128;
+  static const int _overlapPointCount = 16;
+
   String? _strokeId;
   int? _revision;
   int? _scaleBucket;
   StrokeRenderQuality? _quality;
   Path? _path;
+  Path? _stablePath;
+  int _stablePointCount = 0;
+  int _lastPointCount = 0;
+  StrokePoint? _firstPoint;
+  StrokePoint? _lastPoint;
+  double? _strokeWidth;
+  StrokeToolKind? _strokeTool;
+  int _lastRebuiltPointCount = 0;
+
+  /// Largest input slice rebuilt by the latest [pathFor] call.
+  int get lastRebuiltPointCount => _lastRebuiltPointCount;
 
   void clear() {
     _strokeId = null;
@@ -19,6 +34,14 @@ class LiveStrokePathCache {
     _scaleBucket = null;
     _quality = null;
     _path = null;
+    _stablePath = null;
+    _stablePointCount = 0;
+    _lastPointCount = 0;
+    _firstPoint = null;
+    _lastPoint = null;
+    _strokeWidth = null;
+    _strokeTool = null;
+    _lastRebuiltPointCount = 0;
   }
 
   Path pathFor({
@@ -38,21 +61,101 @@ class LiveStrokePathCache {
         _quality == quality) {
       return cached;
     }
-    final Path next = stroke.tool == StrokeToolKind.fill
-        ? buildFillBoundaryPath(stroke.points)
-        : buildStrokeOutline(
-            stroke.points,
-            size: stroke.width,
-            viewportScale: viewportScale,
-            quality: quality,
-            isComplete: false,
-          );
+
+    final bool appendCompatible =
+        _strokeId == stroke.id &&
+        _scaleBucket == scaleBucket &&
+        _quality == quality &&
+        _strokeWidth == stroke.width &&
+        _strokeTool == stroke.tool &&
+        stroke.points.length >= _lastPointCount &&
+        (stroke.points.isEmpty || stroke.points.first == _firstPoint) &&
+        (_lastPointCount == 0 ||
+            stroke.points[_lastPointCount - 1] == _lastPoint);
+    if (!appendCompatible) {
+      _stablePath = null;
+      _stablePointCount = 0;
+    }
+
+    _lastRebuiltPointCount = 0;
+    final Path next;
+    if (stroke.tool == StrokeToolKind.fill) {
+      next = buildFillBoundaryPath(stroke.points);
+      _lastRebuiltPointCount = stroke.points.length;
+    } else {
+      _extendStablePrefix(
+        stroke: stroke,
+        viewportScale: viewportScale,
+        quality: quality,
+      );
+      final int tailStart = (_stablePointCount - _overlapPointCount).clamp(
+        0,
+        stroke.points.length,
+      );
+      final List<StrokePoint> tailPoints = stroke.points.sublist(tailStart);
+      final Path tailPath = buildStrokeOutline(
+        tailPoints,
+        size: stroke.width,
+        viewportScale: viewportScale,
+        quality: quality,
+        isComplete: false,
+      );
+      _lastRebuiltPointCount = tailPoints.length > _lastRebuiltPointCount
+          ? tailPoints.length
+          : _lastRebuiltPointCount;
+      next = _stablePath == null
+          ? tailPath
+          : (Path.from(_stablePath!)..addPath(tailPath, Offset.zero));
+    }
     _strokeId = stroke.id;
     _revision = revision;
     _scaleBucket = scaleBucket;
     _quality = quality;
     _path = next;
+    _lastPointCount = stroke.points.length;
+    _firstPoint = stroke.points.isEmpty ? null : stroke.points.first;
+    _lastPoint = stroke.points.isEmpty ? null : stroke.points.last;
+    _strokeWidth = stroke.width;
+    _strokeTool = stroke.tool;
     return next;
+  }
+
+  void _extendStablePrefix({
+    required Stroke stroke,
+    required double viewportScale,
+    required StrokeRenderQuality quality,
+  }) {
+    final int availableStablePoints = stroke.points.length - _tailPointLimit;
+    while (availableStablePoints - _stablePointCount >= _stableBatchSize) {
+      final int nextStablePointCount = _stablePointCount + _stableBatchSize;
+      final int chunkStart = _stablePointCount == 0
+          ? 0
+          : _stablePointCount - _overlapPointCount;
+      final int chunkEnd = (nextStablePointCount + _overlapPointCount).clamp(
+        0,
+        stroke.points.length,
+      );
+      final List<StrokePoint> chunkPoints = stroke.points.sublist(
+        chunkStart,
+        chunkEnd,
+      );
+      final Path chunkPath = buildStrokeOutline(
+        chunkPoints,
+        size: stroke.width,
+        viewportScale: viewportScale,
+        quality: quality,
+        isComplete: false,
+      );
+      if (_stablePath == null) {
+        _stablePath = chunkPath;
+      } else {
+        _stablePath!.addPath(chunkPath, Offset.zero);
+      }
+      _stablePointCount = nextStablePointCount;
+      if (chunkPoints.length > _lastRebuiltPointCount) {
+        _lastRebuiltPointCount = chunkPoints.length;
+      }
+    }
   }
 }
 

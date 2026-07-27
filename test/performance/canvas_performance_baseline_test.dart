@@ -10,9 +10,11 @@ import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/engine/spatial_index.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
+import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/canvas/render/elements_painter.dart';
+import 'package:zenno/canvas/render/live_stroke_painter.dart';
 import 'package:zenno/core/database/database.dart' hide CanvasElement;
 
 import 'canvas_performance_fixtures.dart';
@@ -203,6 +205,35 @@ void main() {
 
         _recordSample(
           scenario: 'live-stroke-outline-8192',
+          valuesMicros: samples,
+          facts: <String, Object>{'pointCount': stroke.points.length},
+        );
+      });
+
+      test('records incremental append to an 8,192-point live stroke', () {
+        final stroke = CanvasPerformanceFixtures.longStroke();
+        final Stroke beforeAppend = stroke.copyWith(
+          points: stroke.points.sublist(0, stroke.points.length - 1),
+        );
+        final List<int> samples = <int>[];
+
+        for (var iteration = 0; iteration < 7; iteration += 1) {
+          final LiveStrokePathCache cache = LiveStrokePathCache();
+          cache.pathFor(stroke: beforeAppend, revision: 1, viewportScale: 1);
+          final Stopwatch stopwatch = Stopwatch()..start();
+          final Path path = cache.pathFor(
+            stroke: stroke,
+            revision: 2,
+            viewportScale: 1,
+          );
+          stopwatch.stop();
+          expect(path.getBounds(), isNot(Rect.zero));
+          expect(cache.lastRebuiltPointCount, lessThan(256));
+          samples.add(stopwatch.elapsedMicroseconds);
+        }
+
+        _recordSample(
+          scenario: 'live-stroke-incremental-append-8192',
           valuesMicros: samples,
           facts: <String, Object>{'pointCount': stroke.points.length},
         );
