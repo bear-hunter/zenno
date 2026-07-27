@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:zenno/canvas/canvas_controller.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
@@ -1029,9 +1030,13 @@ class _CanvasViewState extends State<CanvasView> {
     if (disqualified) {
       return;
     }
+    // These gestures change the document with nothing on screen to confirm
+    // they fired, so the haptic is the only feedback the user gets.
     if (tapCount == 2) {
+      HapticFeedback.mediumImpact();
       _controller.undo();
     } else if (tapCount == 3) {
+      HapticFeedback.mediumImpact();
       _controller.redo();
     }
   }
@@ -1233,8 +1238,10 @@ class _CanvasViewState extends State<CanvasView> {
   void _performStylusTapAction(StylusButtonAction action) {
     switch (action) {
       case StylusButtonAction.undo:
+        HapticFeedback.mediumImpact();
         _controller.undo();
       case StylusButtonAction.redo:
+        HapticFeedback.mediumImpact();
         _controller.redo();
       case StylusButtonAction.togglePreviousTool:
         _controller.togglePreviousTool();

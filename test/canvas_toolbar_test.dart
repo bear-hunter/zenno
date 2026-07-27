@@ -11,6 +11,8 @@ import 'package:zenno/canvas/model/canvas_style.dart';
 import 'package:zenno/canvas/model/stroke.dart';
 import 'package:zenno/canvas/render/canvas_view.dart';
 import 'package:zenno/canvas/widgets/canvas_toolbar.dart';
+import 'package:zenno/config/theme/app_spacing.dart';
+import 'package:zenno/config/theme/app_theme.dart';
 import 'package:zenno/core/database/tables/canvas_tables.dart';
 
 Future<void> _pumpToolbar(
@@ -23,6 +25,7 @@ Future<void> _pumpToolbar(
   List<int> palette = const <int>[],
   bool includeCanvas = false,
   MediaQueryData? mediaQuery,
+  Brightness brightness = Brightness.dark,
 }) async {
   Widget home = Scaffold(
     body: Stack(
@@ -46,7 +49,14 @@ Future<void> _pumpToolbar(
   if (mediaQuery != null) {
     home = MediaQuery(data: mediaQuery, child: home);
   }
-  await tester.pumpWidget(MaterialApp(home: home));
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: brightness == Brightness.light
+          ? AppTheme.lightWith()
+          : AppTheme.darkWith(),
+      home: home,
+    ),
+  );
 }
 
 Finder _presetButton(int index) => find.byKey(
@@ -312,7 +322,9 @@ void main() {
         wheel.topLeft + const Offset(13, 3),
       );
 
-      final double innerRadius = wheel.width * 58 / 176;
+      // Matches _RadialWheel: the ring is thicker than the hub so each wedge
+      // clears a 48dp radial hit target.
+      final double innerRadius = wheel.width * 44 / 176;
       final double radius = (wheel.width / 2 + innerRadius) / 2;
       const double firstGapAngle = -math.pi * 3 / 8;
       await _drawStylusStroke(
@@ -429,6 +441,9 @@ void main() {
         tester,
         controller,
         mediaQuery: mediaQuery,
+        // Pinned top-left so the drag has room to travel; the wheel now
+        // defaults to the lower-right for right-handed pen reach.
+        toolWheelPosition: Offset.zero,
         onToolWheelPositionChanged: reportedPositions.add,
       );
 
@@ -990,6 +1005,78 @@ void main() {
     expect(find.byTooltip('Clear canvas'), findsNothing);
     expect(find.text('Clear canvas?'), findsNothing);
     expect(controller.elements, hasLength(1));
+  });
+
+  testWidgets('undo stays reachable from every wheel page', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController()
+      ..beginStroke(const Offset(0, 0), 0.5)
+      ..appendToStroke(const Offset(40, 0), 0.5)
+      ..endStroke();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    expect(find.byKey(CanvasToolbar.undoSideButtonKey), findsOneWidget);
+
+    // Open the More page: undo used to vanish with the rest of the side
+    // column, which makes an always-available action modal.
+    await tester.tap(find.byKey(CanvasToolbar.canvasSettingsDockKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(CanvasToolbar.undoSideButtonKey), findsOneWidget);
+    expect(find.byKey(CanvasToolbar.redoSideButtonKey), findsOneWidget);
+  });
+
+  testWidgets('wheel controls meet the minimum touch target', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController();
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller);
+
+    final Size undo = tester.getSize(
+      find.byKey(CanvasToolbar.undoSideButtonKey),
+    );
+    expect(undo.width, greaterThanOrEqualTo(AppSpacing.touchTarget));
+    expect(undo.height, greaterThanOrEqualTo(AppSpacing.touchTarget));
+
+    // The wedge, not the icon stack, is the tool's touch target: its radial
+    // thickness is what the 48dp minimum applies to.
+    final Rect wheel = tester.getRect(
+      find.byKey(CanvasToolbar.minimalToolMenuKey),
+    );
+    final double ringThickness = wheel.width / 2 - wheel.width * 44 / 176;
+    expect(ringThickness, greaterThanOrEqualTo(AppSpacing.touchTarget));
+  });
+
+  testWidgets('a tool glyph never renders in its own ink colour', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = CanvasController()..setPenRgbColor(0xFFFFFFFF);
+    addTearDown(controller.dispose);
+    await _pumpToolbar(tester, controller, brightness: Brightness.light);
+
+    final Icon glyph = tester.widget<Icon>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('canvas-tool-preset-0')),
+            matching: find.byType(Icon),
+          )
+          .first,
+    );
+
+    // White ink on the light theme's cream wedge is about 1.1:1. The ink is
+    // carried by a separate swatch dot instead.
+    expect(glyph.color, isNot(const Color(0xFFFFFFFF)));
   });
 }
 
