@@ -144,7 +144,7 @@ abstract final class CanvasTransform {
   }) {
     final Offset worldAnchor = toWorld(start, anchorScreenAtStart);
     final double newScale = clampScale(start.scale * scaleFactor);
-    final double newRotation = start.rotation + rotationDelta;
+    final double newRotation = snapRotation(start.rotation + rotationDelta);
     final Offset newTranslation =
         currentFocusScreen -
         _rotateThenScale(worldAnchor, newRotation, newScale);
@@ -154,6 +154,23 @@ abstract final class CanvasTransform {
       rotation: newRotation,
     );
   }
+
+  /// Snaps [rotation] to the nearest quarter turn when it is already close.
+  ///
+  /// Every two-finger pan imparts a little twist, and in a handwriting app that
+  /// accumulates into permanently skewed pages. A small detent lets a pinch
+  /// settle level instead, while leaving deliberate rotation untouched.
+  static double snapRotation(double rotation) {
+    const double quarterTurn = math.pi / 2;
+    final double nearestQuarter =
+        (rotation / quarterTurn).roundToDouble() * quarterTurn;
+    return (rotation - nearestQuarter).abs() <= rotationSnapTolerance
+        ? nearestQuarter
+        : rotation;
+  }
+
+  /// How close to a quarter turn the canvas must be before it snaps (~4°).
+  static const double rotationSnapTolerance = 0.07;
 
   /// Applies "rotate by [rotation] then scale by [scale]" to world point [w].
   ///

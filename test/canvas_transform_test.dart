@@ -349,4 +349,41 @@ void main() {
       expect(ViewportState.initial.rotation, 0.0);
     });
   });
+
+  group('rotation snap detent', () {
+    test('a near-level twist settles flat', () {
+      // Every two-finger pan imparts a little twist; without a detent that
+      // accumulates into a permanently skewed page.
+      expect(CanvasTransform.snapRotation(0.03), 0);
+      expect(CanvasTransform.snapRotation(-0.03), 0);
+    });
+
+    test('deliberate rotation is left alone', () {
+      expect(CanvasTransform.snapRotation(0.6), 0.6);
+      expect(CanvasTransform.snapRotation(-0.6), -0.6);
+    });
+
+    test('quarter turns snap too', () {
+      const double quarter = math.pi / 2;
+      expect(
+        CanvasTransform.snapRotation(quarter + 0.02),
+        closeTo(quarter, 1e-9),
+      );
+      expect(
+        CanvasTransform.snapRotation(math.pi - 0.02),
+        closeTo(math.pi, 1e-9),
+      );
+    });
+
+    test('an interactive twist snaps through the transform', () {
+      final ViewportState settled = CanvasTransform.interactiveUpdate(
+        start: const ViewportState(),
+        anchorScreenAtStart: const Offset(100, 100),
+        currentFocusScreen: const Offset(100, 100),
+        scaleFactor: 1,
+        rotationDelta: 0.02,
+      );
+      expect(settled.rotation, 0);
+    });
+  });
 }
