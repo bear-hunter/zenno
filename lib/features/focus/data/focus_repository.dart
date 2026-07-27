@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:zenno/core/database/database.dart';
 import 'package:zenno/core/database/tables/focus_tables.dart';
@@ -374,28 +377,140 @@ class FocusRepository {
   /// Watches the full session history as [FocusSessionDetail] bundles, each
   /// joined with its distractions and ritual-check snapshot, most recent first.
   ///
-  /// Built by watching the sessions stream and resolving the children per
-  /// emission. The History feed is small (one row per study session), so the
-  /// per-emission child fetch is comfortably cheap.
+  /// Exactly three batched queries back this stream: all sessions, all
+  /// distractions and all ritual checks. Child rows are grouped in memory, so
+  /// the query count stays constant as history grows. A runtime checkpoint
+  /// invalidates only the session query; the cached child batches are reused.
   Stream<List<FocusSessionDetail>> watchHistoryDetails() {
-    return watchHistory().asyncMap((sessions) async {
-      final details = <FocusSessionDetail>[];
-      for (final session in sessions) {
-        final distractions =
-            await (_db.select(_db.distractions)
-                  ..where((d) => d.sessionId.equals(session.id))
-                  ..orderBy([(d) => OrderingTerm.asc(d.capturedAt)]))
-                .get();
-        final checks = await ritualChecks(session.id);
-        details.add(
-          FocusSessionDetail(
-            session: session,
-            distractions: distractions,
-            ritualChecks: checks,
-          ),
-        );
-      }
-      return details;
-    });
+    final distractions = (_db.select(
+      _db.distractions,
+    )..orderBy([(row) => OrderingTerm.asc(row.capturedAt)])).watch();
+    final ritualChecks = _db.select(_db.focusSessionRitualChecks).watch();
+    return _combineHistoryStreams(
+      sessions: watchHistory(),
+      distractions: distractions,
+      ritualChecks: ritualChecks,
+    );
   }
+}
+
+Stream<List<FocusSessionDetail>> _combineHistoryStreams({
+  required Stream<List<FocusSession>> sessions,
+  required Stream<List<Distraction>> distractions,
+  required Stream<List<FocusSessionRitualCheck>> ritualChecks,
+}) {
+  late final StreamController<List<FocusSessionDetail>> controller;
+  final subscriptions = <StreamSubscription<dynamic>>[];
+  List<FocusSession>? latestSessions;
+  List<Distraction>? latestDistractions;
+  List<FocusSessionRitualCheck>? latestRitualChecks;
+  List<FocusSessionDetail>? lastEmission;
+
+  void emitIfReady() {
+    final sessionRows = latestSessions;
+    final distractionRows = latestDistractions;
+    final ritualRows = latestRitualChecks;
+    if (sessionRows == null || distractionRows == null || ritualRows == null) {
+      return;
+    }
+
+    final distractionsBySession = <String, List<Distraction>>{};
+    for (final row in distractionRows) {
+      (distractionsBySession[row.sessionId] ??= <Distraction>[]).add(row);
+    }
+    final ritualChecksBySession = <String, List<FocusSessionRitualCheck>>{};
+    for (final row in ritualRows) {
+      (ritualChecksBySession[row.sessionId] ??= <FocusSessionRitualCheck>[])
+          .add(row);
+    }
+    final next = <FocusSessionDetail>[
+      for (final session in sessionRows)
+        FocusSessionDetail(
+          session: session,
+          distractions:
+              distractionsBySession[session.id] ?? const <Distraction>[],
+          ritualChecks:
+              ritualChecksBySession[session.id] ??
+              const <FocusSessionRitualCheck>[],
+        ),
+    ];
+    if (_historyDetailsEqual(lastEmission, next)) return;
+    lastEmission = next;
+    controller.add(next);
+  }
+
+  controller = StreamController<List<FocusSessionDetail>>(
+    sync: true,
+    onListen: () {
+      subscriptions
+        ..add(
+          sessions.listen((rows) {
+            latestSessions = rows;
+            emitIfReady();
+          }, onError: controller.addError),
+        )
+        ..add(
+          distractions.listen((rows) {
+            latestDistractions = rows;
+            emitIfReady();
+          }, onError: controller.addError),
+        )
+        ..add(
+          ritualChecks.listen((rows) {
+            latestRitualChecks = rows;
+            emitIfReady();
+          }, onError: controller.addError),
+        );
+    },
+    onPause: () {
+      for (final subscription in subscriptions) {
+        subscription.pause();
+      }
+    },
+    onResume: () {
+      for (final subscription in subscriptions) {
+        subscription.resume();
+      }
+    },
+    onCancel: () async {
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+    },
+  );
+  return controller.stream;
+}
+
+const _distractionEquality = ListEquality<Distraction>();
+const _ritualCheckEquality = ListEquality<FocusSessionRitualCheck>();
+
+bool _historyDetailsEqual(
+  List<FocusSessionDetail>? previous,
+  List<FocusSessionDetail> next,
+) {
+  if (previous == null || previous.length != next.length) return false;
+  for (var index = 0; index < next.length; index += 1) {
+    final before = previous[index];
+    final after = next[index];
+    if (!_displayedSessionEqual(before.session, after.session) ||
+        !_distractionEquality.equals(before.distractions, after.distractions) ||
+        !_ritualCheckEquality.equals(before.ritualChecks, after.ritualChecks)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _displayedSessionEqual(FocusSession before, FocusSession after) {
+  return before.id == after.id &&
+      before.startedAt == after.startedAt &&
+      before.goalText == after.goalText &&
+      before.preEnergy == after.preEnergy &&
+      before.postEnergy == after.postEnergy &&
+      before.timerKind == after.timerKind &&
+      before.actualFocusSecs == after.actualFocusSecs &&
+      before.cyclesCompleted == after.cyclesCompleted &&
+      before.status == after.status &&
+      before.linkedCanvasId == after.linkedCanvasId &&
+      before.notes == after.notes;
 }

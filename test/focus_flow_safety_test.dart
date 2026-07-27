@@ -8,6 +8,7 @@ import 'package:zenno/core/database/database.dart' hide RitualChecklist;
 import 'package:zenno/core/database/tables/focus_tables.dart';
 import 'package:zenno/core/database/tables/settings_tables.dart';
 import 'package:zenno/core/providers/database_provider.dart';
+import 'package:zenno/core/widgets/aurora.dart';
 import 'package:zenno/features/focus/application/active_session_controller.dart';
 import 'package:zenno/features/focus/application/focus_providers.dart';
 import 'package:zenno/features/focus/application/focus_stats_provider.dart';
@@ -248,6 +249,70 @@ void main() {
     expect(find.text('Start a focus session'), findsNothing);
   });
 
+  testWidgets('Focus home ignores 1 Hz snapshot-only updates', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        activeSessionControllerProvider.overrideWith(
+          _TickingActiveSessionController.new,
+        ),
+        focusHistoryProvider.overrideWith((ref) => Stream.value(const [])),
+        focusStatsProvider.overrideWithValue(FocusStats.empty),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: FocusHomePage()),
+      ),
+    );
+    await tester.pump();
+    final before = tester.widget<Text>(find.text('Recent sessions'));
+
+    (container.read(activeSessionControllerProvider.notifier)
+            as _TickingActiveSessionController)
+        .tick(const Duration(seconds: 1));
+    await tester.pump();
+
+    final after = tester.widget<Text>(find.text('Recent sessions'));
+    expect(identical(after, before), isTrue);
+  });
+
+  testWidgets('active page rebuilds only timer-dependent subtree on tick', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        activeSessionControllerProvider.overrideWith(
+          _TickingActiveSessionController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: FocusActivePage()),
+      ),
+    );
+    await tester.pump();
+    final before = tester
+        .widgetList<AuroraPill>(find.byType(AuroraPill))
+        .singleWhere((widget) => widget.label.startsWith('Review physiology'));
+    expect(find.text('25:00'), findsOneWidget);
+
+    (container.read(activeSessionControllerProvider.notifier)
+            as _TickingActiveSessionController)
+        .tick(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.text('24:59'), findsOneWidget);
+    final after = tester
+        .widgetList<AuroraPill>(find.byType(AuroraPill))
+        .singleWhere((widget) => widget.label.startsWith('Review physiology'));
+    expect(identical(after, before), isTrue);
+  });
+
   testWidgets('focus timer fits the available compact width', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -444,6 +509,36 @@ class _ControllableFocusRepository extends FocusRepository {
   Stream<List<Distraction>> watchDistractions(String sessionId) {
     return Stream.value(const []);
   }
+}
+
+class _TickingActiveSessionController extends ActiveSessionController {
+  @override
+  ActiveSessionState build() => ActiveSessionState(
+    sessionId: 'ticking-session',
+    startedAt: DateTime.utc(2026, 7, 20),
+    config: _config,
+    snapshot: _snapshot(Duration.zero),
+  );
+
+  void tick(Duration elapsed) {
+    state = ActiveSessionState(
+      sessionId: state.sessionId,
+      startedAt: state.startedAt,
+      config: state.config,
+      snapshot: _snapshot(elapsed),
+    );
+  }
+
+  TimerSnapshot _snapshot(Duration elapsed) => TimerSnapshot(
+    status: TimerStatus.running,
+    phase: TimerPhase.work,
+    mode: TimerMode.pomodoro,
+    elapsed: elapsed,
+    remaining: const Duration(minutes: 25) - elapsed,
+    target: const Duration(minutes: 25),
+    cyclesCompleted: 0,
+    accumulatedFocus: elapsed,
+  );
 }
 
 class _FakeWakelockService extends FocusWakelockService {

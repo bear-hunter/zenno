@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -13,14 +14,21 @@ import 'package:zenno/features/settings/application/settings_providers.dart';
 part 'library_providers.g.dart';
 
 /// Provides the singleton [LibraryRepository], wired to the app database.
-@riverpod
+bool _orphanCleanupScheduled = false;
+
+@Riverpod(keepAlive: true)
 LibraryRepository libraryRepository(Ref ref) {
   final repository = LibraryRepository(ref.watch(databaseProvider));
-  unawaited(
-    repository.cleanupOrphanedFiles().catchError((Object error) {
-      debugPrint('Library file cleanup failed: $error');
-    }),
-  );
+  if (!_orphanCleanupScheduled) {
+    _orphanCleanupScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      unawaited(
+        repository.cleanupOrphanedFiles().catchError((Object error) {
+          debugPrint('Library file cleanup failed: $error');
+        }),
+      );
+    });
+  }
   return repository;
 }
 
