@@ -525,9 +525,9 @@ void main() {
     testWidgets('hovering never wakes the toolbar', (tester) async {
       final CanvasController controller = CanvasController();
       addTearDown(controller.dispose);
-      var overlayRepaints = 0;
+      var hoverRepaints = 0;
       var toolStateRebuilds = 0;
-      controller.overlayListenable.addListener(() => overlayRepaints += 1);
+      controller.hoverListenable.addListener(() => hoverRepaints += 1);
       controller.toolStateListenable.addListener(() => toolStateRebuilds += 1);
 
       controller.setHoverPoint(const Offset(10, 10));
@@ -536,14 +536,14 @@ void main() {
       await tester.pump();
 
       // An S Pen hovers continuously within a centimetre of the glass.
-      expect(overlayRepaints, greaterThan(0));
+      expect(hoverRepaints, greaterThan(0));
       expect(toolStateRebuilds, 0);
 
-      final int settled = overlayRepaints;
+      final int settled = hoverRepaints;
       controller.setHoverPoint(const Offset(20, 20));
       await tester.pump();
       expect(
-        overlayRepaints,
+        hoverRepaints,
         settled,
         reason: 'an unchanged hover position is dropped outright',
       );

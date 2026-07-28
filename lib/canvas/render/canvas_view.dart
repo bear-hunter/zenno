@@ -159,9 +159,11 @@ class _SelectionPointerSession {
   double? rotationStartAngle;
 }
 
-class _CanvasViewState extends State<CanvasView> {
+class _CanvasViewState extends State<CanvasView> with WidgetsBindingObserver {
   final ElementsTileCache _elementsTileCache = ElementsTileCache();
   final LiveStrokePathCache _liveStrokePathCache = LiveStrokePathCache();
+  final BackgroundPatternCache _backgroundPatternCache =
+      BackgroundPatternCache();
 
   /// All pointers currently down on (or hovering over) the surface.
   final Map<int, _ActivePointer> _pointers = <int, _ActivePointer>{};
@@ -241,7 +243,21 @@ class _CanvasViewState extends State<CanvasView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller.setPenProfile(widget.penProfile, notify: false);
+  }
+
+  /// Android signals memory pressure right before it starts killing
+  /// processes. Everything dropped here is a pure cache — tile pictures, the
+  /// live-stroke path, background pattern tiles, off-screen rasters, deep
+  /// undo history — all rebuilt lazily from intact state, so being a good
+  /// citizen costs nothing the user can lose.
+  @override
+  void didHaveMemoryPressure() {
+    _elementsTileCache.clear();
+    _backgroundPatternCache.dispose();
+    _liveStrokePathCache.clear();
+    _controller.onMemoryPressure();
   }
 
   @override
@@ -255,9 +271,11 @@ class _CanvasViewState extends State<CanvasView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _longPressTimer?.cancel();
     _stylusLongPressTimer?.cancel();
     _stylusButtonHoldTimer?.cancel();
+    _rasterSettleTimer?.cancel();
     if (_selectionTransformTouchPointers.isNotEmpty) {
       _controller.cancelSelectionTransform();
     }
@@ -270,6 +288,7 @@ class _CanvasViewState extends State<CanvasView> {
       _controller.cancelLasso();
     }
     _elementsTileCache.dispose();
+    _backgroundPatternCache.dispose();
     _liveStrokePathCache.clear();
     super.dispose();
   }
@@ -1583,6 +1602,7 @@ class _CanvasViewState extends State<CanvasView> {
     final bool sizeChanged = _lastRasterSize != size;
     final bool pixelRatioChanged =
         _lastRasterDevicePixelRatio != devicePixelRatio;
+    final bool firstSync = _lastRasterViewport == null;
     _lastRasterSize = size;
     _lastRasterDevicePixelRatio = devicePixelRatio;
     _controller.setViewportSize(size);
@@ -1590,9 +1610,32 @@ class _CanvasViewState extends State<CanvasView> {
     final ViewportState viewport = _controller.viewport;
     if (_lastRasterViewport != viewport || sizeChanged || pixelRatioChanged) {
       _lastRasterViewport = viewport;
-      _controller.scheduleRasterWork();
+      if (firstSync || sizeChanged || pixelRatioChanged) {
+        // Opening the canvas (or rotating the device) wants pixels now.
+        _rasterSettleTimer?.cancel();
+        _rasterSettleTimer = null;
+        _controller.scheduleRasterWork();
+      } else {
+        // Mid-gesture the camera moves every frame; rasters only need
+        // scheduling once it settles. The ladder keeps whatever resolution is
+        // already loaded on screen, so the delay is invisible — what it saves
+        // is a spatial query plus a bucket check per element, per frame, for
+        // the whole pan.
+        _rasterSettleTimer?.cancel();
+        _rasterSettleTimer = Timer(_rasterSettleDelay, () {
+          _rasterSettleTimer = null;
+          if (mounted) {
+            _controller.scheduleRasterWork();
+          }
+        });
+      }
     }
   }
+
+  /// How long the camera must hold still before rasters are (re)scheduled.
+  static const Duration _rasterSettleDelay = Duration(milliseconds: 80);
+
+  Timer? _rasterSettleTimer;
 
   void _queueRasterScheduling(Size size, double devicePixelRatio) {
     if (_lastRasterSize == size &&
@@ -1681,6 +1724,7 @@ class _CanvasViewState extends State<CanvasView> {
                                 painter: PaperTexturePainter(
                                   viewport: viewport,
                                   style: _controller.paperStyle,
+                                  cache: _backgroundPatternCache,
                                 ),
                               ),
                             ),
@@ -1689,6 +1733,7 @@ class _CanvasViewState extends State<CanvasView> {
                                 painter: GridPainter(
                                   viewport: viewport,
                                   style: _controller.paperStyle,
+                                  cache: _backgroundPatternCache,
                                 ),
                               ),
                             ),
@@ -1741,17 +1786,10 @@ class _CanvasViewState extends State<CanvasView> {
                   ListenableBuilder(
                     listenable: overlayListenable,
                     builder: (context, _) {
-                      final bool eraserActive =
-                          _controller.activeTool == CanvasTool.eraser;
                       return RepaintBoundary(
                         child: CustomPaint(
                           painter: CanvasOverlayPainter(
                             viewport: _controller.viewport,
-                            hoverPointWorld: _controller.hoverPointWorld,
-                            hoverRadius: eraserActive
-                                ? _controller.eraserRadius
-                                : _controller.resolvedPenHoverRadiusScreen(),
-                            isEraserHover: eraserActive,
                             eraserPath: _controller.eraserPath,
                             eraserRadius: _controller.eraserRadius,
                             lassoPath: _controller.lassoPath,
@@ -1764,6 +1802,64 @@ class _CanvasViewState extends State<CanvasView> {
                                   _controller.paperStyle.backgroundColor,
                                 ).computeLuminance() >
                                 0.5,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  // The hover ring lives outside the overlay layer on purpose:
+                  // it moves at the S Pen's report rate whenever the pen is
+                  // near the glass, and it used to drag the entire full-screen
+                  // overlay repaint along with it. Here only this small
+                  // boundary moves — a compositor offset, no rasterisation.
+                  ListenableBuilder(
+                    listenable: Listenable.merge(<Listenable>[
+                      _controller.viewportListenable,
+                      _controller.hoverListenable,
+                      _controller.overlayListenable,
+                      _controller.toolStateListenable,
+                    ]),
+                    builder: (context, _) {
+                      final Offset? world = _controller.hoverPointWorld;
+                      final bool eraserActive =
+                          _controller.activeTool == CanvasTool.eraser;
+                      // The eraser footprint at a live drag's head already
+                      // shows the cursor; the static ring would double it.
+                      final bool eraserDragLive =
+                          eraserActive &&
+                          (_controller.eraserPath?.isNotEmpty ?? false);
+                      if (world == null || eraserDragLive) {
+                        return const SizedBox.shrink();
+                      }
+                      final double radius = eraserActive
+                          ? _controller.eraserRadius
+                          : _controller.resolvedPenHoverRadiusScreen();
+                      if (radius <= 0) {
+                        return const SizedBox.shrink();
+                      }
+                      final Offset screen = CanvasTransform.toScreen(
+                        _controller.viewport,
+                        world,
+                      );
+                      final double side = radius * 2 + 4;
+                      return Positioned(
+                        left: screen.dx - side / 2,
+                        top: screen.dy - side / 2,
+                        width: side,
+                        height: side,
+                        child: IgnorePointer(
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              painter: HoverRingPainter(
+                                radius: radius,
+                                isEraser: eraserActive,
+                                paperIsLight:
+                                    Color(
+                                      _controller.paperStyle.backgroundColor,
+                                    ).computeLuminance() >
+                                    0.5,
+                              ),
+                            ),
                           ),
                         ),
                       );

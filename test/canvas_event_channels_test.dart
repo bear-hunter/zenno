@@ -24,17 +24,23 @@ void main() {
     expect(elementNotifications, 0);
   });
 
-  test('hover changes only the overlay channel', () {
+  test('hover changes only the hover channel', () {
     final controller = CanvasController();
     addTearDown(controller.dispose);
+    var hoverNotifications = 0;
     var overlayNotifications = 0;
     var elementNotifications = 0;
+    controller.hoverListenable.addListener(() => hoverNotifications++);
     controller.overlayListenable.addListener(() => overlayNotifications++);
     controller.elementsListenable.addListener(() => elementNotifications++);
 
     controller.setHoverPoint(const Offset(10, 12));
 
-    expect(overlayNotifications, 1);
+    expect(hoverNotifications, 1);
+    // Hover fires at the S Pen's report rate whenever the pen is near the
+    // glass; routing it through the overlay channel repainted the whole
+    // full-screen overlay layer per report just to move one small ring.
+    expect(overlayNotifications, 0);
     expect(elementNotifications, 0);
   });
 

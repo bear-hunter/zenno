@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zenno — Performance &amp; Efficiency Plan</title>
+<style>
+  :root {
+    --paper: #F7F3EA;
+    --panel: #EFE8DA;
+    --panel-2: #E9E1D0;
+    --ink: #241F17;
+    --ink-soft: #5C554A;
+    --ink-faint: #8A8274;
+    --accent: #C97B4A;
+    --accent-deep: #A85F33;
+    --line: #DCD3C0;
+    --good: #4A7A56;
+    --warn: #B08A2E;
+    --crit: #A8442E;
+    --code-bg: #EBE4D4;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151512;
+      --panel: #1D1C18;
+      --panel-2: #24221D;
+      --ink: #E8E4DA;
+      --ink-soft: #ABA599;
+      --ink-faint: #7E786C;
+      --accent: #D8946C;
+      --accent-deep: #E3A87F;
+      --line: #33302A;
+      --good: #7FAE8C;
+      --warn: #CBA84E;
+      --crit: #D07156;
+      --code-bg: #24221C;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.6;
+    padding: 0 24px 96px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-deep); font-weight: 600; margin-bottom: 14px;
+  }
+  h1 { font-family: var(--serif); font-size: 40px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; }
+  .lede { margin-top: 18px; color: var(--ink-soft); font-size: 17px; max-width: 62ch; }
+
+  h2 {
+    font-family: var(--serif); font-size: 26px; font-weight: 600;
+    margin: 56px 0 6px; padding-top: 10px;
+  }
+  h2 .num { color: var(--accent); font-family: var(--mono); font-size: 17px; margin-right: 10px; }
+  .sub { color: var(--ink-faint); font-size: 14px; margin-bottom: 22px; }
+
+  h3 { font-size: 16.5px; font-weight: 650; margin: 26px 0 8px; }
+  p { margin: 10px 0; max-width: 72ch; }
+  ul, ol { margin: 10px 0 10px 22px; max-width: 72ch; }
+  li { margin: 5px 0; }
+
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1.5px 5px; border-radius: 4px; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; margin: 14px 0; font-size: 13px; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; font-size: 13px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 20px 22px; margin: 16px 0;
+  }
+  .card.crit { border-left: 3px solid var(--crit); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.good { border-left: 3px solid var(--good); }
+
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.06em; padding: 2px 8px; border-radius: 20px;
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--ink-soft); vertical-align: 2px; margin-left: 8px; font-weight: 600;
+  }
+  .chip.crit { color: var(--crit); border-color: var(--crit); }
+  .chip.warn { color: var(--warn); border-color: var(--warn); }
+  .chip.good { color: var(--good); border-color: var(--good); }
+
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-faint); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; font-weight: 600; }
+  td code { font-size: 12.5px; }
+
+  .files { font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); margin-top: 10px; }
+  .files span { display: block; }
+
+  hr { border: none; border-top: 1px solid var(--line); margin: 48px 0; }
+  .foot { color: var(--ink-faint); font-size: 13.5px; margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Zenno · Performance &amp; Efficiency · 2026-07-28</div>
+  <h1>Making every frame and every joule count</h1>
+  <p class="lede">
+    A code-level audit of where Zenno actually spends CPU, memory and battery on the
+    Tab S9 FE. The good news first: the rendering core is already well-built — tile
+    pictures, a raster resolution ladder with a 96&nbsp;MB budget, per-concern repaint
+    channels, a spatial index, binary ink storage. What remains is a specific set of
+    per-frame and startup costs, each traced to its line. At 90&nbsp;Hz the frame
+    budget is <strong>11.1&nbsp;ms</strong>; everything below is measured against that.
+  </p>
+</header>
+
+<div class="card good">
+  <h3>Status — implemented 2026-07-28 <span class="chip good">SHIPPED</span></h3>
+  <p>
+    <strong>Done:</strong> 1.1 (visible-ids sweep + 80&nbsp;ms settle debounce), 1.2 (texture
+    and dot-grid pattern tiles via <code>BackgroundPatternCache</code>), 1.4 (hover ring in
+    its own boundary on a new <code>hoverListenable</code> channel), 2.1 (concurrent load
+    reads), 2.2 (ink decode via <code>compute()</code> above 256&nbsp;KB), 2.3 (idle-slice
+    outline pre-warm), 3.1 (undo cap 200), 3.2 (<code>didHaveMemoryPressure</code> sheds all
+    reconstructible caches), 3.3 (test proves eviction drops covering tiles).
+    <code>flutter analyze</code> clean, 575 tests pass (+5 new).
+    <strong>Deferred per §6 step 5:</strong> 1.3 and 4.x — conditional on the on-device
+    re-profile, which needs the tablet attached. No device was connected at
+    implementation time, so the §5 baseline remains to be captured.
+  </p>
+</div>
+
+<h2><span class="num">0</span>What is already right</h2>
+<div class="sub">Named so we do not "optimise" it into regression.</div>
+<table>
+  <tr><th>System</th><th>Why it stays</th></tr>
+  <tr><td>Committed-layer tile cache (<code>ElementsTileCache</code>, 96 × 2048² world tiles, LRU, damage-scoped invalidation)</td><td>A pan over committed ink replays pictures; no per-frame geometry.</td></tr>
+  <tr><td>Raster ladder (<code>RasterScalePolicy</code>, 512→4096 buckets, priority queue, 96&nbsp;MB budget, off-screen eviction)</td><td>Images/PDFs decode at the resolution the zoom needs, nothing more.</td></tr>
+  <tr><td>Per-concern <code>Listenable</code> channels + <code>RepaintBoundary</code> per layer</td><td>Live ink never repaints the committed layer.</td></tr>
+  <tr><td><code>InkElement.outlinePath</code> cached per immutable element; live-stroke stable-prefix cache</td><td>Tessellation happens once per stroke, incremental while drawing.</td></tr>
+  <tr><td>Binary ink BLOB codec (v3), batched per-kind detail queries in <code>loadElements</code></td><td>No JSON, no N+1.</td></tr>
+  <tr><td>Eraser/lasso/pen input thinning; frame-batched live-stroke notify</td><td>Input rate no longer multiplies paint rate.</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="num">1</span>P0 — Per-frame work during pan &amp; zoom</h2>
+<div class="sub">These run on every one of the 90 frames of a pan gesture. Biggest wins per line changed.</div>
+
+<div class="card crit">
+  <h3>1.1 · Raster scheduling walks every element on every viewport change <span class="chip crit">P0</span></h3>
+  <p>
+    <code>_scheduleVisibleRasters</code> (canvas_controller.dart:4854) loops
+    <code>for (final element in _elements)</code> — the <em>entire</em> store — on every
+    viewport change, after already computing <code>visibleIds</code> from the spatial
+    index. On a 5,000-element canvas that is 5,000 iterations plus a set build per pan
+    frame, to conclude (almost always) that nothing needs decoding.
+  </p>
+  <p><strong>Fix, two independent halves:</strong></p>
+  <ul>
+    <li>Iterate <code>visibleIds</code> and look each id up in <code>_elementsById</code> — the work becomes proportional to what is on screen, not what exists.</li>
+    <li>Debounce: rasters only need scheduling when the camera <em>settles</em>. Run the sweep when the viewport has been stable for ~80&nbsp;ms or the gesture ends, not per frame mid-fling. The ladder's "keep what you have until sharper lands" behaviour already hides the delay.</li>
+  </ul>
+  <div class="files"><span>lib/canvas/canvas_controller.dart · lib/canvas/render/canvas_view.dart</span></div>
+</div>
+
+<div class="card crit">
+  <h3>1.2 · Paper texture recomputes up to ~20k hashed cells per frame <span class="chip crit">P0</span></h3>
+  <p>
+    <code>PaperTexturePainter</code> repaints on every viewport change and, per cell,
+    computes a hash, derives an anchor/angle/length, and projects through
+    <code>CanvasTransform.toScreen</code> — per point, per frame. At ~14&nbsp;px screen
+    spacing on the Tab's 2560×1600 panel that is a five-figure op count every frame of
+    every pan, for a background that never changes.
+  </p>
+  <p>
+    <strong>Fix:</strong> the texture is deterministic per <code>(texture, step)</code> —
+    <code>_paperHash</code> guarantees cell <code>(x,y)</code> always draws the same marks. So:
+  </p>
+  <ul>
+    <li>Record one world-space texture tile (say 512×512 world units at the current step) into a <code>ui.Picture</code> <em>once</em>, then stamp it across the visible rect under the canvas's world transform — the per-point <code>toScreen</code> disappears along with the per-frame hashing. The picture invalidates only when <code>step</code> (zoom bucket) or the style changes.</li>
+    <li>Same treatment for <code>GridPainter</code>'s dot lattice: it already batches into one <code>drawPoints</code>, but still regenerates the point list per frame. One recorded tile stamped N times beats regenerating thousands of offsets.</li>
+  </ul>
+  <p>
+    A pan then costs the GPU blitting a handful of cached pictures — effectively free —
+    and the CPU nothing.
+  </p>
+  <div class="files"><span>lib/canvas/render/grid_painter.dart</span></div>
+</div>
+
+<div class="card warn">
+  <h3>1.3 · <code>viewportElements</code> re-queries and re-sorts per pan frame <span class="chip warn">P1</span></h3>
+  <p>
+    The getter's cache is invalidated on every viewport change, so each frame of a pan
+    re-runs the spatial query and re-sorts the result — even though during a pure pan
+    the visible set changes only at the edges. The tile path doesn't consume this list,
+    but the build closure reads it every elements-listenable fire.
+  </p>
+  <p>
+    <strong>Fix:</strong> keep the invalidation, but short-circuit the rebuild: if the new
+    query returns the same id set as the cached list (cheap set compare against a kept
+    id set), reuse the previous sorted list. Sorting only happens when membership
+    actually changed.
+  </p>
+  <div class="files"><span>lib/canvas/canvas_controller.dart</span></div>
+</div>
+
+<div class="card warn">
+  <h3>1.4 · S Pen hover repaints the full overlay layer at report rate <span class="chip warn">P1</span></h3>
+  <p>
+    An S Pen hovers continuously within ~1&nbsp;cm of the glass. Every hover event moves
+    <code>hoverPointWorld</code>, which fires <code>_notifyOverlay</code>, which repaints the
+    whole full-screen overlay <code>CustomPaint</code> — selection box, bookmarks chrome,
+    eraser trail logic — to move one small ring. That is a full-screen layer
+    rasterisation per frame whenever the pen is merely <em>near</em> the tablet, which is
+    most of a study session. Pure battery burn.
+  </p>
+  <p>
+    <strong>Fix:</strong> split the hover ring out of <code>CanvasOverlayPainter</code> into its
+    own tiny positioned widget (a <code>Transform.translate</code> around a ~64&nbsp;px
+    <code>RepaintBoundary</code>). Moving a boundary is a compositor offset update — no
+    rasterisation at all. The overlay painter keeps everything else and stops
+    depending on the hover point.
+  </p>
+  <div class="files"><span>lib/canvas/render/canvas_overlay_painter.dart · lib/canvas/render/canvas_view.dart · lib/canvas/canvas_controller.dart</span></div>
+</div>
+
+<hr>
+
+<h2><span class="num">2</span>P1 — Opening a canvas</h2>
+<div class="sub">The costs between tapping a note and drawing on it.</div>
+
+<div class="card warn">
+  <h3>2.1 · <code>load()</code> serialises seven independent queries <span class="chip warn">P1</span></h3>
+  <p>
+    canvas_controller.dart:1279–1285: layers, elements, bookmarks, viewport, rotation
+    lock, paper style, tool settings — awaited one after another. Each is a round-trip
+    to drift's background isolate; the payloads are independent.
+  </p>
+  <p><strong>Fix:</strong> <code>Future.wait</code> over all seven (elements is the long pole; the six small reads ride along free). Trivial, safe, saves six round-trips of latency on every open.</p>
+  <div class="files"><span>lib/canvas/canvas_controller.dart</span></div>
+</div>
+
+<div class="card warn">
+  <h3>2.2 · Every ink BLOB decodes on the UI isolate at open <span class="chip warn">P1</span></h3>
+  <p>
+    <code>loadElements</code> calls <code>InkCodec.decodePoints</code> per stroke on the calling
+    (UI) isolate. v3 records are 48 bytes/point; a dense study canvas — thousands of
+    strokes, hundreds of points each — is tens of MB of <code>ByteData</code> reads in one
+    synchronous burst while the open animation is trying to run.
+  </p>
+  <p>
+    <strong>Fix:</strong> move the row→<code>StrokePoint[]</code> decode into a single
+    <code>compute()</code> call: ship the raw BLOBs (they're <code>Uint8List</code>s —
+    transferable, near zero copy cost) to a worker isolate, get point lists back.
+    One isolate spawn per open, not per stroke. Decode of images/PDFs already happens
+    off-thread; ink is the last decoder on the UI isolate.
+  </p>
+  <div class="files"><span>lib/canvas/persistence/canvas_repository.dart · lib/canvas/persistence/ink_codec.dart</span></div>
+</div>
+
+<div class="card warn">
+  <h3>2.3 · First paint tessellates every visible stroke at once <span class="chip warn">P1</span></h3>
+  <p>
+    <code>InkElement.outlinePath</code> is built lazily on first read — which means the
+    first frame after load runs <code>perfect_freehand</code> over <em>every visible
+    stroke simultaneously</em>, then records tile pictures on top. One big jank spike
+    exactly when the user is looking.
+  </p>
+  <p>
+    <strong>Fix:</strong> pre-warm in idle slices. After hydration, walk the visible-first
+    element list and touch <code>outlinePath</code> a few strokes per
+    <code>SchedulerBinding.scheduleTask(Priority.animation - 1)</code> slice, yielding every
+    ~4&nbsp;ms. The spike becomes a ramp the user never sees; anything not yet warmed
+    still builds lazily as before, so nothing can render wrong — only later.
+  </p>
+  <div class="files"><span>lib/canvas/canvas_controller.dart · lib/canvas/model/canvas_element.dart</span></div>
+</div>
+
+<hr>
+
+<h2><span class="num">3</span>P1 — Memory over a long session</h2>
+<div class="sub">Zenno is a study tool; sessions run hours. Growth that never stops eventually kills the app — and Android kills first, asks never.</div>
+
+<div class="card warn">
+  <h3>3.1 · The undo history is unbounded <span class="chip warn">P1</span></h3>
+  <p>
+    <code>_undoStack</code> has no cap. Every command holds full element snapshots —
+    including complete stroke point lists. An afternoon of writing accumulates every
+    stroke ever drawn <em>twice</em>: once in the store, once in history. Nothing is ever
+    released until the canvas closes.
+  </p>
+  <p>
+    <strong>Fix:</strong> cap the stack (200 commands) and drop from the bottom. No data
+    risk by construction: every command past the cap is already committed to SQLite —
+    the cap only limits how far <em>back</em> undo reaches, which past 200 steps is a
+    feature nobody has ever used. Constant chosen generously; make it a
+    <code>static const</code> so it is one line to tune.
+  </p>
+  <div class="files"><span>lib/canvas/canvas_controller.dart</span></div>
+</div>
+
+<div class="card warn">
+  <h3>3.2 · No response to system memory pressure <span class="chip warn">P1</span></h3>
+  <p>
+    The raster budget (96&nbsp;MB) is enforced only against itself. When Android signals
+    memory pressure — the step before it starts killing processes — Zenno does nothing.
+    The tile cache (up to 96 pictures), warm rasters, and the undo stack all sit
+    untouched while the OS decides whether to keep us alive.
+  </p>
+  <p>
+    <strong>Fix:</strong> implement <code>didHaveMemoryPressure</code> in the editor's existing
+    <code>WidgetsBindingObserver</code>: clear the tile cache (rebuilds lazily from intact
+    state), evict all off-screen rasters immediately, and trim the undo stack to its
+    most recent quarter. All three are pure caches or already-persisted history —
+    nothing the user can lose. Being a good citizen here is also what keeps the
+    lifecycle-flush guarantee meaningful: the process that isn't killed doesn't need
+    its crash-recovery path.
+  </p>
+  <div class="files"><span>lib/canvas/canvas_editor_page.dart · lib/canvas/canvas_controller.dart · lib/canvas/render/elements_painter.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>3.3 · Verify: tile pictures must not outlive evicted rasters <span class="chip">audit</span></h3>
+  <p>
+    A recorded tile picture that contains <code>drawImageRect</code> holds a reference to
+    that <code>ui.Image</code>. Raster eviction calls <code>image.dispose()</code>. If eviction
+    does not also invalidate the tiles covering that element, a cached tile either
+    keeps the "freed" memory alive or replays a disposed image. Reading the code
+    suggests the damage path covers it (the swap bumps the revision), but this is a
+    correctness-adjacent memory question that deserves a test, not a belief:
+    evict → assert the covering tile was dropped from the cache.
+  </p>
+  <div class="files"><span>test/canvas_perf_test.dart (new case)</span></div>
+</div>
+
+<hr>
+
+<h2><span class="num">4</span>P2 — Storage &amp; smaller costs</h2>
+<div class="sub">Real, but behind everything above.</div>
+
+<div class="card">
+  <h3>4.1 · Ink codec v4: cut the 48 bytes/point roughly in half <span class="chip">P2 · measure first</span></h3>
+  <p>
+    v3 spends float64 on x, y, velocity and timestamp per point. Velocity is a render
+    hint (float32 is plenty); timestamps fit in a uint32 delta from the stroke's start;
+    tilt/azimuth fit in int16 fixed-point. That is ~22–24 bytes/point — half the disk,
+    half the decode traffic — while x/y stay float64 for the deep-zoom guarantee.
+    <strong>Gated on measurement:</strong> after 2.2 moves decode off-thread, remeasure; if
+    open latency and DB size are fine, this stays deferred. Any v4 must follow the
+    codec's standing rule — the decoder keeps v1/v2/v3 support forever, old notes are
+    never rewritten in place.
+  </p>
+  <div class="files"><span>lib/canvas/persistence/ink_codec.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>4.2 · Micro-items <span class="chip">P2</span></h3>
+  <ul>
+    <li><code>_TileKey</code> allocates per tile per frame in <code>_paintCachedTiles</code> — hoist to an int key (<code>x*const+y</code>) if allocation shows in profile; likely noise, listed to be honest that it was seen and judged.</li>
+    <li><code>ElementsTileCache._evictIfNeeded</code> is O(n) scan per eviction — fine at 96 entries, would matter if <code>maxTiles</code> grows; note in code, don't fix.</li>
+    <li><code>endLasso</code> narrow phase runs full geometry per candidate; fine post-thinning, revisit only if a 10k-element lasso lags on device.</li>
+    <li><code>_track</code>-wrapped saves fire one SQLite transaction per committed stroke — correct (durability per stroke is the point); do not batch.</li>
+  </ul>
+</div>
+
+<hr>
+
+<h2><span class="num">5</span>Measurement protocol</h2>
+<div class="sub">Before/after on the actual device, or the numbers are fiction.</div>
+<ol>
+  <li><strong>Baseline first:</strong> <code>flutter run --profile</code> on the Tab S9 FE. DevTools timeline over three scripted scenarios: (a) 30&nbsp;s continuous pan over a dense canvas, (b) open a canvas with 2,000+ strokes and an image, (c) 60&nbsp;s of S Pen hover without touching. Record: average/worst frame build+raster ms, UI-isolate jank count, dirty-layer area during hover.</li>
+  <li><strong>Per-fix verification:</strong> re-run only the affected scenario after each numbered item. A fix that does not move its scenario's number gets reverted, not kept as lore.</li>
+  <li><strong>Targets:</strong> pan p95 frame &lt; 8&nbsp;ms total (headroom under 11.1); open-to-interactive on the 2,000-stroke canvas &lt; 600&nbsp;ms after 2.1–2.3; hover dirty area ≤ the ring's own boundary after 1.4.</li>
+  <li><strong>Memory:</strong> DevTools memory view through a simulated 1-hour session (scripted stroke commits); heap must plateau after 3.1, not climb.</li>
+</ol>
+
+<h2><span class="num">6</span>Sequence &amp; safety</h2>
+<ol>
+  <li><strong>Baseline profile</strong> (nothing changes until numbers exist).</li>
+  <li><strong>1.1, 1.2, 1.4</strong> — the per-frame burners. Independent of each other.</li>
+  <li><strong>2.1 → 2.2 → 2.3</strong> — open latency, in that order (each changes the baseline of the next).</li>
+  <li><strong>3.1, 3.2, 3.3</strong> — memory. 3.3's test lands before 3.2 touches eviction.</li>
+  <li><strong>1.3, 4.x</strong> — only if the re-profile still shows them.</li>
+  <li>Full suite + <code>flutter analyze</code> + arm64-v8a <code>zenno.apk</code> at the end.</li>
+</ol>
+
+<div class="card good">
+  <h3>Data safety</h3>
+  <p>
+    Nothing in P0/P1 touches what is written to disk — every item is caching,
+    scheduling, or decode <em>location</em>. The two items adjacent to persistence are
+    explicitly guarded: the undo cap only discards history already committed to SQLite,
+    and codec v4 (if it ever happens) is additive — v3 notes decode forever, unchanged.
+    The memory-pressure handler drops only reconstructible caches.
+  </p>
+</div>
+
+<div class="foot">
+  Zenno · performance &amp; efficiency audit · plan written 2026-07-28 ·
+  findings traced to source, ordering to be confirmed by on-device profile
+</div>
+
+</div>
+</body>
+</html>

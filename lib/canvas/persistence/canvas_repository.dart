@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ui' show Rect, Size, Offset;
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:zenno/canvas/model/canvas_bookmark.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/canvas_layer.dart';
@@ -174,11 +175,15 @@ class CanvasRepository {
       }
     }
 
+    final Map<String, List<StrokePoint>> inkPointsById =
+        await _decodedInkPoints(inkById);
+
     final List<CanvasElement> elements = <CanvasElement>[];
     for (final db.CanvasElement row in rows) {
       final CanvasElement? element = _reconstruct(
         row,
         inkDetail: inkById[row.id],
+        inkPoints: inkPointsById[row.id],
         imageDetail: imageById[row.id],
         pdfDetail: pdfById[row.id],
         linkDetail: linkById[row.id],
@@ -192,6 +197,45 @@ class CanvasRepository {
     return elements;
   }
 
+  /// Decodes every ink BLOB for a canvas, off the UI isolate when it matters.
+  ///
+  /// A dense study canvas is thousands of strokes at 48 bytes/point — decoding
+  /// that in one synchronous burst on the UI isolate stalled the open
+  /// animation. Above the threshold the BLOBs ship to a worker isolate
+  /// (`Uint8List`s transfer cheaply, and `compute` returns via `Isolate.exit`,
+  /// so nothing is copied back). Below it the isolate spawn would cost more
+  /// than the decode.
+  Future<Map<String, List<StrokePoint>>> _decodedInkPoints(
+    Map<String, db.InkStroke> inkById,
+  ) async {
+    if (inkById.isEmpty) {
+      return const <String, List<StrokePoint>>{};
+    }
+    final Map<String, Uint8List> blobs = <String, Uint8List>{};
+    var totalBytes = 0;
+    for (final MapEntry<String, db.InkStroke> entry in inkById.entries) {
+      blobs[entry.key] = entry.value.points;
+      totalBytes += entry.value.points.length;
+    }
+    if (totalBytes < _inkDecodeIsolateThresholdBytes) {
+      return _decodeInkBlobs(blobs);
+    }
+    return compute(_decodeInkBlobs, blobs, debugLabel: 'zenno-ink-decode');
+  }
+
+  /// Total BLOB bytes below which spawning a decode isolate is not worth it.
+  static const int _inkDecodeIsolateThresholdBytes = 256 * 1024;
+
+  /// Top of the isolate: pure bytes in, points out. Must stay static.
+  static Map<String, List<StrokePoint>> _decodeInkBlobs(
+    Map<String, Uint8List> blobs,
+  ) {
+    return <String, List<StrokePoint>>{
+      for (final MapEntry<String, Uint8List> entry in blobs.entries)
+        entry.key: InkCodec.decodePoints(entry.value),
+    };
+  }
+
   /// Rebuilds the engine [CanvasElement] for a `canvas_elements` [row].
   ///
   /// Returns `null` when the row's kind has no engine representation, or when
@@ -199,6 +243,7 @@ class CanvasRepository {
   CanvasElement? _reconstruct(
     db.CanvasElement row, {
     db.InkStroke? inkDetail,
+    List<StrokePoint>? inkPoints,
     db.Image? imageDetail,
     db.PdfDocument? pdfDetail,
     db.CanvasLink? linkDetail,
@@ -223,7 +268,10 @@ class CanvasRepository {
           worldBounds: bounds,
           stroke: Stroke(
             id: row.id,
-            points: InkCodec.decodePoints(detail.points),
+            // Bulk loads pre-decode every BLOB in one (possibly off-isolate)
+            // pass — see [_decodedInkPoints]; the inline decode is the
+            // single-row fallback.
+            points: inkPoints ?? InkCodec.decodePoints(detail.points),
             color: detail.color,
             width: detail.strokeWidth,
             tool: _strokeToolToModel(detail.tool),

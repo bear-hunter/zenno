@@ -292,6 +292,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final _CanvasSignal _liveStrokeSignal = _CanvasSignal();
   final _CanvasSignal _selectionSignal = _CanvasSignal();
   final _CanvasSignal _overlaySignal = _CanvasSignal();
+  final _CanvasSignal _hoverSignal = _CanvasSignal();
   final _CanvasSignal _toolStateSignal = _CanvasSignal();
   final _CanvasSignal _canvasStyleSignal = _CanvasSignal();
   final _CanvasSignal _bookmarksSignal = _CanvasSignal();
@@ -311,8 +312,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Selection membership and transform-preview changes only.
   Listenable get selectionListenable => _selectionSignal;
 
-  /// Hover, eraser, lasso, and shape-preview changes only.
+  /// Eraser, lasso, and shape-preview changes only.
   Listenable get overlayListenable => _overlaySignal;
+
+  /// Hover-point moves only.
+  ///
+  /// Deliberately its own channel: an S Pen hovers continuously within ~1 cm
+  /// of the glass, so this fires at report rate whenever the pen is merely
+  /// *near* the tablet. Routing it through the overlay channel repainted the
+  /// full-screen overlay layer per report to move one small ring; the hover
+  /// ring widget listens here alone and moves as a compositor offset.
+  Listenable get hoverListenable => _hoverSignal;
 
   /// Toolbar, tool, undo, save, import, and layer-control changes only.
   Listenable get toolStateListenable => _toolStateSignal;
@@ -384,6 +394,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   static const int _maxElementDamageHistory = 64;
 
   /// Applied commands available to be reversed by [undo], oldest at the front.
+  /// Deepest undo reach kept in memory; see [_runCommand] for the rationale.
+  static const int _undoHistoryLimit = 200;
+
   final List<CanvasCommand> _undoStack = <CanvasCommand>[];
 
   /// Reverted commands available to be re-applied by [redo].
@@ -1276,13 +1289,27 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       throw CanvasNotFoundException(canvasId);
     }
 
-    final List<CanvasLayer> loadedLayers = await repo.loadLayers(canvasId);
-    final List<CanvasElement> loaded = await repo.loadElements(canvasId);
-    final List<Bookmark> loadedBookmarks = await repo.loadBookmarks(canvasId);
-    final ViewportState? savedViewport = await repo.loadViewport(canvasId);
-    final bool savedRotationLocked = await repo.loadRotationLocked(canvasId);
-    final CanvasPaperStyle savedPaper = await repo.loadPaperStyle(canvasId);
-    final CanvasToolSettings savedTool = await repo.loadToolSettings(canvasId);
+    // Independent reads, fetched concurrently: elements is the long pole and
+    // the six small reads ride along instead of queuing behind each other —
+    // awaiting them one by one cost six extra round-trips per open.
+    final Future<List<CanvasLayer>> layersFuture = repo.loadLayers(canvasId);
+    final Future<List<CanvasElement>> elementsFuture = repo.loadElements(
+      canvasId,
+    );
+    final Future<List<Bookmark>> bookmarksFuture = repo.loadBookmarks(canvasId);
+    final Future<ViewportState?> viewportFuture = repo.loadViewport(canvasId);
+    final Future<bool> rotationLockedFuture = repo.loadRotationLocked(canvasId);
+    final Future<CanvasPaperStyle> paperFuture = repo.loadPaperStyle(canvasId);
+    final Future<CanvasToolSettings> toolFuture = repo.loadToolSettings(
+      canvasId,
+    );
+    final List<CanvasLayer> loadedLayers = await layersFuture;
+    final List<CanvasElement> loaded = await elementsFuture;
+    final List<Bookmark> loadedBookmarks = await bookmarksFuture;
+    final ViewportState? savedViewport = await viewportFuture;
+    final bool savedRotationLocked = await rotationLockedFuture;
+    final CanvasPaperStyle savedPaper = await paperFuture;
+    final CanvasToolSettings savedTool = await toolFuture;
     if (_disposed) {
       return;
     }
@@ -1321,7 +1348,66 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     activeTool = _canvasToolForPreset(activeToolWheelPreset.kind);
     _isLoaded = true;
     _notifyAllChannels();
+    _scheduleOutlinePrewarm();
   }
+
+  /// Ink elements still waiting for their outline to be pre-built.
+  List<InkElement> _outlinePrewarmQueue = <InkElement>[];
+  bool _outlinePrewarmPumpScheduled = false;
+
+  /// Pre-builds stroke outlines in idle slices after a canvas loads.
+  ///
+  /// [InkElement.outlinePath] is built lazily, which meant the first frame
+  /// after hydration ran `perfect_freehand` over every visible stroke at once
+  /// and then recorded tile pictures on top — one jank spike exactly when the
+  /// user is looking. Warming a few strokes per idle slice turns the spike
+  /// into a ramp; anything not yet warmed still builds lazily on first paint,
+  /// so this can only ever make a frame cheaper, never wrong.
+  void _scheduleOutlinePrewarm() {
+    if (_disposed) {
+      return;
+    }
+    final Rect visible = _visibleWorldRect;
+    final List<InkElement> queue = <InkElement>[
+      for (final CanvasElement element in _elements)
+        if (element is InkElement) element,
+    ];
+    // Visible strokes first — they are the ones the first paint needs. The
+    // queue is consumed from the back, so sort visible *last*.
+    queue.sort((InkElement a, InkElement b) {
+      final int aVisible = visible.overlaps(a.worldBounds) ? 1 : 0;
+      final int bVisible = visible.overlaps(b.worldBounds) ? 1 : 0;
+      return aVisible - bVisible;
+    });
+    _outlinePrewarmQueue = queue;
+    _pumpOutlinePrewarm();
+  }
+
+  void _pumpOutlinePrewarm() {
+    if (_outlinePrewarmPumpScheduled || _outlinePrewarmQueue.isEmpty) {
+      return;
+    }
+    _outlinePrewarmPumpScheduled = true;
+    SchedulerBinding.instance.scheduleTask(() {
+      _outlinePrewarmPumpScheduled = false;
+      if (_disposed) {
+        _outlinePrewarmQueue = <InkElement>[];
+        return;
+      }
+      final Stopwatch watch = Stopwatch()..start();
+      while (_outlinePrewarmQueue.isNotEmpty &&
+          watch.elapsedMicroseconds < _outlinePrewarmSliceMicros) {
+        final InkElement element = _outlinePrewarmQueue.removeLast();
+        // Touching the getter builds and caches the path; an element that was
+        // erased in the meantime just warms a cache nothing reads — harmless.
+        element.outlinePath;
+      }
+      _pumpOutlinePrewarm();
+    }, Priority.idle);
+  }
+
+  /// Time budget per pre-warm slice — well under a 90 Hz frame's headroom.
+  static const int _outlinePrewarmSliceMicros = 4000;
 
   /// Flushes any pending debounced writes and awaits every in-flight write.
   ///
@@ -1542,6 +1628,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void _runCommand(CanvasCommand command) {
     _applyCommandMutation(command.apply);
     _undoStack.add(command);
+    // Bounded history: every command holds full element snapshots (including
+    // complete stroke point lists), so an unbounded stack accumulated every
+    // stroke of the session twice. Dropping from the bottom loses nothing —
+    // everything past the cap is already committed to SQLite; it only limits
+    // how far back undo reaches.
+    if (_undoStack.length > _undoHistoryLimit) {
+      _undoStack.removeRange(0, _undoStack.length - _undoHistoryLimit);
+    }
     _redoStack.clear();
     _reconcileSelectionFor(command);
     _scheduleVisibleRasters();
@@ -2548,7 +2642,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     hoverPointWorld = world;
-    _notifyOverlay();
+    _hoverSignal.emit();
   }
 
   // ---------------------------------------------------------------------------
@@ -4846,16 +4940,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     final Rect visibleWorldRect = _visibleWorldRect;
-    final Set<String> visibleIds = _spatialIndex
-        .query(visibleWorldRect)
-        .toSet();
     final Offset viewportCenter = visibleWorldRect.center;
     final List<_RasterJob> jobs = <_RasterJob>[];
-    for (final CanvasElement element in _elements) {
-      if (!_isElementVisible(element)) {
-        continue;
-      }
-      if (!visibleIds.contains(element.id)) {
+    // Iterate the spatial-query hits, not the whole store: this runs on every
+    // camera settle, and walking all N elements to find the visible handful
+    // made the sweep cost scale with the canvas instead of the screen.
+    for (final String id in _spatialIndex.query(visibleWorldRect)) {
+      final CanvasElement? element = _elementsById[id];
+      if (element == null || !_isElementVisible(element)) {
         continue;
       }
       final double priority = _distanceSquared(
@@ -5226,8 +5318,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Command history stores raster-free snapshots, so evicted `ui.Image`s are
   /// disposed immediately and the element in the store is replaced with its
   /// durable metadata-only form.
-  void _enforceRasterBudget() {
-    if (_rasterBytesInUse <= _rasterBudgetBytes) {
+  void _enforceRasterBudget() => _evictOffscreenRastersDownTo(
+    _rasterBudgetBytes,
+  );
+
+  void _evictOffscreenRastersDownTo(int budgetBytes) {
+    if (_rasterBytesInUse <= budgetBytes) {
       return;
     }
     final Rect visibleWorldRect = _visibleWorldRect;
@@ -5249,7 +5345,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
               .compareTo(_rasterLastAccess[b.id] ?? 0),
         );
     for (final CanvasElement element in candidates) {
-      if (_rasterBytesInUse <= _rasterBudgetBytes) {
+      if (_rasterBytesInUse <= budgetBytes) {
         break;
       }
       final int? index = _paintOrderById[element.id];
@@ -5280,6 +5376,29 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   @visibleForTesting
   void debugEnforceRasterBudget() => _enforceRasterBudget();
+
+  /// Sheds reconstructible memory in response to a system pressure signal.
+  ///
+  /// Called when Android reports memory pressure — the step before it starts
+  /// killing processes. Everything released here rebuilds lazily from intact
+  /// state: off-screen rasters re-decode from their source files when they
+  /// scroll back into view, and the trimmed undo history is already committed
+  /// to SQLite. On-screen rasters are kept — their pixels are needed this
+  /// frame, and dropping them would trade a kill risk for guaranteed jank.
+  void onMemoryPressure() {
+    if (_disposed) {
+      return;
+    }
+    _evictOffscreenRastersDownTo(0);
+    const int keep = _undoHistoryLimit ~/ 4;
+    if (_undoStack.length > keep) {
+      _undoStack.removeRange(0, _undoStack.length - keep);
+    }
+    if (_redoStack.length > keep) {
+      _redoStack.removeRange(0, _redoStack.length - keep);
+    }
+    _notifyElements(selectionMayChange: false, toolMayChange: false);
+  }
 
   /// Disposes every decoded raster currently held by an element.
   ///
@@ -5328,6 +5447,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _liveStrokeSignal.dispose();
     _selectionSignal.dispose();
     _overlaySignal.dispose();
+    _hoverSignal.dispose();
     _toolStateSignal.dispose();
     _canvasStyleSignal.dispose();
     _bookmarksSignal.dispose();
