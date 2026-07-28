@@ -704,6 +704,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// lasso is being drawn. The overlay strokes this while dragging.
   List<Offset>? _lassoPath;
 
+  /// Cached unmodifiable view of [_lassoPath], invalidated on mutation.
+  List<Offset>? _lassoPathView;
+
   /// Ids of the currently selected elements (built by lasso select).
   ///
   /// A [Set] for O(1) membership checks from the painters; the controller
@@ -787,8 +790,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// World-space vertices of the in-progress lasso loop, or `null`. Read-only
   /// view for the overlay painter.
-  List<Offset>? get lassoPath =>
-      _lassoPath == null ? null : List<Offset>.unmodifiable(_lassoPath!);
+  ///
+  /// Cached, because this is read on every overlay repaint and the overlay
+  /// repaints on every appended vertex — allocating a fresh copy each time made
+  /// tracing a loop cost time quadratic in its length.
+  List<Offset>? get lassoPath {
+    final List<Offset>? path = _lassoPath;
+    if (path == null) {
+      return null;
+    }
+    return _lassoPathView ??= List<Offset>.unmodifiable(path);
+  }
 
   /// Ids of the currently selected elements, as an unmodifiable view.
   Set<String> get selectedIds =>
@@ -1687,7 +1699,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (!force) {
       final double minDistance = _strokeSampleMinDistanceWorld(stroke.width);
       final bool movedEnough = (world - last.offset).distance >= minDistance;
-      final bool pressureChanged = (pressure - last.pressure).abs() >= 0.035;
+      // Above the digitiser's own noise floor. At 0.035 the S Pen's jitter
+      // alone admitted samples that added no shape, only width ripple.
+      final bool pressureChanged = (pressure - last.pressure).abs() >= 0.09;
       if (!movedEnough && !pressureChanged) {
         return;
       }
@@ -3185,6 +3199,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void beginLasso(Offset world) {
     _discardLasso(restoreSelection: true);
     _lassoPath = <Offset>[world];
+    _lassoPathView = null;
     if (selectionMode == SelectionMode.replace) {
       _selectionBeforeReplaceLasso = Set<String>.of(_selectedIds);
     }
@@ -3193,15 +3208,47 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Extends the in-progress lasso loop to the [world] point.
   ///
-  /// A no-op when no lasso loop is active.
+  /// A no-op when no lasso loop is active, or when [world] is too close to the
+  /// last retained vertex to change the loop's shape. The S Pen reports at up
+  /// to 240 Hz and Flutter delivers every historical sample as its own move, so
+  /// keeping them all made a few seconds of tracing cost thousands of vertices
+  /// — each one repainting the overlay and re-projecting the whole loop. The
+  /// pen and the eraser already thin their input the same way.
   void appendLasso(Offset world) {
     final List<Offset>? path = _lassoPath;
     if (path == null) {
       return;
     }
-    path.add(world);
+    if ((world - path.last).distance < _lassoSampleMinDistanceWorld()) {
+      return;
+    }
+    if (path.length >= _lassoMaxVertices) {
+      // A backstop, not a normal path: replacing the newest vertex keeps the
+      // loop tracking the nib without letting it grow without bound.
+      path[path.length - 1] = world;
+    } else {
+      path.add(world);
+    }
+    _lassoPathView = null;
     _notifyOverlay();
   }
+
+  /// Minimum world-space spacing between retained lasso vertices.
+  ///
+  /// A fixed screen-space tolerance converted at the current zoom, so the loop
+  /// is sampled as finely as it is drawn however far in or out the canvas is.
+  double _lassoSampleMinDistanceWorld() {
+    final double scale = viewport.scale;
+    return scale.isFinite && scale > 0
+        ? _lassoSampleMinDistanceScreen / scale
+        : _lassoSampleMinDistanceScreen;
+  }
+
+  /// Screen-space spacing below which a lasso vertex is dropped.
+  static const double _lassoSampleMinDistanceScreen = 1.5;
+
+  /// Hard ceiling on retained lasso vertices.
+  static const int _lassoMaxVertices = 4000;
 
   /// Closes the lasso loop and selects elements inside or touched by it.
   ///
@@ -3215,6 +3262,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void endLasso() {
     final List<Offset>? path = _lassoPath;
     _lassoPath = null;
+    _lassoPathView = null;
     if (path == null || path.length < 3) {
       _restoreSelectionBeforeReplaceLasso();
       _consumeSelectionMode();
@@ -3252,6 +3300,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   void _discardLasso({required bool restoreSelection}) {
     _lassoPath = null;
+    _lassoPathView = null;
     if (restoreSelection) {
       _restoreSelectionBeforeReplaceLasso();
     } else {

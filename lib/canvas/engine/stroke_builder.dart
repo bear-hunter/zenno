@@ -63,16 +63,42 @@ Path buildStrokeOutline(
     return Path();
   }
 
-  if (points.length == 1) {
-    return _dotPath(points.first, size);
+  final StrokeToolStyle style = strokeStyleFor(tool);
+  final double arcLength = _arcLength(points);
+
+  // Below roughly one nib width of travel there is no line to draw, only a
+  // mark. Routing it here — rather than only at exactly one point — is what
+  // makes a light tap always leave a dot: a tap is almost never a single
+  // sample, because the pen-up position is appended and a real nib drifts a
+  // fraction of a unit between contact and lift.
+  if (points.length == 1 || arcLength < size * _dotArcLengthFactor) {
+    return _dotPath(points, size);
   }
 
+  // A taper is interpolated across whatever samples exist, so a sparse stroke
+  // can have no sample between its two ramps and collapse to a hairline even
+  // when the ramps themselves are short enough. Short strokes are exactly the
+  // sparse ones — a comma is three or four samples — so they are subdivided
+  // first. Dense strokes already clear the threshold and are left alone.
+  final List<StrokePoint> centerline = _densified(points, arcLength);
+
   final inputPoints = <PointVector>[
-    for (final point in points) PointVector(point.x, point.y, point.pressure),
+    for (final point in centerline)
+      PointVector(
+        point.x,
+        point.y,
+        _flooredPressure(point.pressure, style.thinning),
+      ),
   ];
 
-  final StrokeToolStyle style = strokeStyleFor(tool);
-  final double taper = style.taperLengthFactor * size;
+  // `customTaper` is an absolute arc length, but a stroke's length is not
+  // fixed: an unclamped taper longer than half the stroke lets the two ramps
+  // meet and cancel, collapsing the whole outline to a hairline. Capping each
+  // ramp guarantees a full-width middle survives at any length, so a comma is
+  // as thick as a sweep.
+  final double taperBudget = arcLength * _maxTaperShareOfStroke;
+  final double startTaper = math.min(style.startTaperFactor * size, taperBudget);
+  final double endTaper = math.min(style.endTaperFactor * size, taperBudget);
 
   final outline = getStroke(
     inputPoints,
@@ -80,21 +106,22 @@ Path buildStrokeOutline(
       size: size,
       thinning: style.thinning,
       smoothing: style.smoothing,
-      // PenInputProcessor already runs a time-constant filter over the
-      // samples; streamlining here would low-pass them a second time, with the
-      // two lags compounding.
-      streamline: 0,
+      // Shape smoothing is spatial and lives here — see [streamlineFor]. It is
+      // deliberately a constant rather than a live setting: the outline is
+      // rebuilt from stored points on every paint, so sourcing it from the
+      // current pen profile would retroactively reshape ink already written.
+      streamline: streamlineFor(_centerlineSmoothing),
       simulatePressure: simulatePressure,
       isComplete: isComplete,
       start: StrokeEndOptions.start(
         cap: style.cap,
-        taperEnabled: style.tapers,
-        customTaper: style.tapers ? taper : null,
+        taperEnabled: style.tapersStart,
+        customTaper: style.tapersStart ? startTaper : null,
       ),
       end: StrokeEndOptions.end(
         cap: style.cap,
-        taperEnabled: style.tapers,
-        customTaper: style.tapers ? taper : null,
+        taperEnabled: style.tapersEnd,
+        customTaper: style.tapersEnd ? endTaper : null,
       ),
     ),
   );
@@ -106,11 +133,85 @@ Path buildStrokeOutline(
   // A degenerate outline (everything collapsed to one location) still draws as
   // a dot rather than an invisible zero-area path.
   if (outline.length < 3) {
-    return _dotPath(points.first, size);
+    return _dotPath(points, size);
   }
 
   return _outlineToPath(outline);
 }
+
+/// [points], subdivided until there are enough of them to carry a taper.
+///
+/// Returns [points] itself once the count is sufficient, so the common case of
+/// an ordinary stroke costs one comparison and no allocation. Interpolation is
+/// linear in position and pressure: this adds resolution, never new shape.
+List<StrokePoint> _densified(List<StrokePoint> points, double arcLength) {
+  if (points.length >= _minCenterlinePoints || arcLength <= 0) {
+    return points;
+  }
+  final int subdivisions =
+      (_minCenterlinePoints / (points.length - 1)).ceil().clamp(1, 64);
+  if (subdivisions <= 1) {
+    return points;
+  }
+
+  final List<StrokePoint> dense = <StrokePoint>[points.first];
+  for (var i = 1; i < points.length; i++) {
+    final StrokePoint from = points[i - 1];
+    final StrokePoint to = points[i];
+    for (var step = 1; step <= subdivisions; step++) {
+      final double t = step / subdivisions;
+      dense.add(
+        StrokePoint(
+          from.x + (to.x - from.x) * t,
+          from.y + (to.y - from.y) * t,
+          from.pressure + (to.pressure - from.pressure) * t,
+          tiltX: to.tiltX,
+          tiltY: to.tiltY,
+          azimuth: to.azimuth,
+          timestampMicros: to.timestampMicros,
+          velocity: to.velocity,
+        ),
+      );
+    }
+  }
+  return dense;
+}
+
+/// Total travel along the sampled centreline.
+double _arcLength(List<StrokePoint> points) {
+  var total = 0.0;
+  for (var i = 1; i < points.length; i++) {
+    total += (points[i].offset - points[i - 1].offset).distance;
+  }
+  return total;
+}
+
+/// [pressure] raised so a pressure-sensitive tool cannot thin away to nothing.
+///
+/// `thinning` scales width by pressure directly, so a raw 0.02 becomes an
+/// invisible line. Remapping the range onto `[minPressureFraction, 1]` keeps
+/// the tool expressive while guaranteeing the lightest touch still marks.
+double _flooredPressure(double pressure, double thinning) {
+  if (thinning <= 0) {
+    return pressure;
+  }
+  final double p = pressure.clamp(0.0, 1.0);
+  return minPressureFraction + (1 - minPressureFraction) * p;
+}
+
+/// Travel below which a stroke is drawn as a mark rather than a line.
+///
+/// A stroke shorter than its own nib is not a line by any reading.
+const double _dotArcLengthFactor = 1.0;
+
+/// Samples a centreline needs before a taper interpolates cleanly across it.
+const int _minCenterlinePoints = 24;
+
+/// Largest share of a stroke's length either end taper may consume.
+const double _maxTaperShareOfStroke = 0.4;
+
+/// Centreline smoothing strength, fixed so stored ink never reshapes.
+const double _centerlineSmoothing = 0.35;
 
 /// Converts a closed outline polygon into a smooth path.
 ///
@@ -185,14 +286,26 @@ bool isValidFillBoundary(List<StrokePoint> points) {
   return false;
 }
 
-/// A small filled circle marking an isolated single-point stroke.
+/// A small filled circle marking a stroke too short to draw as a line.
 ///
-/// The dot radius tracks the stroke [size] and the point's [StrokePoint.pressure]
-/// so a light tap reads thinner than a firm one, while never collapsing to a
-/// zero-radius (invisible) path.
-Path _dotPath(StrokePoint point, double size) {
-  final radius = (size / 2) * (0.5 + 0.5 * point.pressure.clamp(0.0, 1.0));
-  return Path()..addOval(
-    Rect.fromCircle(center: point.offset, radius: radius <= 0 ? 0.5 : radius),
-  );
+/// The radius tracks the stroke [size] and the firmest pressure in [points], so
+/// a light tap reads thinner than a firm one while still being unmistakably a
+/// dot. The floor is deliberately high: the point of this path is that every
+/// touch marks, and a tap that leaves a speck reads as the pen having failed.
+///
+/// Peak rather than first pressure, because a tap ramps up and back down within
+/// its handful of samples — the first one is always the lightest.
+Path _dotPath(List<StrokePoint> points, double size) {
+  var pressure = 0.0;
+  Offset centre = points.first.offset;
+  for (final StrokePoint point in points) {
+    final double p = point.pressure.clamp(0.0, 1.0);
+    if (p > pressure) {
+      pressure = p;
+      centre = point.offset;
+    }
+  }
+  final double radius = (size / 2) * (0.62 + 0.38 * pressure);
+  return Path()
+    ..addOval(Rect.fromCircle(center: centre, radius: radius <= 0 ? 0.5 : radius));
 }

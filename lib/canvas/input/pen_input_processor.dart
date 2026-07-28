@@ -30,6 +30,7 @@ class PenInputProcessor {
   final PenProfile profile;
   Offset? _lastPoint;
   int? _lastTimestampMicros;
+  double? _lastPressure;
 
   PenSample begin(
     Offset point,
@@ -41,9 +42,11 @@ class PenInputProcessor {
   }) {
     _lastPoint = point;
     _lastTimestampMicros = timestampMicros;
+    final double pressure = profile.mapPressure(rawPressure);
+    _lastPressure = pressure;
     return PenSample(
       point: point,
-      pressure: profile.mapPressure(rawPressure),
+      pressure: pressure,
       tiltX: tiltX,
       tiltY: tiltY,
       azimuth: azimuth,
@@ -85,11 +88,17 @@ class PenInputProcessor {
       previousMicros,
       timestampMicros,
     );
+    final double pressure = _smoothPressure(
+      profile.mapPressure(rawPressure),
+      previousMicros: previousMicros,
+      currentMicros: timestampMicros,
+    );
     _lastPoint = smoothed;
     _lastTimestampMicros = timestampMicros;
+    _lastPressure = pressure;
     return PenSample(
       point: smoothed,
-      pressure: profile.mapPressure(rawPressure),
+      pressure: pressure,
       tiltX: tiltX,
       tiltY: tiltY,
       azimuth: azimuth,
@@ -101,23 +110,52 @@ class PenInputProcessor {
   void reset() {
     _lastPoint = null;
     _lastTimestampMicros = null;
+    _lastPressure = null;
+  }
+
+  /// Damps digitiser noise out of [pressure] without touching the geometry.
+  ///
+  /// The S Pen's reported pressure jitters by a few hundredths sample to
+  /// sample, and `thinning` turns that straight into a rippling stroke edge.
+  /// Pressure is a scalar with no shape, so filtering it costs nothing visible:
+  /// a slightly late width is imperceptible where a slightly late *position*
+  /// would read as lag.
+  double _smoothPressure(
+    double pressure, {
+    required int? previousMicros,
+    required int currentMicros,
+  }) {
+    final double? previous = _lastPressure;
+    if (previous == null) {
+      return pressure;
+    }
+    final double dt = previousMicros == null
+        ? _nominalFrameSeconds
+        : ((currentMicros - previousMicros) / 1e6).clamp(1e-4, 0.05);
+    final double alpha = (1 - math.exp(-dt / _pressureTauSeconds)).clamp(
+      0.0,
+      1.0,
+    );
+    return previous + (pressure - previous) * alpha;
   }
 
   /// How far this sample moves the filtered point toward the raw one.
   ///
-  /// An exponential filter expressed as a time constant rather than a
-  /// per-sample weight. Two properties matter:
+  /// This filter is now deliberately **small**, and it is not what gives a
+  /// stroke its shape. Shape smoothing is `perfect_freehand`'s `streamline`,
+  /// applied over the centreline in [buildStrokeOutline] — see [streamlineFor].
   ///
-  /// * **Time-normalised.** Flutter delivers every historical MotionEvent as
-  ///   its own move, so an S Pen writing fast produces several samples per
-  ///   frame. Applying a fixed weight per *sample* made effective lag depend on
-  ///   report rate and stroke speed instead of on the profile.
-  /// * **Relaxes with speed.** Jitter lives in slow, deliberate strokes;
-  ///   fast strokes need to track the nib. The time constant therefore shrinks
-  ///   as speed rises, which is the opposite of damping harder when fast.
+  /// The division of labour matters. A *temporal* filter's output depends on
+  /// how fast the stroke was drawn and on the digitiser's report rate, so the
+  /// same letter written quickly and slowly comes out as two different shapes.
+  /// That instability is what made handwriting look wrong when this filter was
+  /// carrying all the smoothing. A *spatial* filter has no such dependence.
   ///
-  /// `perfect_freehand`'s own `streamline` is left at zero: filtering happens
-  /// here, once, rather than being applied twice with compounding lag.
+  /// What survives here is tremor rejection, which spatial smoothing cannot do:
+  /// a hand shaking in place produces real displacement that `streamline` would
+  /// faithfully reproduce. So the time constant is short and shrinks quickly
+  /// with speed — at writing speed this is very nearly a pass-through, and only
+  /// a nearly-stationary nib is damped at all.
   double _followFactor({
     required double distance,
     required int? previousMicros,
@@ -141,10 +179,18 @@ class PenInputProcessor {
   }
 
   /// Time constant at full stabilizer and zero speed.
-  static const double _maxTauSeconds = 0.045;
+  ///
+  /// Small on purpose: this filter only rejects tremor. Anything larger starts
+  /// bending the geometry, which is [streamlineFor]'s job.
+  static const double _maxTauSeconds = 0.012;
 
   /// Speed (world units/second) at which the time constant halves.
-  static const double _speedRelaxation = 900.0;
+  ///
+  /// Well below handwriting speed, so ordinary writing is barely filtered here.
+  static const double _speedRelaxation = 250.0;
+
+  /// Time constant of the pressure filter.
+  static const double _pressureTauSeconds = 0.025;
 
   /// Assumed interval for the first move, before two timestamps exist.
   static const double _nominalFrameSeconds = 1 / 120;

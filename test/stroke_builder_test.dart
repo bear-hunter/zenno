@@ -38,13 +38,13 @@ void main() {
       isComplete: true,
       start: StrokeEndOptions.start(
         cap: style.cap,
-        taperEnabled: style.tapers,
-        customTaper: style.taperLengthFactor * 8,
+        taperEnabled: style.tapersStart,
+        customTaper: style.startTaperFactor * 8,
       ),
       end: StrokeEndOptions.end(
         cap: style.cap,
-        taperEnabled: style.tapers,
-        customTaper: style.taperLengthFactor * 8,
+        taperEnabled: style.tapersEnd,
+        customTaper: style.endTaperFactor * 8,
       ),
     );
     final List<Offset> outline = getStroke(<PointVector>[
@@ -236,9 +236,91 @@ void main() {
     });
 
     test('only the tools that should taper do', () {
-      expect(strokeStyleFor(StrokeToolKind.pen).tapers, isTrue);
-      expect(strokeStyleFor(StrokeToolKind.highlighter).tapers, isFalse);
-      expect(strokeStyleFor(StrokeToolKind.marker).tapers, isFalse);
+      expect(strokeStyleFor(StrokeToolKind.pen).tapersEnd, isTrue);
+      expect(strokeStyleFor(StrokeToolKind.highlighter).tapersEnd, isFalse);
+      expect(strokeStyleFor(StrokeToolKind.marker).tapersEnd, isFalse);
+    });
+
+    test('a pen sets down blunter than it lifts', () {
+      // A real nib reaches full width almost at once and thins out over some
+      // distance as it is lifted. A symmetric taper reads as tentative ink.
+      final StrokeToolStyle pen = strokeStyleFor(StrokeToolKind.pen);
+      expect(pen.startTaperFactor, lessThan(pen.endTaperFactor));
+    });
+
+    test('a short stroke is not tapered away to a hairline', () {
+      // `customTaper` is an absolute arc length. Unclamped, the pen's taper of
+      // 2 x size per end meant any stroke shorter than 4 x size was entirely
+      // ramp: the two ends met and cancelled, and the outline collapsed to
+      // 0.02 units tall. That silently thinned every comma, tick and crossbar
+      // in ordinary handwriting while long sweeps drew at full width.
+      final Path path = buildStrokeOutline(
+        <StrokePoint>[
+          const StrokePoint(0, 0, 0.5),
+          const StrokePoint(1.5, 0, 0.5),
+          const StrokePoint(3, 0, 0.5),
+        ],
+        size: 4,
+        isComplete: true,
+      );
+      expect(path.getBounds().height, greaterThan(1.5));
+    });
+
+    test('width does not depend on how long the stroke is', () {
+      double heightOfLength(double length) {
+        final List<StrokePoint> points = <StrokePoint>[
+          for (int i = 0; i < 24; i++)
+            StrokePoint(length * i / 23, 0, 0.6),
+        ];
+        return buildStrokeOutline(
+          points,
+          size: 4,
+          isComplete: true,
+        ).getBounds().height;
+      }
+
+      final double short = heightOfLength(4);
+      final double medium = heightOfLength(10);
+      final double long = heightOfLength(40);
+
+      // The taper shapes the ends; it must never eat the middle. All three
+      // lengths are the same pressure, so all three must be the same weight.
+      expect(short, closeTo(long, long * 0.25));
+      expect(medium, closeTo(long, long * 0.25));
+    });
+
+    test('a light tap still leaves a visible dot', () {
+      // A tap is almost never one sample: the pen-up position is appended, and
+      // a real nib drifts a fraction of a unit between contact and lift.
+      final Path path = buildStrokeOutline(
+        <StrokePoint>[
+          const StrokePoint(0, 0, 0.05),
+          const StrokePoint(0.2, 0.05, 0.05),
+        ],
+        size: 4,
+        isComplete: true,
+      );
+      final Rect bounds = path.getBounds();
+      expect(bounds.width, greaterThan(1));
+      expect(bounds.height, greaterThan(1));
+      expect(
+        bounds.width,
+        closeTo(bounds.height, 0.6),
+        reason: 'a tap leaves a round mark, not a sliver',
+      );
+    });
+
+    test('a firm tap marks heavier than a light one', () {
+      double dotWidth(double pressure) => buildStrokeOutline(
+        <StrokePoint>[
+          StrokePoint(0, 0, pressure),
+          StrokePoint(0.2, 0, pressure),
+        ],
+        size: 8,
+        isComplete: true,
+      ).getBounds().width;
+
+      expect(dotWidth(1), greaterThan(dotWidth(0.05)));
     });
 
     test('a tapered pen stroke narrows at its ends', () {

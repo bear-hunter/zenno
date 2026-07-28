@@ -87,6 +87,57 @@ void main() {
     expect(dense.dx, closeTo(coarse.dx, 6));
   });
 
+  test('the same path drawn fast and slow produces the same shape', () {
+    // The property that makes handwriting look consistent. A temporal filter
+    // carrying all the smoothing violates it: identical letters written at
+    // different speeds come out as different geometry. Shape smoothing
+    // therefore lives in `streamline`, over the centreline, and what remains
+    // here is small enough not to bend the stroke.
+    Offset replay({required int microsPerSample}) {
+      final processor = PenInputProcessor(const PenProfile());
+      processor.begin(Offset.zero, 0.5, timestampMicros: 0);
+      Offset last = Offset.zero;
+      for (int i = 1; i <= 10; i++) {
+        last = processor
+            .next(
+              Offset(i * 12.0, i * 4.0),
+              0.5,
+              timestampMicros: i * microsPerSample,
+            )
+            .point;
+      }
+      return last;
+    }
+
+    final Offset slow = replay(microsPerSample: 16000);
+    final Offset fast = replay(microsPerSample: 4000);
+
+    expect((slow - fast).distance, lessThan(1));
+  });
+
+  test('pressure noise is damped without damping position', () {
+    final processor = PenInputProcessor(const PenProfile());
+    processor.begin(Offset.zero, 0.5, timestampMicros: 0);
+
+    // The S Pen jitters by a few hundredths sample to sample, and `thinning`
+    // turns that straight into a rippling stroke edge.
+    var peak = 0.0;
+    for (int i = 1; i <= 12; i++) {
+      final double noisy = i.isEven ? 0.54 : 0.46;
+      final sample = processor.next(
+        Offset(i * 8.0, 0),
+        noisy,
+        timestampMicros: i * 8000,
+      );
+      final double deviation = (sample.pressure - 0.5).abs();
+      if (deviation > peak) {
+        peak = deviation;
+      }
+    }
+
+    expect(peak, lessThan(0.04 * 0.34));
+  });
+
   test('samples carry stylus metadata and cached velocity', () {
     final processor = PenInputProcessor(const PenProfile());
 

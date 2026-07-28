@@ -134,4 +134,55 @@ void main() {
     );
     expect(Color(white.backgroundColor).computeLuminance(), greaterThan(0.5));
   });
+
+  group('lasso input thinning', () {
+    test('a dense drag retains only the vertices that shape the loop', () {
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      // 2000 raw moves around a 200-unit loop, the rate an S Pen actually
+      // reports at once Flutter expands its historical samples. Every one of
+      // them used to be retained, repaint the overlay, and be re-projected.
+      controller.beginLasso(Offset.zero);
+      for (int i = 0; i < 2000; i++) {
+        final double t = i / 2000;
+        controller.appendLasso(Offset(200 * t, 40 * (t - t * t)));
+      }
+
+      expect(controller.lassoPath!.length, lessThan(400));
+      expect(
+        controller.lassoPath!.length,
+        greaterThan(60),
+        reason: 'thinning must not flatten the loop into a few segments',
+      );
+    });
+
+    test('reading the lasso path twice does not copy it twice', () {
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      controller.beginLasso(Offset.zero);
+      controller.appendLasso(const Offset(50, 0));
+      final List<Offset>? first = controller.lassoPath;
+
+      // The overlay reads this on every repaint, and appending repaints. A
+      // fresh copy per read made tracing a loop quadratic in its length.
+      expect(identical(controller.lassoPath, first), isTrue);
+
+      controller.appendLasso(const Offset(100, 0));
+      expect(identical(controller.lassoPath, first), isFalse);
+    });
+
+    test('the retained loop is bounded however long the drag runs', () {
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      controller.beginLasso(Offset.zero);
+      for (int i = 0; i < 20000; i++) {
+        controller.appendLasso(Offset(i * 3.0, (i % 2) * 3.0));
+      }
+
+      expect(controller.lassoPath!.length, lessThanOrEqualTo(4000));
+    });
+  });
 }
