@@ -135,6 +135,72 @@ abstract final class CanvasGeometry {
     return inside;
   }
 
+  /// Simplifies [points] with the Ramer-Douglas-Peucker algorithm.
+  ///
+  /// The first and last points are always retained. An explicit stack avoids
+  /// recursive calls for long freehand paths such as a committed lasso loop.
+  static List<Offset> simplifyPolyline(List<Offset> points, double tolerance) {
+    if (points.length <= 2) {
+      return List<Offset>.of(points);
+    }
+
+    final List<bool> keep = List<bool>.filled(points.length, false);
+    keep[0] = true;
+    keep[points.length - 1] = true;
+    final List<(int, int)> pending = <(int, int)>[(0, points.length - 1)];
+
+    while (pending.isNotEmpty) {
+      final (int start, int end) = pending.removeLast();
+      var furthestIndex = -1;
+      var furthestDistance = tolerance;
+      for (var i = start + 1; i < end; i++) {
+        final double distance = distanceToSegment(
+          points[i],
+          points[start],
+          points[end],
+        );
+        if (distance > furthestDistance) {
+          furthestDistance = distance;
+          furthestIndex = i;
+        }
+      }
+      if (furthestIndex == -1) {
+        continue;
+      }
+      keep[furthestIndex] = true;
+      pending
+        ..add((start, furthestIndex))
+        ..add((furthestIndex, end));
+    }
+
+    return <Offset>[
+      for (var i = 0; i < points.length; i++)
+        if (keep[i]) points[i],
+    ];
+  }
+
+  /// Whether strictly more than half of [points] lie inside [polygon].
+  ///
+  /// Stops as soon as the majority is reached or becomes impossible, while
+  /// preserving the exact result of `polygonCoverage(polygon, points) > 0.5`.
+  static bool polygonMajorityInside(List<Offset> polygon, List<Offset> points) {
+    final int requiredInside = points.length ~/ 2 + 1;
+    var inside = 0;
+    for (var i = 0; i < points.length; i++) {
+      if (polygonContainsPoint(polygon, points[i])) {
+        inside++;
+        if (inside >= requiredInside) {
+          return true;
+        }
+      }
+      final int remaining = points.length - i - 1;
+      if (inside + remaining < requiredInside) {
+        return false;
+      }
+    }
+    return false;
+  }
+
   /// Fraction of [points] that fall inside the closed [polygon], in `0..1`.
   ///
   /// Used by lasso selection to decide whether a stroke is "substantially
