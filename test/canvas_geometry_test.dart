@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -116,6 +119,155 @@ void main() {
       expect(
         CanvasGeometry.polygonCoverage(square, points),
         moreOrLessEquals(0.75),
+      );
+    });
+  });
+
+  group('CanvasGeometry.simplifyPolyline', () {
+    test('short inputs are returned unchanged', () {
+      expect(CanvasGeometry.simplifyPolyline(const <Offset>[], 2), isEmpty);
+      expect(
+        CanvasGeometry.simplifyPolyline(const <Offset>[Offset(1, 2)], 2),
+        const <Offset>[Offset(1, 2)],
+      );
+      expect(
+        CanvasGeometry.simplifyPolyline(const <Offset>[
+          Offset(1, 2),
+          Offset(3, 4),
+        ], 2),
+        const <Offset>[Offset(1, 2), Offset(3, 4)],
+      );
+    });
+
+    test('collinear points collapse while endpoints are retained', () {
+      final List<Offset> simplified = CanvasGeometry.simplifyPolyline(
+        const <Offset>[Offset(0, 0), Offset(2, 0), Offset(4, 0), Offset(6, 0)],
+        0.1,
+      );
+
+      expect(simplified, const <Offset>[Offset(0, 0), Offset(6, 0)]);
+    });
+
+    test('corners outside the tolerance are preserved', () {
+      final List<Offset> simplified = CanvasGeometry.simplifyPolyline(
+        const <Offset>[
+          Offset(0, 0),
+          Offset(5, 0),
+          Offset(10, 0),
+          Offset(10, 5),
+          Offset(10, 10),
+        ],
+        0.1,
+      );
+
+      expect(simplified, const <Offset>[
+        Offset(0, 0),
+        Offset(10, 0),
+        Offset(10, 10),
+      ]);
+    });
+
+    test('a simplified loop preserves representative selection results', () {
+      final List<Offset> rawLoop = <Offset>[
+        for (var x = 0; x <= 100; x++) Offset(x.toDouble(), 0),
+        for (var y = 1; y <= 100; y++) Offset(100, y.toDouble()),
+        for (var x = 99; x >= 0; x--) Offset(x.toDouble(), 100),
+        for (var y = 99; y >= 1; y--) Offset(0, y.toDouble()),
+      ];
+      final List<Offset> simplified = CanvasGeometry.simplifyPolyline(
+        rawLoop,
+        2,
+      );
+      final List<List<Offset>> elementCenterlines = <List<Offset>>[
+        <Offset>[for (var x = 20; x <= 80; x += 5) Offset(x.toDouble(), 50)],
+        <Offset>[for (var x = 120; x <= 180; x += 5) Offset(x.toDouble(), 50)],
+        <Offset>[for (var y = 20; y <= 80; y += 5) Offset(50, y.toDouble())],
+      ];
+
+      expect(simplified.length, lessThan(rawLoop.length));
+      for (final List<Offset> centerline in elementCenterlines) {
+        expect(
+          CanvasGeometry.polygonMajorityInside(simplified, centerline),
+          CanvasGeometry.polygonMajorityInside(rawLoop, centerline),
+        );
+      }
+    });
+  });
+
+  group('CanvasGeometry.polygonMajorityInside', () {
+    test('matches polygonCoverage across randomized polygons and points', () {
+      final math.Random random = math.Random(4729);
+
+      for (var iteration = 0; iteration < 100; iteration++) {
+        final int vertexCount = 3 + random.nextInt(14);
+        final List<Offset> polygon = <Offset>[
+          for (var i = 0; i < vertexCount; i++)
+            Offset.fromDirection(
+              i * 2 * math.pi / vertexCount,
+              20 + random.nextDouble() * 80,
+            ),
+        ];
+        final List<Offset> points = <Offset>[
+          for (var i = 0; i < random.nextInt(100); i++)
+            Offset(
+              random.nextDouble() * 240 - 120,
+              random.nextDouble() * 240 - 120,
+            ),
+        ];
+
+        expect(
+          CanvasGeometry.polygonMajorityInside(polygon, points),
+          CanvasGeometry.polygonCoverage(polygon, points) > 0.5,
+          reason: 'mismatch in randomized iteration $iteration',
+        );
+      }
+    });
+
+    test('large-loop hit testing stays within a desktop frame budget', () {
+      final List<Offset> rawLoop = <Offset>[
+        for (var i = 0; i < 4000; i++)
+          Offset.fromDirection(
+            i * 2 * math.pi / 4000,
+            1000 + math.sin(i * 0.17),
+          ),
+      ];
+      final List<List<Offset>> strokes = <List<Offset>>[
+        for (var stroke = 0; stroke < 500; stroke++)
+          <Offset>[
+            for (var point = 0; point < 200; point++)
+              Offset(-400 + point * 4, -400 + (stroke % 200) * 4),
+          ],
+      ];
+      final List<Offset> simplified = CanvasGeometry.simplifyPolyline(
+        rawLoop,
+        2,
+      );
+
+      final Stopwatch baselineWatch = Stopwatch()..start();
+      for (final List<Offset> stroke in strokes.take(5)) {
+        CanvasGeometry.polygonCoverage(rawLoop, stroke);
+      }
+      baselineWatch.stop();
+
+      final Stopwatch optimizedWatch = Stopwatch()..start();
+      for (final List<Offset> stroke in strokes) {
+        final int stride = math.max(1, stroke.length ~/ 32);
+        final List<Offset> samples = <Offset>[
+          for (var i = 0; i < stroke.length; i += stride) stroke[i],
+        ];
+        CanvasGeometry.polygonMajorityInside(simplified, samples);
+      }
+      optimizedWatch.stop();
+
+      final Duration estimatedBaseline = baselineWatch.elapsed * 100;
+      debugPrint(
+        'Lasso perf: 4000 -> ${simplified.length} vertices; '
+        'estimated baseline ${estimatedBaseline.inMilliseconds} ms; '
+        'optimized ${optimizedWatch.elapsedMicroseconds / 1000} ms',
+      );
+      expect(
+        optimizedWatch.elapsed,
+        lessThan(const Duration(milliseconds: 16)),
       );
     });
   });

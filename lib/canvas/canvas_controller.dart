@@ -3366,8 +3366,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
     final Set<String> hits = <String>{};
     final double touchSlop = tapSlop / viewport.scale;
-    final List<Offset> boundary = <Offset>[...path, path.first];
-    final Rect area = CanvasGeometry.boundsOfPoints(path).inflate(touchSlop);
+    final List<Offset> simplified = CanvasGeometry.simplifyPolyline(
+      path,
+      _lassoSimplifyToleranceScreen / viewport.scale,
+    );
+    final List<Offset> boundary = <Offset>[...simplified, simplified.first];
+    final Rect area = CanvasGeometry.boundsOfPoints(
+      simplified,
+    ).inflate(touchSlop);
     final Set<String> candidateIds = _spatialIndex.query(area).toSet();
     for (final CanvasElement element in _elements) {
       if (!_isElementEditable(element)) {
@@ -3376,7 +3382,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       if (!candidateIds.contains(element.id)) {
         continue;
       }
-      if (_lassoSelects(element, path, boundary, touchSlop)) {
+      if (_lassoSelects(element, simplified, boundary, touchSlop)) {
         hits.add(element.id);
       }
     }
@@ -3385,6 +3391,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _consumeSelectionMode();
     _notifySelection();
   }
+
+  /// Maximum screen-space deviation retained when a lasso loop commits.
+  static const double _lassoSimplifyToleranceScreen = 2;
 
   /// Cancels an in-progress lasso loop without changing the selection.
   void cancelLasso() {
@@ -3474,25 +3483,25 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         final List<Offset> centerline = <Offset>[
           for (final StrokePoint p in element.stroke.points) p.offset,
         ];
-        return CanvasGeometry.polygonCoverage(polygon, centerline) > 0.5;
+        const int targetSamples = 32;
+        final int stride = math.max(1, centerline.length ~/ targetSamples);
+        final List<Offset> coverageSamples = <Offset>[
+          for (var i = 0; i < centerline.length; i += stride) centerline[i],
+        ];
+        return CanvasGeometry.polygonMajorityInside(polygon, coverageSamples);
       case ImageElement():
       case PdfElement():
       case LinkElement():
       case TextElement():
-        return CanvasGeometry.polygonCoverage(
-              polygon,
-              _rotatedRectSamples(
-                _placementBoundsOf(element)!,
-                element.rotation,
-              ),
-            ) >
-            0.5;
+        return CanvasGeometry.polygonMajorityInside(
+          polygon,
+          _rotatedRectSamples(_placementBoundsOf(element)!, element.rotation),
+        );
       case ShapeElement():
-        return CanvasGeometry.polygonCoverage(
-              polygon,
-              _shapeCoverageSamples(element),
-            ) >
-            0.5;
+        return CanvasGeometry.polygonMajorityInside(
+          polygon,
+          _shapeCoverageSamples(element),
+        );
     }
   }
 
