@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/rendering.dart';
 import 'package:zenno/canvas/engine/canvas_transform.dart';
 import 'package:zenno/canvas/engine/stroke_builder.dart';
@@ -96,9 +94,7 @@ class LiveStrokePathCache {
       );
       final List<StrokePoint> tailPoints = stroke.points.sublist(tailStart);
       final Path tailPath = buildStrokeOutline(
-        // Only the painted tail is extrapolated — never the stroke buffer —
-        // so nothing predicted is ever committed or persisted.
-        _withPredictedTip(tailPoints),
+        tailPoints,
         size: stroke.width,
         tool: stroke.tool,
         isComplete: false,
@@ -160,67 +156,11 @@ class LiveStrokePathCache {
     }
   }
 
-  /// Appends one extrapolated sample ahead of the newest one.
-  ///
-  /// A sample reaches the screen roughly a frame after the nib produced it, so
-  /// ink visibly trails the pen. Extending the drawn tail by about one frame of
-  /// travel closes most of that gap.
-  ///
-  /// The step is capped, and dropped entirely when the stroke is turning
-  /// sharply, so a corner cannot overshoot into a visible spike.
-  static List<StrokePoint> _withPredictedTip(List<StrokePoint> points) {
-    if (points.length < 3) {
-      return points;
-    }
-    final StrokePoint last = points[points.length - 1];
-    final StrokePoint previous = points[points.length - 2];
-    final StrokePoint earlier = points[points.length - 3];
-
-    final Offset recent = last.offset - previous.offset;
-    final Offset prior = previous.offset - earlier.offset;
-    final double recentLength = recent.distance;
-    final double priorLength = prior.distance;
-    if (recentLength < 0.01 || priorLength < 0.01) {
-      return points;
-    }
-
-    // cos of the turn angle: 1 is straight ahead, 0 a right-angle corner.
-    final double alignment =
-        (recent.dx * prior.dx + recent.dy * prior.dy) /
-        (recentLength * priorLength);
-    if (alignment < _minPredictionAlignment) {
-      return points;
-    }
-
-    final double step = math.min(
-      recentLength * _predictionFraction,
-      _maxPredictionDistance,
-    );
-    final Offset tip = last.offset + (recent / recentLength) * step;
-
-    return <StrokePoint>[
-      ...points,
-      StrokePoint(
-        tip.dx,
-        tip.dy,
-        last.pressure,
-        tiltX: last.tiltX,
-        tiltY: last.tiltY,
-        azimuth: last.azimuth,
-        timestampMicros: last.timestampMicros,
-        velocity: last.velocity,
-      ),
-    ];
-  }
-
-  /// Fraction of the last sample's travel to extrapolate forward.
-  static const double _predictionFraction = 0.8;
-
-  /// Hard cap on the predicted step, in world units.
-  static const double _maxPredictionDistance = 12.0;
-
-  /// Straightness required before predicting, as cos of the turn angle.
-  static const double _minPredictionAlignment = 0.7;
+  // The drawn tail used to be extrapolated about a frame ahead of the newest
+  // sample to hide input latency. It was removed: the prediction only ever
+  // reached the *live* path, so committing the stroke made the extrapolated tip
+  // vanish and the ink visibly retract. A stroke that arrives a frame late is
+  // better than one that corrects itself after you lift the pen.
 }
 
 /// Paints the single in-progress [liveStroke] under the current [viewport].

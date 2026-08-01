@@ -24,6 +24,7 @@ import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/canvas/raster/image_raster_decoder.dart';
 import 'package:zenno/canvas/tools/arrow_geometry.dart';
 import 'package:zenno/canvas/tools/canvas_geometry.dart';
+import 'package:zenno/canvas/tools/lasso_region_grid.dart';
 import 'package:zenno/core/util/id.dart';
 
 /// The active canvas interaction tool.
@@ -291,7 +292,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final _CanvasSignal _elementsSignal = _CanvasSignal();
   final _CanvasSignal _liveStrokeSignal = _CanvasSignal();
   final _CanvasSignal _selectionSignal = _CanvasSignal();
+  final _CanvasSignal _selectionPreviewSignal = _CanvasSignal();
   final _CanvasSignal _overlaySignal = _CanvasSignal();
+  final _CanvasSignal _hoverSignal = _CanvasSignal();
   final _CanvasSignal _toolStateSignal = _CanvasSignal();
   final _CanvasSignal _canvasStyleSignal = _CanvasSignal();
   final _CanvasSignal _bookmarksSignal = _CanvasSignal();
@@ -308,11 +311,29 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// In-progress ink changes only.
   Listenable get liveStrokeListenable => _liveStrokeSignal;
 
-  /// Selection membership and transform-preview changes only.
+  /// Selection membership changes only.
   Listenable get selectionListenable => _selectionSignal;
 
-  /// Hover, eraser, lasso, and shape-preview changes only.
+  /// Live selection move/scale/rotate offsets only.
+  ///
+  /// Deliberately its own channel, for the same reason hover has one: a drag
+  /// fires this per pointer sample, and what it changes — where the selection
+  /// is being previewed — is not something the committed-element layer can see.
+  /// Waking that layer per sample made dragging a large selection re-cull, re-
+  /// sort and re-paint every visible element on the canvas each frame.
+  Listenable get selectionPreviewListenable => _selectionPreviewSignal;
+
+  /// Eraser, lasso, and shape-preview changes only.
   Listenable get overlayListenable => _overlaySignal;
+
+  /// Hover-point moves only.
+  ///
+  /// Deliberately its own channel: an S Pen hovers continuously within ~1 cm
+  /// of the glass, so this fires at report rate whenever the pen is merely
+  /// *near* the tablet. Routing it through the overlay channel repainted the
+  /// full-screen overlay layer per report to move one small ring; the hover
+  /// ring widget listens here alone and moves as a compositor offset.
+  Listenable get hoverListenable => _hoverSignal;
 
   /// Toolbar, tool, undo, save, import, and layer-control changes only.
   Listenable get toolStateListenable => _toolStateSignal;
@@ -384,6 +405,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   static const int _maxElementDamageHistory = 64;
 
   /// Applied commands available to be reversed by [undo], oldest at the front.
+  /// Deepest undo reach kept in memory; see [_runCommand] for the rationale.
+  static const int _undoHistoryLimit = 200;
+
   final List<CanvasCommand> _undoStack = <CanvasCommand>[];
 
   /// Reverted commands available to be re-applied by [redo].
@@ -522,11 +546,18 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           if (_isElementVisible(element)) element,
     ];
     if (_selectionDragDelta != null || _selectionTransformOriginals != null) {
+      // A selected element may be previewed outside the culled viewport, so it
+      // is added back unconditionally. Membership is checked by id: the list
+      // scan this replaces cost selected x visible comparisons, which on a big
+      // canvas with a big selection was tens of millions of them.
+      final Set<String> present = <String>{
+        for (final CanvasElement element in visible) element.id,
+      };
       for (final String id in _selectedIds) {
         final CanvasElement? element = _elementsById[id];
         if (element != null &&
             _isElementVisible(element) &&
-            !visible.contains(element)) {
+            !present.contains(id)) {
           visible.add(element);
         }
       }
@@ -704,6 +735,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// lasso is being drawn. The overlay strokes this while dragging.
   List<Offset>? _lassoPath;
 
+  /// Cached unmodifiable view of [_lassoPath], invalidated on mutation.
+  List<Offset>? _lassoPathView;
+
   /// Ids of the currently selected elements (built by lasso select).
   ///
   /// A [Set] for O(1) membership checks from the painters; the controller
@@ -787,8 +821,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// World-space vertices of the in-progress lasso loop, or `null`. Read-only
   /// view for the overlay painter.
-  List<Offset>? get lassoPath =>
-      _lassoPath == null ? null : List<Offset>.unmodifiable(_lassoPath!);
+  ///
+  /// Cached, because this is read on every overlay repaint and the overlay
+  /// repaints on every appended vertex — allocating a fresh copy each time made
+  /// tracing a loop cost time quadratic in its length.
+  List<Offset>? get lassoPath {
+    final List<Offset>? path = _lassoPath;
+    if (path == null) {
+      return null;
+    }
+    return _lassoPathView ??= List<Offset>.unmodifiable(path);
+  }
 
   /// Ids of the currently selected elements, as an unmodifiable view.
   Set<String> get selectedIds =>
@@ -814,6 +857,25 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   SelectionTransformPreview? get selectionTransformPreview =>
       _selectionTransformOriginals == null ? null : _selectionTransformPreview;
 
+  /// Whether the selection is being previewed away from its committed place.
+  ///
+  /// While this holds, the render layer draws the selection in its own layer on
+  /// top and moves that, so the canvas underneath is not repainted per sample.
+  bool get isFloatingSelection =>
+      _selectionDragDelta != null || _selectionTransformOriginals != null;
+
+  /// The live drag or transform preview as a world-space matrix.
+  ///
+  /// Identity when nothing is being previewed.
+  Matrix4 get selectionPreviewMatrix {
+    final SelectionTransformPreview? preview = selectionTransformPreview;
+    if (preview != null) {
+      return preview.toMatrix();
+    }
+    final Offset delta = selectionDragDelta;
+    return Matrix4.identity()..translateByDouble(delta.dx, delta.dy, 0, 1);
+  }
+
   /// The committed elements that are currently selected, in paint order.
   List<CanvasElement> get selectedElements => <CanvasElement>[
     for (final CanvasElement e in _elements)
@@ -832,12 +894,26 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_selectedIds.isEmpty) {
       return null;
     }
-    final Rect? bounds = _boundsForSelectedElements(_elements);
+    // And with something selected it scanned them all per frame regardless —
+    // including every frame of a drag, where the answer only slides sideways.
+    // The scan now runs once per real change; the drag is a shift on top.
+    if (!_selectionBoundsCached) {
+      _selectionBoundsCache = _boundsForSelectedElements(_elements);
+      _selectionBoundsCached = true;
+    }
+    final Rect? bounds = _selectionBoundsCache;
     if (bounds == null) {
       return null;
     }
     return bounds.shift(selectionDragDelta);
   }
+
+  /// Cached [_boundsForSelectedElements] over the whole store.
+  ///
+  /// Guarded by [_selectionBoundsCached] rather than a null check, because
+  /// `null` — nothing selected is visible — is a real answer worth caching.
+  Rect? _selectionBoundsCache;
+  bool _selectionBoundsCached = false;
 
   Rect? _boundsForSelectedElements(Iterable<CanvasElement> elements) {
     Rect? bounds;
@@ -939,17 +1015,21 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _elementsView = null;
     _visibleElementsView = null;
     _viewportElementsView = null;
+    _selectionBoundsCached = false;
   }
 
   void _markSelectionChanged() {
     _selectionRevision += 1;
     _selectedIdsView = null;
     _viewportElementsView = null;
+    _selectionBoundsCached = false;
   }
 
   void _markSelectionPreviewChanged() {
     _selectionPreviewRevision += 1;
-    _viewportElementsView = null;
+    // The culled list deliberately survives: which elements it holds depends on
+    // whether a preview is running, not on how far it has moved, and the
+    // begin/end of a preview both notify through [_notifySelection].
   }
 
   void _markViewportChanged() {
@@ -991,8 +1071,20 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void _notifySelection() {
     _viewportElementsView = null;
     _selectionSignal.emit();
+    _selectionPreviewSignal.emit();
     _overlaySignal.emit();
     _toolStateSignal.emit();
+    notifyListeners();
+  }
+
+  /// Announces a new live drag/transform offset for the current selection.
+  ///
+  /// Reaches only the layers that draw the preview. The selection itself has
+  /// not changed, so the culled element list stays valid — recomputing it here
+  /// re-queried and re-sorted the whole viewport once per pointer sample.
+  void _notifySelectionPreview() {
+    _selectionPreviewSignal.emit();
+    _overlaySignal.emit();
     notifyListeners();
   }
 
@@ -1264,13 +1356,27 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       throw CanvasNotFoundException(canvasId);
     }
 
-    final List<CanvasLayer> loadedLayers = await repo.loadLayers(canvasId);
-    final List<CanvasElement> loaded = await repo.loadElements(canvasId);
-    final List<Bookmark> loadedBookmarks = await repo.loadBookmarks(canvasId);
-    final ViewportState? savedViewport = await repo.loadViewport(canvasId);
-    final bool savedRotationLocked = await repo.loadRotationLocked(canvasId);
-    final CanvasPaperStyle savedPaper = await repo.loadPaperStyle(canvasId);
-    final CanvasToolSettings savedTool = await repo.loadToolSettings(canvasId);
+    // Independent reads, fetched concurrently: elements is the long pole and
+    // the six small reads ride along instead of queuing behind each other —
+    // awaiting them one by one cost six extra round-trips per open.
+    final Future<List<CanvasLayer>> layersFuture = repo.loadLayers(canvasId);
+    final Future<List<CanvasElement>> elementsFuture = repo.loadElements(
+      canvasId,
+    );
+    final Future<List<Bookmark>> bookmarksFuture = repo.loadBookmarks(canvasId);
+    final Future<ViewportState?> viewportFuture = repo.loadViewport(canvasId);
+    final Future<bool> rotationLockedFuture = repo.loadRotationLocked(canvasId);
+    final Future<CanvasPaperStyle> paperFuture = repo.loadPaperStyle(canvasId);
+    final Future<CanvasToolSettings> toolFuture = repo.loadToolSettings(
+      canvasId,
+    );
+    final List<CanvasLayer> loadedLayers = await layersFuture;
+    final List<CanvasElement> loaded = await elementsFuture;
+    final List<Bookmark> loadedBookmarks = await bookmarksFuture;
+    final ViewportState? savedViewport = await viewportFuture;
+    final bool savedRotationLocked = await rotationLockedFuture;
+    final CanvasPaperStyle savedPaper = await paperFuture;
+    final CanvasToolSettings savedTool = await toolFuture;
     if (_disposed) {
       return;
     }
@@ -1309,7 +1415,66 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     activeTool = _canvasToolForPreset(activeToolWheelPreset.kind);
     _isLoaded = true;
     _notifyAllChannels();
+    _scheduleOutlinePrewarm();
   }
+
+  /// Ink elements still waiting for their outline to be pre-built.
+  List<InkElement> _outlinePrewarmQueue = <InkElement>[];
+  bool _outlinePrewarmPumpScheduled = false;
+
+  /// Pre-builds stroke outlines in idle slices after a canvas loads.
+  ///
+  /// [InkElement.outlinePath] is built lazily, which meant the first frame
+  /// after hydration ran `perfect_freehand` over every visible stroke at once
+  /// and then recorded tile pictures on top — one jank spike exactly when the
+  /// user is looking. Warming a few strokes per idle slice turns the spike
+  /// into a ramp; anything not yet warmed still builds lazily on first paint,
+  /// so this can only ever make a frame cheaper, never wrong.
+  void _scheduleOutlinePrewarm() {
+    if (_disposed) {
+      return;
+    }
+    final Rect visible = _visibleWorldRect;
+    final List<InkElement> queue = <InkElement>[
+      for (final CanvasElement element in _elements)
+        if (element is InkElement) element,
+    ];
+    // Visible strokes first — they are the ones the first paint needs. The
+    // queue is consumed from the back, so sort visible *last*.
+    queue.sort((InkElement a, InkElement b) {
+      final int aVisible = visible.overlaps(a.worldBounds) ? 1 : 0;
+      final int bVisible = visible.overlaps(b.worldBounds) ? 1 : 0;
+      return aVisible - bVisible;
+    });
+    _outlinePrewarmQueue = queue;
+    _pumpOutlinePrewarm();
+  }
+
+  void _pumpOutlinePrewarm() {
+    if (_outlinePrewarmPumpScheduled || _outlinePrewarmQueue.isEmpty) {
+      return;
+    }
+    _outlinePrewarmPumpScheduled = true;
+    SchedulerBinding.instance.scheduleTask(() {
+      _outlinePrewarmPumpScheduled = false;
+      if (_disposed) {
+        _outlinePrewarmQueue = <InkElement>[];
+        return;
+      }
+      final Stopwatch watch = Stopwatch()..start();
+      while (_outlinePrewarmQueue.isNotEmpty &&
+          watch.elapsedMicroseconds < _outlinePrewarmSliceMicros) {
+        final InkElement element = _outlinePrewarmQueue.removeLast();
+        // Touching the getter builds and caches the path; an element that was
+        // erased in the meantime just warms a cache nothing reads — harmless.
+        element.outlinePath;
+      }
+      _pumpOutlinePrewarm();
+    }, Priority.idle);
+  }
+
+  /// Time budget per pre-warm slice — well under a 90 Hz frame's headroom.
+  static const int _outlinePrewarmSliceMicros = 4000;
 
   /// Flushes any pending debounced writes and awaits every in-flight write.
   ///
@@ -1530,6 +1695,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void _runCommand(CanvasCommand command) {
     _applyCommandMutation(command.apply);
     _undoStack.add(command);
+    // Bounded history: every command holds full element snapshots (including
+    // complete stroke point lists), so an unbounded stack accumulated every
+    // stroke of the session twice. Dropping from the bottom loses nothing —
+    // everything past the cap is already committed to SQLite; it only limits
+    // how far back undo reaches.
+    if (_undoStack.length > _undoHistoryLimit) {
+      _undoStack.removeRange(0, _undoStack.length - _undoHistoryLimit);
+    }
     _redoStack.clear();
     _reconcileSelectionFor(command);
     _scheduleVisibleRasters();
@@ -1687,7 +1860,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (!force) {
       final double minDistance = _strokeSampleMinDistanceWorld(stroke.width);
       final bool movedEnough = (world - last.offset).distance >= minDistance;
-      final bool pressureChanged = (pressure - last.pressure).abs() >= 0.035;
+      // Above the digitiser's own noise floor. At 0.035 the S Pen's jitter
+      // alone admitted samples that added no shape, only width ripple.
+      final bool pressureChanged = (pressure - last.pressure).abs() >= 0.09;
       if (!movedEnough && !pressureChanged) {
         return;
       }
@@ -2534,7 +2709,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     hoverPointWorld = world;
-    _notifyOverlay();
+    _hoverSignal.emit();
   }
 
   // ---------------------------------------------------------------------------
@@ -3185,6 +3360,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void beginLasso(Offset world) {
     _discardLasso(restoreSelection: true);
     _lassoPath = <Offset>[world];
+    _lassoPathView = null;
     if (selectionMode == SelectionMode.replace) {
       _selectionBeforeReplaceLasso = Set<String>.of(_selectedIds);
     }
@@ -3193,15 +3369,47 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Extends the in-progress lasso loop to the [world] point.
   ///
-  /// A no-op when no lasso loop is active.
+  /// A no-op when no lasso loop is active, or when [world] is too close to the
+  /// last retained vertex to change the loop's shape. The S Pen reports at up
+  /// to 240 Hz and Flutter delivers every historical sample as its own move, so
+  /// keeping them all made a few seconds of tracing cost thousands of vertices
+  /// — each one repainting the overlay and re-projecting the whole loop. The
+  /// pen and the eraser already thin their input the same way.
   void appendLasso(Offset world) {
     final List<Offset>? path = _lassoPath;
     if (path == null) {
       return;
     }
-    path.add(world);
+    if ((world - path.last).distance < _lassoSampleMinDistanceWorld()) {
+      return;
+    }
+    if (path.length >= _lassoMaxVertices) {
+      // A backstop, not a normal path: replacing the newest vertex keeps the
+      // loop tracking the nib without letting it grow without bound.
+      path[path.length - 1] = world;
+    } else {
+      path.add(world);
+    }
+    _lassoPathView = null;
     _notifyOverlay();
   }
+
+  /// Minimum world-space spacing between retained lasso vertices.
+  ///
+  /// A fixed screen-space tolerance converted at the current zoom, so the loop
+  /// is sampled as finely as it is drawn however far in or out the canvas is.
+  double _lassoSampleMinDistanceWorld() {
+    final double scale = viewport.scale;
+    return scale.isFinite && scale > 0
+        ? _lassoSampleMinDistanceScreen / scale
+        : _lassoSampleMinDistanceScreen;
+  }
+
+  /// Screen-space spacing below which a lasso vertex is dropped.
+  static const double _lassoSampleMinDistanceScreen = 1.5;
+
+  /// Hard ceiling on retained lasso vertices.
+  static const int _lassoMaxVertices = 4000;
 
   /// Closes the lasso loop and selects elements inside or touched by it.
   ///
@@ -3212,9 +3420,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// lasso boundary. A loop with too few points (an accidental tap) preserves
   /// the prior selection. Selection is held in the controller, not committed
   /// as a command.
+  ///
+  /// A loop big enough to swallow a whole mindmap makes the spatial-index broad
+  /// phase useless — its bounding box covers everything — so a [LassoRegionGrid]
+  /// over the loop acts as the real broad phase: elements sitting cleanly inside
+  /// or cleanly outside are decided from their bounding box alone, and only the
+  /// ones the loop actually runs through pay for geometry.
   void endLasso() {
     final List<Offset>? path = _lassoPath;
     _lassoPath = null;
+    _lassoPathView = null;
     if (path == null || path.length < 3) {
       _restoreSelectionBeforeReplaceLasso();
       _consumeSelectionMode();
@@ -3232,6 +3447,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     final Rect area = CanvasGeometry.boundsOfPoints(
       simplified,
     ).inflate(touchSlop);
+    final LassoRegionGrid? grid = debugDisableLassoRegionGrid
+        ? null
+        : LassoRegionGrid.build(simplified);
     final Set<String> candidateIds = _spatialIndex.query(area).toSet();
     for (final CanvasElement element in _elements) {
       if (!_isElementEditable(element)) {
@@ -3240,7 +3458,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       if (!candidateIds.contains(element.id)) {
         continue;
       }
-      if (_lassoSelects(element, simplified, boundary, touchSlop)) {
+      if (_lassoSelectsElement(
+        element,
+        simplified,
+        boundary,
+        touchSlop,
+        grid,
+      )) {
         hits.add(element.id);
       }
     }
@@ -3253,6 +3477,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Maximum screen-space deviation retained when a lasso loop commits.
   static const double _lassoSimplifyToleranceScreen = 2;
 
+  /// Test seam forcing lasso commits down the pre-grid exact path.
+  ///
+  /// The region grid is a pure accelerator: it must never change which elements
+  /// a loop selects. The tests run randomised scenes both ways and compare, so
+  /// a divergence fails the suite rather than silently mis-selecting — and a
+  /// mis-selection is one Delete away from losing notes. Nothing in the app
+  /// flips this.
+  @visibleForTesting
+  static bool debugDisableLassoRegionGrid = false;
+
   /// Cancels an in-progress lasso loop without changing the selection.
   void cancelLasso() {
     _discardLasso(restoreSelection: true);
@@ -3261,6 +3495,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   void _discardLasso({required bool restoreSelection}) {
     _lassoPath = null;
+    _lassoPathView = null;
     if (restoreSelection) {
       _restoreSelectionBeforeReplaceLasso();
     } else {
@@ -3279,6 +3514,57 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }, SelectionMode.replace);
   }
 
+  /// Whether the committed lasso loop selects [element].
+  ///
+  /// [grid] is the loop's region grid, or `null` for a degenerate loop with no
+  /// area to divide into cells. When it is present, an element's bounding box
+  /// usually settles the question outright: a box lying entirely inside the loop
+  /// has every coverage sample inside it, and a box the loop never comes within
+  /// [touchSlop] of cannot be touched by it either. Both rest on the same
+  /// geometry-fits-in-its-bounds assumption the spatial-index broad phase in
+  /// [endLasso] already makes. Only a box the loop actually runs through reaches
+  /// the exact tests, and then only against the loop segments near it.
+  bool _lassoSelectsElement(
+    CanvasElement element,
+    List<Offset> polygon,
+    List<Offset> boundary,
+    double touchSlop,
+    LassoRegionGrid? grid,
+  ) {
+    if (grid == null) {
+      return _lassoSelects(
+        element,
+        polygon,
+        <List<Offset>>[boundary],
+        touchSlop,
+        null,
+      );
+    }
+    final Rect probe = element.worldBounds.inflate(touchSlop);
+    final LassoRegion region = grid.classifyRect(probe);
+    if (region == LassoRegion.outside) {
+      return false;
+    }
+    if (region == LassoRegion.inside && _hasCoverageSamples(element)) {
+      return true;
+    }
+    return _lassoSelects(
+      element,
+      polygon,
+      grid.segmentRunsNear(probe),
+      touchSlop,
+      grid,
+    );
+  }
+
+  /// Whether [element] has any geometry for the majority-inside rule to sample.
+  ///
+  /// An ink element with no points has none, and an empty sample set is never a
+  /// majority — so the enclosed-bounds shortcut must not claim it.
+  static bool _hasCoverageSamples(CanvasElement element) {
+    return element is! InkElement || element.stroke.points.isNotEmpty;
+  }
+
   /// Whether the closed lasso substantially encloses or touches [element].
   ///
   /// The majority-inside rule remains for ordinary loops. A second
@@ -3286,55 +3572,84 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// grazing the rendered edge selects the element without requiring its
   /// remaining geometry to be enclosed.
   ///
-  /// [boundary] is explicitly closed and [touchSlop] is expressed in world
-  /// units, derived from a constant screen-space tolerance at the current zoom.
+  /// [boundaryRuns] are the stretches of the closed loop that pass near the
+  /// element, each an open polyline — never joined end to end, which would
+  /// invent an edge the user never drew. A loop segment far enough away to be
+  /// left out cannot satisfy any of these tests, so the answer matches testing
+  /// the whole loop. [touchSlop] is expressed in world units, derived from a
+  /// constant screen-space tolerance at the current zoom.
   bool _lassoSelects(
     CanvasElement element,
     List<Offset> polygon,
-    List<Offset> boundary,
+    List<List<Offset>> boundaryRuns,
     double touchSlop,
+    LassoRegionGrid? grid,
   ) {
-    if (_lassoSubstantiallyContains(element, polygon)) {
+    if (_lassoSubstantiallyContains(element, polygon, grid)) {
       return true;
     }
 
     switch (element) {
       case InkElement():
         if (element.stroke.tool == StrokeToolKind.fill) {
-          return boundary.any(element.outlinePath.contains) ||
-              CanvasGeometry.polylinesWithinDistance(
-                boundary,
-                _closedFillBoundary(element),
-                touchSlop,
-              );
+          final List<Offset> fillBoundary = _closedFillBoundary(element);
+          for (final List<Offset> run in boundaryRuns) {
+            if (run.any(element.outlinePath.contains) ||
+                CanvasGeometry.polylinesWithinDistance(
+                  run,
+                  fillBoundary,
+                  touchSlop,
+                )) {
+              return true;
+            }
+          }
+          return false;
         }
         final List<Offset> centerline = <Offset>[
           for (final StrokePoint point in element.stroke.points) point.offset,
         ];
-        return CanvasGeometry.polylinesWithinDistance(
-          boundary,
-          centerline,
-          touchSlop + element.stroke.width / 2,
-        );
+        final double reach = touchSlop + element.stroke.width / 2;
+        for (final List<Offset> run in boundaryRuns) {
+          if (CanvasGeometry.polylinesWithinDistance(run, centerline, reach)) {
+            return true;
+          }
+        }
+        return false;
       case ImageElement():
       case PdfElement():
       case LinkElement():
       case TextElement():
-        return _pathReachesRotatedRect(
-          boundary,
-          _placementBoundsOf(element)!,
-          element.rotation,
-          touchSlop,
-        );
+        final Rect placement = _placementBoundsOf(element)!;
+        for (final List<Offset> run in boundaryRuns) {
+          if (_pathReachesRotatedRect(
+            run,
+            placement,
+            element.rotation,
+            touchSlop,
+          )) {
+            return true;
+          }
+        }
+        return false;
       case ShapeElement():
-        return _pathReachesShape(boundary, element, touchSlop);
+        for (final List<Offset> run in boundaryRuns) {
+          if (_pathReachesShape(run, element, touchSlop)) {
+            return true;
+          }
+        }
+        return false;
     }
   }
 
   bool _lassoSubstantiallyContains(
     CanvasElement element,
     List<Offset> polygon,
+    LassoRegionGrid? grid,
   ) {
+    final bool Function(Offset point) isInside =
+        grid != null
+        ? grid.containsPoint
+        : (Offset point) => CanvasGeometry.polygonContainsPoint(polygon, point);
     switch (element) {
       case InkElement():
         final List<Offset> centerline = <Offset>[
@@ -3345,19 +3660,19 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         final List<Offset> coverageSamples = <Offset>[
           for (var i = 0; i < centerline.length; i += stride) centerline[i],
         ];
-        return CanvasGeometry.polygonMajorityInside(polygon, coverageSamples);
+        return CanvasGeometry.majorityInside(coverageSamples, isInside);
       case ImageElement():
       case PdfElement():
       case LinkElement():
       case TextElement():
-        return CanvasGeometry.polygonMajorityInside(
-          polygon,
+        return CanvasGeometry.majorityInside(
           _rotatedRectSamples(_placementBoundsOf(element)!, element.rotation),
+          isInside,
         );
       case ShapeElement():
-        return CanvasGeometry.polygonMajorityInside(
-          polygon,
+        return CanvasGeometry.majorityInside(
           _shapeCoverageSamples(element),
+          isInside,
         );
     }
   }
@@ -3761,7 +4076,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     _selectionDragDelta = current + worldDelta;
-    _notifySelection();
+    _notifySelectionPreview();
   }
 
   /// Finishes the selection drag, committing the move as one undoable command.
@@ -3839,7 +4154,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       rotation: rotation,
     );
     _markSelectionPreviewChanged();
-    _notifySelection();
+    _notifySelectionPreview();
   }
 
   /// Commits the live selection transform as one undoable command.
@@ -4806,16 +5121,14 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     final Rect visibleWorldRect = _visibleWorldRect;
-    final Set<String> visibleIds = _spatialIndex
-        .query(visibleWorldRect)
-        .toSet();
     final Offset viewportCenter = visibleWorldRect.center;
     final List<_RasterJob> jobs = <_RasterJob>[];
-    for (final CanvasElement element in _elements) {
-      if (!_isElementVisible(element)) {
-        continue;
-      }
-      if (!visibleIds.contains(element.id)) {
+    // Iterate the spatial-query hits, not the whole store: this runs on every
+    // camera settle, and walking all N elements to find the visible handful
+    // made the sweep cost scale with the canvas instead of the screen.
+    for (final String id in _spatialIndex.query(visibleWorldRect)) {
+      final CanvasElement? element = _elementsById[id];
+      if (element == null || !_isElementVisible(element)) {
         continue;
       }
       final double priority = _distanceSquared(
@@ -5186,8 +5499,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// Command history stores raster-free snapshots, so evicted `ui.Image`s are
   /// disposed immediately and the element in the store is replaced with its
   /// durable metadata-only form.
-  void _enforceRasterBudget() {
-    if (_rasterBytesInUse <= _rasterBudgetBytes) {
+  void _enforceRasterBudget() => _evictOffscreenRastersDownTo(
+    _rasterBudgetBytes,
+  );
+
+  void _evictOffscreenRastersDownTo(int budgetBytes) {
+    if (_rasterBytesInUse <= budgetBytes) {
       return;
     }
     final Rect visibleWorldRect = _visibleWorldRect;
@@ -5209,7 +5526,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
               .compareTo(_rasterLastAccess[b.id] ?? 0),
         );
     for (final CanvasElement element in candidates) {
-      if (_rasterBytesInUse <= _rasterBudgetBytes) {
+      if (_rasterBytesInUse <= budgetBytes) {
         break;
       }
       final int? index = _paintOrderById[element.id];
@@ -5240,6 +5557,29 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   @visibleForTesting
   void debugEnforceRasterBudget() => _enforceRasterBudget();
+
+  /// Sheds reconstructible memory in response to a system pressure signal.
+  ///
+  /// Called when Android reports memory pressure — the step before it starts
+  /// killing processes. Everything released here rebuilds lazily from intact
+  /// state: off-screen rasters re-decode from their source files when they
+  /// scroll back into view, and the trimmed undo history is already committed
+  /// to SQLite. On-screen rasters are kept — their pixels are needed this
+  /// frame, and dropping them would trade a kill risk for guaranteed jank.
+  void onMemoryPressure() {
+    if (_disposed) {
+      return;
+    }
+    _evictOffscreenRastersDownTo(0);
+    const int keep = _undoHistoryLimit ~/ 4;
+    if (_undoStack.length > keep) {
+      _undoStack.removeRange(0, _undoStack.length - keep);
+    }
+    if (_redoStack.length > keep) {
+      _redoStack.removeRange(0, _redoStack.length - keep);
+    }
+    _notifyElements(selectionMayChange: false, toolMayChange: false);
+  }
 
   /// Disposes every decoded raster currently held by an element.
   ///
@@ -5288,6 +5628,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _liveStrokeSignal.dispose();
     _selectionSignal.dispose();
     _overlaySignal.dispose();
+    _hoverSignal.dispose();
     _toolStateSignal.dispose();
     _canvasStyleSignal.dispose();
     _bookmarksSignal.dispose();

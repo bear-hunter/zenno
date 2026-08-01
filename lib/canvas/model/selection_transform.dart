@@ -66,11 +66,25 @@ class SelectionTransformPreview {
   }
 
   void applyToCanvas(Canvas canvas) {
-    canvas
-      ..translate(origin.dx + translation.dx, origin.dy + translation.dy)
-      ..rotate(rotation)
-      ..scale(scale)
-      ..translate(-origin.dx, -origin.dy);
+    canvas.transform(toMatrix().storage);
+  }
+
+  /// This preview as a world-space matrix.
+  ///
+  /// The same transform [applyToCanvas] applies, in a form the render layer can
+  /// re-express in screen space — which is how a selection is moved by shifting
+  /// an already-painted layer instead of repainting it.
+  Matrix4 toMatrix() {
+    return Matrix4.identity()
+      ..translateByDouble(
+        origin.dx + translation.dx,
+        origin.dy + translation.dy,
+        0,
+        1,
+      )
+      ..rotateZ(rotation)
+      ..scaleByDouble(scale, scale, 1, 1)
+      ..translateByDouble(-origin.dx, -origin.dy, 0, 1);
   }
 
   @override

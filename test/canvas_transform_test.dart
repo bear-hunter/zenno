@@ -3,9 +3,12 @@ import 'dart:math' as math;
 // `painting.dart` is imported for `MatrixUtils`, which `widgets.dart` omits;
 // it also supplies `Offset`.
 import 'package:flutter/painting.dart';
+// `Matrix4`, which `painting.dart` does not re-export.
+import 'package:flutter/widgets.dart' show Matrix4;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zenno/canvas/engine/canvas_transform.dart';
+import 'package:zenno/canvas/model/selection_transform.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 
 /// Asserts that two [Offset]s are equal within [epsilon] on both axes.
@@ -347,6 +350,63 @@ void main() {
       expect(ViewportState.initial.translation, Offset.zero);
       expect(ViewportState.initial.scale, 1.0);
       expect(ViewportState.initial.rotation, 0.0);
+    });
+  });
+
+  group('worldTransformToScreen', () {
+    // A dragged selection is painted once and then moved by this matrix, so it
+    // has to land exactly where repainting it at the new world position would
+    // have put it — under zoom and canvas twist alike.
+    test('moves screen points the way the world transform moves world ones', () {
+      const List<Offset> worldMoves = <Offset>[
+        Offset(30, -18),
+        Offset(-450.5, 220.25),
+      ];
+      for (final ViewportState vp in viewports) {
+        for (final Offset move in worldMoves) {
+          final Matrix4 worldTransform = Matrix4.identity()
+            ..translateByDouble(move.dx, move.dy, 0, 1);
+          final Matrix4 screenTransform = CanvasTransform.worldTransformToScreen(
+            vp,
+            worldTransform,
+          );
+          for (final Offset world in worldPoints) {
+            expectOffsetClose(
+              MatrixUtils.transformPoint(
+                screenTransform,
+                CanvasTransform.toScreen(vp, world),
+              ),
+              CanvasTransform.toScreen(vp, world + move),
+              epsilon: 1e-4,
+            );
+          }
+        }
+      }
+    });
+
+    test('a scale about a world origin stays anchored on screen', () {
+      const SelectionTransformPreview preview = SelectionTransformPreview(
+        origin: Offset(120, -40),
+        translation: Offset(15, 9),
+        scale: 1.75,
+        rotation: 0.6,
+      );
+      for (final ViewportState vp in viewports) {
+        final Matrix4 screenTransform = CanvasTransform.worldTransformToScreen(
+          vp,
+          preview.toMatrix(),
+        );
+        for (final Offset world in worldPoints) {
+          expectOffsetClose(
+            MatrixUtils.transformPoint(
+              screenTransform,
+              CanvasTransform.toScreen(vp, world),
+            ),
+            CanvasTransform.toScreen(vp, preview.transformPoint(world)),
+            epsilon: 1e-3,
+          );
+        }
+      }
     });
   });
 }

@@ -77,6 +77,21 @@ abstract final class CanvasTransform {
     return MatrixUtils.transformPoint(worldToScreenMatrix(vp), world);
   }
 
+  /// Re-expresses a world-space [worldTransform] in screen space under [vp].
+  ///
+  /// Lets a widget move content that was painted in world coordinates —
+  /// dragging a selection becomes a transform on an existing layer rather than
+  /// a repaint of everything under it. Always invertible for the same reason
+  /// [toWorld] is: [ViewportState.scale] is clamped strictly positive.
+  static Matrix4 worldTransformToScreen(
+    ViewportState vp,
+    Matrix4 worldTransform,
+  ) {
+    final Matrix4 toScreenMatrix = worldToScreenMatrix(vp);
+    return toScreenMatrix.multiplied(worldTransform)
+      ..multiply(Matrix4.inverted(toScreenMatrix));
+  }
+
   /// Maps a [screen] point back into world space under [vp].
   ///
   /// Uses the inverse of [worldToScreenMatrix]; the transform is always

@@ -9,18 +9,19 @@ import 'package:zenno/canvas/render/selection_overlay_geometry.dart';
 /// Paints transient canvas chrome that sits above the ink layers.
 ///
 /// This is the top compositing layer: it draws non-persisted feedback —
-/// the tool hover ring, the eraser footprint and its swept trail, the
-/// in-progress lasso loop, and the bounding box around a lasso selection.
-/// Everything is projected through [viewport]; tool chrome such as hover
-/// rings, lasso outlines and selection borders keeps a constant on-screen
-/// weight.
+/// the eraser footprint and its swept trail, the in-progress lasso loop, and
+/// the bounding box around a lasso selection. Everything is projected through
+/// [viewport]; tool chrome keeps a constant on-screen weight.
+///
+/// The tool hover ring is deliberately **not** here — see [HoverRingPainter].
+/// It moves at the S Pen's report rate whenever the pen is near the glass, and
+/// painting it in this full-screen layer meant rasterising the whole overlay
+/// per report. It lives in its own tiny repaint boundary that the compositor
+/// just moves.
 class CanvasOverlayPainter extends CustomPainter {
   /// Creates an overlay painter for the given [viewport].
   const CanvasOverlayPainter({
     required this.viewport,
-    this.hoverPointWorld,
-    this.hoverRadius = 0,
-    this.isEraserHover = false,
     this.eraserPath,
     this.eraserRadius = 0,
     this.lassoPath,
@@ -32,16 +33,6 @@ class CanvasOverlayPainter extends CustomPainter {
 
   /// The camera through which world points are projected to screen.
   final ViewportState viewport;
-
-  /// World-space position of the hover indicator, or `null` to draw nothing.
-  final Offset? hoverPointWorld;
-
-  /// Screen-space radius of the hover ring.
-  final double hoverRadius;
-
-  /// Whether the hover ring represents the eraser (drawn as a dashed-feel
-  /// circle) rather than the pen (a thin solid ring).
-  final bool isEraserHover;
 
   /// World-space samples of the in-progress eraser drag, or `null`.
   ///
@@ -89,36 +80,6 @@ class CanvasOverlayPainter extends CustomPainter {
     _paintSelectionBox(canvas, size);
     _paintLasso(canvas);
     _paintEraserTrail(canvas);
-    _paintHoverRing(canvas);
-  }
-
-  /// Draws the tool hover ring at [hoverPointWorld], if any.
-  void _paintHoverRing(Canvas canvas) {
-    final Offset? hoverPoint = hoverPointWorld;
-    if (hoverPoint == null) {
-      return;
-    }
-    // Skip the static hover ring while an eraser drag is live — the eraser
-    // footprint at the drag head already shows the cursor.
-    if (isEraserHover && (eraserPath?.isNotEmpty ?? false)) {
-      return;
-    }
-
-    final Offset center = CanvasTransform.toScreen(viewport, hoverPoint);
-    final double radius = hoverRadius;
-    if (radius <= 0) {
-      return;
-    }
-
-    if (isEraserHover) {
-      _strokeEraserCircle(canvas, center, radius);
-    } else {
-      final Paint paint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = _onPaper.withValues(alpha: 0.4);
-      canvas.drawCircle(center, radius, paint);
-    }
   }
 
   /// Draws the eraser footprint and the trail it has swept this drag.
@@ -413,9 +374,6 @@ class CanvasOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(CanvasOverlayPainter oldDelegate) =>
       oldDelegate.viewport != viewport ||
-      oldDelegate.hoverPointWorld != hoverPointWorld ||
-      oldDelegate.hoverRadius != hoverRadius ||
-      oldDelegate.isEraserHover != isEraserHover ||
       !identical(oldDelegate.eraserPath, eraserPath) ||
       oldDelegate.eraserRadius != eraserRadius ||
       !identical(oldDelegate.lassoPath, lassoPath) ||
@@ -423,4 +381,69 @@ class CanvasOverlayPainter extends CustomPainter {
       oldDelegate.paperIsLight != paperIsLight ||
       oldDelegate.selectionBounds != selectionBounds ||
       oldDelegate.hasClipboardContent != hasClipboardContent;
+}
+
+/// Paints the tool hover ring alone, inside its own small repaint boundary.
+///
+/// The painter's canvas is only `2 × radius` square; the ring is drawn
+/// centred. The widget hosting this painter is *positioned* at the hover
+/// point, so pen movement is a compositor offset update — the ring's pixels
+/// are rasterised only when its radius, tool, or paper contrast changes.
+class HoverRingPainter extends CustomPainter {
+  const HoverRingPainter({
+    required this.radius,
+    required this.isEraser,
+    required this.paperIsLight,
+  });
+
+  /// Screen-space radius of the ring.
+  final double radius;
+
+  /// Whether the ring shows the eraser footprint style.
+  final bool isEraser;
+
+  /// Whether the paper underneath is light — picks the contrast colour.
+  final bool paperIsLight;
+
+  Color get _onPaper =>
+      paperIsLight ? const Color(0xFF1A1A1A) : const Color(0xFFFFFFFF);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (radius <= 0) {
+      return;
+    }
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    if (isEraser) {
+      canvas
+        ..drawCircle(
+          center,
+          radius,
+          Paint()..color = _onPaper.withValues(alpha: 0.08),
+        )
+        ..drawCircle(
+          center,
+          radius,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = _onPaper.withValues(alpha: 0.8),
+        );
+    } else {
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = _onPaper.withValues(alpha: 0.4),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(HoverRingPainter oldDelegate) =>
+      oldDelegate.radius != radius ||
+      oldDelegate.isEraser != isEraser ||
+      oldDelegate.paperIsLight != paperIsLight;
 }

@@ -11,7 +11,18 @@ import 'package:zenno/canvas/input/stylus_button_mapping.dart';
 import 'package:zenno/canvas/model/canvas_element.dart';
 import 'package:zenno/canvas/model/viewport_state.dart';
 import 'package:zenno/canvas/render/canvas_view.dart';
+import 'package:zenno/canvas/render/elements_painter.dart';
 import 'package:zenno/canvas/render/selection_overlay_geometry.dart';
+
+/// The paint scopes the canvas is currently split into, in tree order.
+List<ElementsPaintScope> _paintScopes(WidgetTester tester) {
+  return <ElementsPaintScope>[
+    for (final CustomPaint paint in tester.widgetList<CustomPaint>(
+      find.byType(CustomPaint),
+    ))
+      if (paint.painter case final ElementsPainter painter) painter.scope,
+  ];
+}
 
 Future<void> _pumpCanvas(
   WidgetTester tester,
@@ -482,6 +493,64 @@ void main() {
     expect(controller.activeTool, CanvasTool.pen);
     expect(controller.hasSelection, isTrue);
     expect(controller.viewport, ViewportState.initial);
+  });
+
+  testWidgets('a dragged selection moves in its own layer', (tester) async {
+    // The canvas under a moving selection must not be repainting to follow it.
+    // Mid-drag the tree splits in two — everything else, and the selection —
+    // and the offset lives in a transform above the second one, so the drag
+    // costs a composited shift instead of a repaint of the whole viewport.
+    final CanvasController controller = CanvasController()
+      ..addElementToStore(
+        const TextElement(
+          id: 'note',
+          zIndex: 0,
+          worldBounds: Rect.fromLTWH(80, 80, 40, 40),
+          text: 'Move me',
+          color: 0xFFFFFFFF,
+          fontSize: 18,
+        ),
+      )
+      ..setSelection(<String>{'note'});
+    addTearDown(controller.dispose);
+    await _pumpCanvas(tester, controller);
+
+    expect(_paintScopes(tester), <ElementsPaintScope>[ElementsPaintScope.all]);
+
+    final TestGesture touch = await tester.createGesture(
+      kind: PointerDeviceKind.touch,
+    );
+    await touch.down(const Offset(100, 100));
+    await touch.moveBy(const Offset(40, 10));
+    await tester.pump();
+
+    expect(_paintScopes(tester), <ElementsPaintScope>[
+      ElementsPaintScope.unselected,
+      ElementsPaintScope.selected,
+    ]);
+    final Transform float = tester.widget<Transform>(
+      find
+          .ancestor(
+            of: find.byWidgetPredicate(
+              (Widget widget) =>
+                  widget is CustomPaint &&
+                  widget.painter is ElementsPainter &&
+                  (widget.painter! as ElementsPainter).scope ==
+                      ElementsPaintScope.selected,
+            ),
+            matching: find.byType(Transform),
+          )
+          .first,
+    );
+    // At the identity viewport a world drag is the same offset on screen.
+    expect(float.transform.getTranslation().x, closeTo(40, 0.001));
+    expect(float.transform.getTranslation().y, closeTo(10, 0.001));
+
+    await touch.up();
+    await tester.pump();
+
+    // Committed: one painter again, so nothing paints the note twice.
+    expect(_paintScopes(tester), <ElementsPaintScope>[ElementsPaintScope.all]);
   });
 
   testWidgets('two fingers on selected content scale it directly', (

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zenno — Pen Feel Regression Plan</title>
+<style>
+  :root {
+    --paper: #F7F3EA;
+    --panel: #EFE8DA;
+    --panel-2: #E9E1D0;
+    --ink: #241F17;
+    --ink-soft: #5C554A;
+    --ink-faint: #8A8274;
+    --accent: #C97B4A;
+    --accent-deep: #A85F33;
+    --line: #DCD3C0;
+    --good: #4A7A56;
+    --warn: #B08A2E;
+    --crit: #A8442E;
+    --code-bg: #EBE4D4;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151512;
+      --panel: #1D1C18;
+      --panel-2: #24221D;
+      --ink: #E8E4DA;
+      --ink-soft: #ABA599;
+      --ink-faint: #7E786C;
+      --accent: #D8946C;
+      --accent-deep: #E3A87F;
+      --line: #33302A;
+      --good: #7FAE8C;
+      --warn: #CBA84E;
+      --crit: #D07156;
+      --code-bg: #24221C;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.6;
+    padding: 0 24px 96px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-deep); font-weight: 600; margin-bottom: 14px;
+  }
+  h1 { font-family: var(--serif); font-size: 40px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; }
+  .lede { margin-top: 18px; color: var(--ink-soft); font-size: 17px; max-width: 62ch; }
+
+  h2 {
+    font-family: var(--serif); font-size: 26px; font-weight: 600;
+    margin: 56px 0 6px; padding-top: 10px;
+  }
+  h2 .num { color: var(--accent); font-family: var(--mono); font-size: 17px; margin-right: 10px; }
+  .sub { color: var(--ink-faint); font-size: 14px; margin-bottom: 22px; }
+
+  h3 { font-size: 16.5px; font-weight: 650; margin: 26px 0 8px; }
+  p { margin: 10px 0; max-width: 72ch; }
+  ul, ol { margin: 10px 0 10px 22px; max-width: 72ch; }
+  li { margin: 5px 0; }
+
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1.5px 5px; border-radius: 4px; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; margin: 14px 0; font-size: 13px; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; font-size: 13px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 20px 22px; margin: 16px 0;
+  }
+  .card.crit { border-left: 3px solid var(--crit); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.good { border-left: 3px solid var(--good); }
+
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.06em; padding: 2px 8px; border-radius: 20px;
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--ink-soft); vertical-align: 2px; margin-left: 8px; font-weight: 600;
+  }
+  .chip.crit { color: var(--crit); border-color: var(--crit); }
+  .chip.warn { color: var(--warn); border-color: var(--warn); }
+  .chip.good { color: var(--good); border-color: var(--good); }
+
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-faint); font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; font-weight: 600; }
+  td code { font-size: 12.5px; }
+
+  .files { font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); margin-top: 10px; }
+  .files span { display: block; }
+
+  hr { border: none; border-top: 1px solid var(--line); margin: 48px 0; }
+  .foot { color: var(--ink-faint); font-size: 13.5px; margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Zenno · Regression Fix · 2026-07-28</div>
+  <h1>Making the pen write like an iPad</h1>
+  <p class="lede">
+    Three complaints after the last pen change: lasso got slower, a light tap leaves
+    no dot, and handwriting looks wrong. Two of the three share one root cause, and
+    it is not subtle — the stroke taper is measured in absolute units while strokes
+    are not, so every short stroke is tapered into a hairline.
+  </p>
+</header>
+
+<h2><span class="num">1</span>Diagnosis</h2>
+<div class="sub">Measured, not guessed. Each finding below was reproduced before anything was written.</div>
+
+<div class="card crit">
+  <h3>R1 · The taper is absolute; a stroke's length is not <span class="chip crit">root cause</span></h3>
+  <p>
+    <code>buildStrokeOutline</code> passes <code>customTaper: taperLengthFactor * size</code>
+    to <code>perfect_freehand</code> at <em>both</em> ends. For the pen that is
+    <code>2 × size</code> per end. <code>customTaper</code> is an absolute arc length:
+    the radius ramps from zero over that distance. So any stroke shorter than
+    <code>4 × size</code> is entirely taper — the ramps from both ends overlap and
+    cancel, and the outline collapses.
+  </p>
+  <p>Probe, pen tool, <code>size: 4</code> (so taper = 8 units per end):</p>
+<pre><code>pressure  length   outline w × h
+0.5       0.2      0.000 × 0.020     &lt;- a tap: nothing
+0.5       1.0      1.000 × 0.020     &lt;- a period: hairline
+0.5       3.0      3.000 × 0.020     &lt;- a comma: hairline
+0.5       8.0      8.000 × 3.500     &lt;- finally has width
+1.0       20.0    20.000 × 6.200     &lt;- full width</code></pre>
+  <p>
+    This is <strong>both</strong> reported ink bugs. The dot is the obvious victim.
+    The less obvious one: normal handwriting at a normal zoom is made of strokes
+    3–15 units long — the crossbar of a <em>t</em>, the dot of an <em>i</em>, the
+    tick of an <em>r</em>. Every one of them renders as a sliver while the long
+    sweeps render at full width. The inconsistency is what reads as "ugly".
+  </p>
+  <p>
+    The single-point <code>_dotPath</code> fallback does not save the tap, because
+    a tap is almost never one point: <code>_appendPenUpSample</code> force-appends the
+    pointer-up position, and a real nib always moves a fraction of a unit between
+    down and up. Two points, sub-unit apart, fully tapered — invisible.
+  </p>
+</div>
+
+<div class="card crit">
+  <h3>R2 · Smoothing was moved from space to time <span class="chip crit">root cause</span></h3>
+  <p>
+    The previous change set <code>streamline: 0</code> and moved all filtering into
+    <code>PenInputProcessor</code> as an exponential filter with a time constant. The
+    stated reason — "don't low-pass twice" — was right about double-filtering and
+    wrong about which filter to keep.
+  </p>
+  <p>
+    <code>streamline</code> is a <em>spatial</em> low-pass on the centreline. It fits a
+    cleaner curve through the samples; its output depends only on the shape you drew.
+    A temporal filter's output depends on <em>how fast</em> you drew and on the
+    device's report rate. Two identical letters written at different speeds come out
+    as different shapes. That is exactly the instability described as bad penmanship,
+    and it is the thing Apple's engine does not do.
+  </p>
+  <p>
+    Worse, the temporal filter lags, so <code>_appendPenUpSample</code> then jumps the
+    stroke from the trailing filtered position to the raw lift position — a visible
+    hook at the end of every stroke.
+  </p>
+</div>
+
+<div class="card warn">
+  <h3>R3 · The lasso keeps every raw sample and copies the list on every repaint <span class="chip warn">perf</span></h3>
+  <p>
+    <code>appendLasso</code> has no minimum-distance filter — unlike the eraser
+    (<code>_eraseSampleMinDistanceWorld</code>) and the pen
+    (<code>_strokeSampleMinDistanceWorld</code>), both of which thin their input. The
+    S Pen reports at up to 240&nbsp;Hz and Flutter delivers every historical sample as
+    its own move event, so a two-second loop accumulates thousands of vertices.
+  </p>
+  <p>Each of those vertices then costs three times over:</p>
+  <ul>
+    <li><code>appendLasso</code> fires <code>_notifyOverlay()</code>, repainting the overlay layer.</li>
+    <li>The <code>lassoPath</code> getter allocates a fresh <code>List.unmodifiable</code> wrapper on every build — <em>O(n)</em> per frame.</li>
+    <li><code>_paintLasso</code> rebuilds the whole screen-space <code>Path</code> from scratch, projecting every point — <em>O(n)</em> per frame.</li>
+  </ul>
+  <p>Total work is quadratic in loop length. That is the slowdown.</p>
+</div>
+
+<div class="card warn">
+  <h3>R4 · The predicted tip overshoots, then snaps back <span class="chip warn">feel</span></h3>
+  <p>
+    <code>LiveStrokePathCache._withPredictedTip</code> extends the drawn tail ~0.8 of the
+    last sample's travel. It exists to hide latency, but it only affects the
+    <em>live</em> path — on commit the extrapolated tip disappears and the stroke
+    visibly retracts. Every stroke ends with a small flick-and-shrink.
+  </p>
+</div>
+
+<div class="card warn">
+  <h3>R5 · Raw pressure noise becomes width noise <span class="chip warn">feel</span></h3>
+  <p>
+    Pressure goes from the digitiser straight into the stroke point with no filtering,
+    and <code>thinning: 0.55</code> is a strong coupling. S Pen pressure is noisy at
+    the ±0.03–0.05 level, which becomes a visible ripple along the edge of a slow
+    stroke. The sample filter even has an explicit <code>pressureChanged &gt;= 0.035</code>
+    branch that <em>admits extra samples</em> on pressure noise alone.
+  </p>
+</div>
+
+<hr>
+
+<h2><span class="num">2</span>What "iPad feel" actually is</h2>
+<div class="sub">Naming the target so the fixes are checkable against something.</div>
+
+<table>
+  <tr><th>Property</th><th>What it means</th><th>Where Zenno is now</th></tr>
+  <tr>
+    <td><strong>Shape is speed-invariant</strong></td>
+    <td>The same letter written fast and slow produces the same geometry. Filtering is spatial, not temporal.</td>
+    <td>Violated — R2.</td>
+  </tr>
+  <tr>
+    <td><strong>Width is consistent</strong></td>
+    <td>A short stroke and a long stroke at the same pressure are the same thickness.</td>
+    <td>Violated — R1.</td>
+  </tr>
+  <tr>
+    <td><strong>Every touch marks</strong></td>
+    <td>The lightest tap leaves a round, visible dot. There is no threshold below which the pen does nothing.</td>
+    <td>Violated — R1.</td>
+  </tr>
+  <tr>
+    <td><strong>Ends are asymmetric</strong></td>
+    <td>A pen sets down blunt and lifts to a point. The entry taper is short; the exit taper is long.</td>
+    <td>Symmetric 2×size both ends.</td>
+  </tr>
+  <tr>
+    <td><strong>Width has a floor</strong></td>
+    <td>Light pressure thins the line, it never erases it. Apple's minimum is a large fraction of nominal.</td>
+    <td><code>thinning: 0.55</code> with no floor.</td>
+  </tr>
+  <tr>
+    <td><strong>No visible correction</strong></td>
+    <td>Ink never moves after it is laid down. No snap-back, no retraction.</td>
+    <td>Violated — R4.</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2><span class="num">3</span>The fixes</h2>
+<div class="sub">Eight changes. Each names its file and the property from §2 it restores.</div>
+
+<div class="card">
+  <h3>F1 · Clamp the taper to the stroke's own length <span class="chip crit">fixes the dot + the handwriting</span></h3>
+  <p>
+    Measure the centreline's arc length and cap each end's taper so the two ramps can
+    never meet. A stroke keeps a full-width middle at any length.
+  </p>
+<pre><code>final double arcLength = _arcLength(points);
+// Neither ramp may consume more than 40% of the stroke, so a full-width
+// middle always survives — the taper shapes the ends, it cannot eat the line.
+final double budget = arcLength * 0.4;
+final double startTaper = math.min(style.startTaperFactor * size, budget);
+final double endTaper   = math.min(style.endTaperFactor   * size, budget);</code></pre>
+  <div class="files"><span>lib/canvas/engine/stroke_builder.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>F2 · Split the taper into entry and exit <span class="chip">ends are asymmetric</span></h3>
+  <p>
+    <code>StrokeToolStyle.taperLengthFactor</code> becomes
+    <code>startTaperFactor</code> + <code>endTaperFactor</code>. The pen goes to
+    <code>0.35</code> entry / <code>1.6</code> exit: a definite start, a lifting finish.
+    Chisel tools stay at zero on both.
+  </p>
+  <div class="files"><span>lib/canvas/engine/stroke_style.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>F3 · Any stroke shorter than a nib-width is a dot <span class="chip crit">every touch marks</span></h3>
+  <p>
+    Below <code>0.75 × size</code> of total travel there is no line to draw, only a
+    mark. Route it to <code>_dotPath</code> at the stroke's peak pressure, and raise the
+    dot's floor from <code>0.5 + 0.5p</code> to <code>0.62 + 0.38p</code> of the radius so a
+    feather-light tap is still clearly a dot rather than a speck.
+  </p>
+  <div class="files"><span>lib/canvas/engine/stroke_builder.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>F4 · Put smoothing back in space <span class="chip crit">shape is speed-invariant</span></h3>
+  <p>
+    Restore <code>streamline</code>, driven by the profile: <code>streamline = smoothing × 0.62</code>
+    (default <code>0.35 → 0.217</code>, in the range the library is tuned for). Then shrink
+    the temporal filter until it only removes hand tremor: <code>_maxTauSeconds</code>
+    <code>0.045 → 0.012</code>, and gate it to slow motion only, so at writing speed the
+    processor is effectively a pass-through and the shape comes entirely from
+    <code>streamline</code>.
+  </p>
+  <p>
+    This keeps the anti-tremor benefit that motivated the original change while
+    removing the speed-dependence that made it feel wrong. The two filters no longer
+    compound because they now act in different regimes: temporal below the tremor
+    threshold, spatial above it.
+  </p>
+  <div class="files">
+    <span>lib/canvas/engine/stroke_builder.dart</span>
+    <span>lib/canvas/input/pen_input_processor.dart</span>
+  </div>
+</div>
+
+<div class="card">
+  <h3>F5 · Smooth pressure, not position <span class="chip">width is consistent</span></h3>
+  <p>
+    Add a short exponential filter over mapped pressure inside
+    <code>PenInputProcessor</code> — pressure is a scalar with no geometry, so filtering
+    it costs nothing in shape or latency. Drop <code>thinning</code> 0.55 → 0.42 and add a
+    pressure floor so the thinnest line is 45% of nominal rather than approaching zero.
+  </p>
+  <div class="files">
+    <span>lib/canvas/input/pen_input_processor.dart</span>
+    <span>lib/canvas/engine/stroke_style.dart</span>
+  </div>
+</div>
+
+<div class="card">
+  <h3>F6 · Delete the predicted tip <span class="chip">no visible correction</span></h3>
+  <p>
+    Remove <code>_withPredictedTip</code> outright. With F4 the input filter no longer
+    lags meaningfully, so the latency it was compensating for is largely gone — and
+    ink that retracts on commit is worse than ink that arrives a frame late.
+  </p>
+  <div class="files"><span>lib/canvas/render/live_stroke_painter.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>F7 · Thin the lasso's input, cache its view <span class="chip warn">fixes the slowdown</span></h3>
+  <ul>
+    <li>Minimum-distance filter in <code>appendLasso</code>, mirroring the eraser's: about 1.5 screen px, converted to world units at the current zoom.</li>
+    <li>Cache the unmodifiable <code>lassoPath</code> view and invalidate it on mutation — the same <code>_eraserPathView</code> pattern already in the file. Removes the per-frame copy.</li>
+    <li>Cap the retained loop at 4000 vertices as a backstop, so a pathological drag cannot degrade without bound.</li>
+  </ul>
+  <div class="files"><span>lib/canvas/canvas_controller.dart</span></div>
+</div>
+
+<div class="card">
+  <h3>F8 · Stop admitting samples on pressure noise <span class="chip">width is consistent</span></h3>
+  <p>
+    Raise the <code>pressureChanged</code> threshold from <code>0.035</code> to <code>0.09</code>,
+    above the S Pen's noise floor. Combined with F5 this stops noise from both
+    thickening the buffer and rippling the edge.
+  </p>
+  <div class="files"><span>lib/canvas/canvas_controller.dart</span></div>
+</div>
+
+<hr>
+
+<h2><span class="num">4</span>Verification</h2>
+<div class="sub">Each fix gets a test that fails before it and passes after.</div>
+
+<table>
+  <tr><th>Fix</th><th>Test</th><th>Assertion</th></tr>
+  <tr>
+    <td>F1</td>
+    <td><code>stroke_builder_test</code></td>
+    <td>A 3-unit stroke at <code>size: 4</code> has an outline height &gt; 1.5 — the old code gives 0.02.</td>
+  </tr>
+  <tr>
+    <td>F1</td>
+    <td><code>stroke_builder_test</code></td>
+    <td>Outline height is within 25% across lengths 4, 10, 40 at equal pressure — width no longer depends on length.</td>
+  </tr>
+  <tr>
+    <td>F2</td>
+    <td><code>stroke_builder_test</code></td>
+    <td>The outline is wider near the start than near the end of a constant-pressure stroke.</td>
+  </tr>
+  <tr>
+    <td>F3</td>
+    <td><code>stroke_builder_test</code></td>
+    <td>Two points 0.2 units apart at pressure 0.05 give a round outline with width &gt; 1.</td>
+  </tr>
+  <tr>
+    <td>F4</td>
+    <td><code>pen_input_processor_test</code></td>
+    <td>The same 10-point path replayed at 4× speed lands within 1 unit of the slow replay.</td>
+  </tr>
+  <tr>
+    <td>F5</td>
+    <td><code>pen_input_processor_test</code></td>
+    <td>Alternating ±0.04 pressure noise emerges with under a third of its input amplitude.</td>
+  </tr>
+  <tr>
+    <td>F7</td>
+    <td><code>canvas_perf_test</code></td>
+    <td>2000 raw lasso moves along a 200-unit loop retain under 400 vertices.</td>
+  </tr>
+  <tr>
+    <td>F7</td>
+    <td><code>canvas_perf_test</code></td>
+    <td>Reading <code>lassoPath</code> twice without a mutation returns the identical object.</td>
+  </tr>
+</table>
+
+<p>Plus the standing gates: <code>flutter analyze</code> clean, the full suite green, release APK builds.</p>
+
+<hr>
+
+<h2><span class="num">5</span>Sequence</h2>
+<ol>
+  <li><strong>F1–F3</strong> — the outline geometry. Highest impact, lowest risk, entirely inside two pure functions.</li>
+  <li><strong>F4–F5</strong> — the input filter. Changes feel; needs on-device confirmation.</li>
+  <li><strong>F6</strong> — remove prediction. Pure deletion.</li>
+  <li><strong>F7–F8</strong> — the lasso and the sample gate. Independent of the ink work.</li>
+  <li>Tests, <code>analyze</code>, arm64-v8a <code>zenno.apk</code>.</li>
+</ol>
+
+<div class="card good">
+  <h3>Data safety</h3>
+  <p>
+    Nothing here touches persistence, the ink codec, or any schema. Committed strokes
+    store <em>points</em>, not outlines — the outline is rebuilt from those points on
+    every paint. So all eight changes alter only how existing data is drawn. Notes
+    already on disk render with the new geometry the moment the app opens, and no
+    stored byte changes.
+  </p>
+</div>
+
+<div class="foot">
+  Zenno · pen feel regression · plan written 2026-07-28
+</div>
+
+</div>
+</body>
+</html>

@@ -184,10 +184,24 @@ abstract final class CanvasGeometry {
   /// Stops as soon as the majority is reached or becomes impossible, while
   /// preserving the exact result of `polygonCoverage(polygon, points) > 0.5`.
   static bool polygonMajorityInside(List<Offset> polygon, List<Offset> points) {
+    return majorityInside(
+      points,
+      (Offset point) => polygonContainsPoint(polygon, point),
+    );
+  }
+
+  /// Whether strictly more than half of [points] satisfy [isInside].
+  ///
+  /// Split out from [polygonMajorityInside] so lasso selection can swap in a
+  /// grid-accelerated containment test without duplicating the early exits.
+  static bool majorityInside(
+    List<Offset> points,
+    bool Function(Offset point) isInside,
+  ) {
     final int requiredInside = points.length ~/ 2 + 1;
     var inside = 0;
     for (var i = 0; i < points.length; i++) {
-      if (polygonContainsPoint(polygon, points[i])) {
+      if (isInside(points[i])) {
         inside++;
         if (inside >= requiredInside) {
           return true;

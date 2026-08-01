@@ -134,4 +134,120 @@ void main() {
     );
     expect(Color(white.backgroundColor).computeLuminance(), greaterThan(0.5));
   });
+
+  group('lasso input thinning', () {
+    test('a dense drag retains only the vertices that shape the loop', () {
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      // 2000 raw moves around a 200-unit loop, the rate an S Pen actually
+      // reports at once Flutter expands its historical samples. Every one of
+      // them used to be retained, repaint the overlay, and be re-projected.
+      controller.beginLasso(Offset.zero);
+      for (int i = 0; i < 2000; i++) {
+        final double t = i / 2000;
+        controller.appendLasso(Offset(200 * t, 40 * (t - t * t)));
+      }
+
+      expect(controller.lassoPath!.length, lessThan(400));
+      expect(
+        controller.lassoPath!.length,
+        greaterThan(60),
+        reason: 'thinning must not flatten the loop into a few segments',
+      );
+    });
+
+    test('reading the lasso path twice does not copy it twice', () {
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      controller.beginLasso(Offset.zero);
+      controller.appendLasso(const Offset(50, 0));
+      final List<Offset>? first = controller.lassoPath;
+
+      // The overlay reads this on every repaint, and appending repaints. A
+      // fresh copy per read made tracing a loop quadratic in its length.
+      expect(identical(controller.lassoPath, first), isTrue);
+
+      controller.appendLasso(const Offset(100, 0));
+      expect(identical(controller.lassoPath, first), isFalse);
+    });
+
+    test('the retained loop is bounded however long the drag runs', () {
+      final controller = CanvasController();
+      addTearDown(controller.dispose);
+
+      controller.beginLasso(Offset.zero);
+      for (int i = 0; i < 20000; i++) {
+        controller.appendLasso(Offset(i * 3.0, (i % 2) * 3.0));
+      }
+
+      expect(controller.lassoPath!.length, lessThanOrEqualTo(4000));
+    });
+  });
+
+  group('selection preview cost', () {
+    CanvasController seeded({int elements = 40}) {
+      final controller = CanvasController();
+      for (var i = 0; i < elements; i++) {
+        controller.addElementToStore(_ink('ink-$i', i * 10.0, zIndex: i));
+      }
+      return controller;
+    }
+
+    test('a drag reuses the culled element list instead of rebuilding it', () {
+      final CanvasController controller = seeded();
+      addTearDown(controller.dispose);
+      controller.setSelection(<String>['ink-0', 'ink-1']);
+      controller.beginSelectionDrag();
+
+      // Every pointer sample used to drop this list, so each drag frame
+      // re-queried the spatial index and re-sorted everything on screen.
+      final List<CanvasElement> culled = controller.viewportElements;
+      controller.updateSelectionDrag(const Offset(6, 0));
+      controller.updateSelectionDrag(const Offset(6, 0));
+
+      expect(identical(controller.viewportElements, culled), isTrue);
+    });
+
+    test('cached selection bounds still track drags and edits', () {
+      final CanvasController controller = seeded();
+      addTearDown(controller.dispose);
+      controller.setSelection(<String>['ink-0']);
+
+      final Rect? initial = controller.selectionBounds;
+      expect(initial, isNotNull);
+
+      controller.beginSelectionDrag();
+      controller.updateSelectionDrag(const Offset(25, 12));
+      expect(controller.selectionBounds, initial!.shift(const Offset(25, 12)));
+
+      controller.endSelectionDrag();
+      expect(controller.selectionBounds, initial.shift(const Offset(25, 12)));
+
+      // Growing the selection has to widen the cached box, not keep serving
+      // the old one.
+      controller.setSelection(<String>['ink-0', 'ink-39']);
+      expect(
+        controller.selectionBounds!.height,
+        greaterThan(initial.height * 2),
+      );
+
+      controller.clearSelection();
+      expect(controller.selectionBounds, isNull);
+    });
+
+    test('deleting a selected element reshapes the cached bounds', () {
+      final CanvasController controller = seeded();
+      addTearDown(controller.dispose);
+      controller.setSelection(<String>['ink-0', 'ink-39']);
+      final Rect wide = controller.selectionBounds!;
+
+      controller.deleteSelection();
+
+      expect(controller.selectionBounds, isNull);
+      controller.setSelection(<String>['ink-1']);
+      expect(controller.selectionBounds!.height, lessThan(wide.height));
+    });
+  });
 }
