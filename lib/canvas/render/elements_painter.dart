@@ -261,6 +261,23 @@ class _TilePicture {
   int lastUsed;
 }
 
+/// Which slice of the committed elements a painter draws.
+///
+/// Splitting the selection out lets it be moved as its own composited layer:
+/// the layer underneath holds still through a whole drag instead of repainting
+/// every visible element per pointer sample.
+enum ElementsPaintScope {
+  /// Every element handed to the painter.
+  all,
+
+  /// Everything except the current selection.
+  unselected,
+
+  /// The current selection alone, at its committed position — whatever is
+  /// previewing the move applies the offset above this painter.
+  selected,
+}
+
 class ElementsPainter extends CustomPainter {
   /// Creates a painter for the committed [elements] under [viewport].
   ///
@@ -283,6 +300,7 @@ class ElementsPainter extends CustomPainter {
     this.pendingEraseIds = const <String>{},
     this.selectionDragDelta = Offset.zero,
     this.selectionTransformPreview,
+    this.scope = ElementsPaintScope.all,
   });
 
   /// The committed elements, in paint order (ascending z-index).
@@ -341,6 +359,9 @@ class ElementsPainter extends CustomPainter {
 
   /// Monotonic token bumped when [selectionTransformPreview] changes.
   final int? selectionPreviewRevision;
+
+  /// Which elements this painter is responsible for drawing.
+  final ElementsPaintScope scope;
 
   /// Opacity applied to highlighter ink so it reads as a translucent marker.
   static const double _highlighterOpacity = 0.35;
@@ -416,6 +437,9 @@ class ElementsPainter extends CustomPainter {
   bool _canUseTileCache(Rect visibleWorldRect) {
     if (_dragging ||
         _transforming ||
+        // A tile picture holds every element in its square, so it cannot stand
+        // in for a painter that is deliberately drawing only some of them.
+        scope != ElementsPaintScope.all ||
         selectedIds.isNotEmpty ||
         // Pending-erase elements are faded individually, which a shared tile
         // picture cannot express.
@@ -436,6 +460,9 @@ class ElementsPainter extends CustomPainter {
     // culled bounds.
     for (final CanvasElement element in elements) {
       final bool selected = selectedIds.contains(element.id);
+      if (!_scopeIncludes(selected)) {
+        continue;
+      }
       if (visibleIds != null &&
           !visibleIds.contains(element.id) &&
           !(selected && (_dragging || _transforming))) {
@@ -458,6 +485,14 @@ class ElementsPainter extends CustomPainter {
       }
       _paintElement(canvas, element, selected: selected);
     }
+  }
+
+  bool _scopeIncludes(bool selected) {
+    return switch (scope) {
+      ElementsPaintScope.all => true,
+      ElementsPaintScope.unselected => !selected,
+      ElementsPaintScope.selected => selected,
+    };
   }
 
   /// Opacity applied to an element the live eraser drag has crossed.
@@ -973,6 +1008,7 @@ class ElementsPainter extends CustomPainter {
         ? oldDelegate.selectionPreviewRevision != selectionPreviewRevision
         : oldDelegate.selectionTransformPreview != selectionTransformPreview;
     return elementsChanged ||
+        oldDelegate.scope != scope ||
         !identical(oldDelegate.spatialIndex, spatialIndex) ||
         oldDelegate.viewport != viewport ||
         selectionChanged ||

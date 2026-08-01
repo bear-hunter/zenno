@@ -1668,6 +1668,12 @@ class _CanvasViewState extends State<CanvasView> with WidgetsBindingObserver {
       _controller.viewportListenable,
       _controller.canvasStyleListenable,
     ]);
+    final Listenable selectionFloatListenable = Listenable.merge(<Listenable>[
+      _controller.viewportListenable,
+      _controller.elementsListenable,
+      _controller.selectionListenable,
+      _controller.selectionPreviewListenable,
+    ]);
     final Listenable elementsListenable = Listenable.merge(<Listenable>[
       _controller.viewportListenable,
       _controller.elementsListenable,
@@ -1757,17 +1763,52 @@ class _CanvasViewState extends State<CanvasView> with WidgetsBindingObserver {
                             _elementsTileCache.revision,
                           ),
                           selectionRevision: _controller.selectionRevision,
-                          selectionPreviewRevision:
-                              _controller.selectionPreviewRevision,
                           tileCache: _elementsTileCache,
                           selectedIds: _controller.selectedIds,
                           pendingEraseIds: _controller.pendingEraseIds,
-                          selectionDragDelta: _controller.selectionDragDelta,
-                          selectionTransformPreview:
-                              _controller.selectionTransformPreview,
+                          // A selection being moved is lifted into the layer
+                          // below and moved there, so this one holds still for
+                          // the whole gesture instead of repainting per sample.
+                          scope: _controller.isFloatingSelection
+                              ? ElementsPaintScope.unselected
+                              : ElementsPaintScope.all,
                         ),
                       ),
                     ),
+                  ),
+                  ListenableBuilder(
+                    listenable: selectionFloatListenable,
+                    builder: (context, _) {
+                      if (!_controller.isFloatingSelection) {
+                        return const SizedBox.shrink();
+                      }
+                      // Painted at the selection's committed position and moved
+                      // by the transform: the picture inside the boundary is
+                      // unchanged frame to frame, so a drag is a composited
+                      // offset rather than a re-record of every selected
+                      // element.
+                      return Transform(
+                        transform: CanvasTransform.worldTransformToScreen(
+                          _controller.viewport,
+                          _controller.selectionPreviewMatrix,
+                        ),
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: ElementsPainter(
+                              elements: _controller.viewportElements,
+                              spatialIndex: _controller.spatialIndex,
+                              allElementsById: _controller.elementsById,
+                              paintOrderById: _controller.paintOrderById,
+                              viewport: _controller.viewport,
+                              elementsRevision: _controller.elementsRevision,
+                              selectionRevision: _controller.selectionRevision,
+                              selectedIds: _controller.selectedIds,
+                              scope: ElementsPaintScope.selected,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   ListenableBuilder(
                     listenable: liveListenable,

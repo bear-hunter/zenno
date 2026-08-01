@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zenno Lasso 20x-Scale Performance Plan</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #1f2430;
+      --text: #f5f3ea;
+      --muted: #b8bfcc;
+      --quiet: #8993a3;
+      --line: rgba(255, 255, 255, 0.13);
+      --gold: #e8b84b;
+      --teal: #4bd6c7;
+      --blue: #82b8ff;
+      --green: #75df8a;
+      --red: #ff8e8e;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.58;
+    }
+
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 34px 20px 72px;
+    }
+
+    .hero {
+      padding: 20px 0 24px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 5vw, 48px);
+      line-height: 1.05;
+    }
+
+    .subtitle { color: var(--muted); max-width: 70ch; margin: 0; }
+
+    h2 {
+      margin: 40px 0 12px;
+      font-size: 26px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 6px;
+    }
+
+    h3 { margin: 24px 0 8px; font-size: 19px; }
+
+    p, li { color: var(--muted); }
+    strong { color: var(--text); }
+
+    code {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      background: var(--panel-2);
+      padding: 1px 6px;
+      border-radius: 5px;
+      color: var(--gold);
+    }
+
+    pre {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      overflow-x: auto;
+    }
+
+    pre code { background: none; padding: 0; color: var(--text); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 15px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+      color: var(--muted);
+    }
+
+    th { background: var(--panel-2); color: var(--text); }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 14px 0;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 2px 10px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .tag.root { background: rgba(255, 142, 142, 0.15); color: var(--red); }
+    .tag.fix { background: rgba(117, 223, 138, 0.15); color: var(--green); }
+    .tag.verify { background: rgba(130, 184, 255, 0.15); color: var(--blue); }
+    .tag.risk { background: rgba(232, 184, 75, 0.15); color: var(--gold); }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: #0f1115;
+      font-weight: 700;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <h1>Lasso at 20x Scale — Round 2</h1>
+      <p class="subtitle">
+        Round 1 (branch <code>fix/lasso-selection-performance</code>, commit
+        <code>0c2d8fe</code>) simplified the committed loop, added an early-exit
+        majority test, and capped coverage samples. That made a large mindmap fast —
+        but a 20x-larger one still chokes the tablet. Round 1 shrank the constants;
+        the algorithm is still linear-in-the-loop per element at commit, and after the
+        commit the renderer silently falls back to full vector repaints every frame for
+        as long as anything is selected. This plan fixes both, with no change to how
+        lasso selection behaves.
+      </p>
+      <p class="subtitle" style="margin-top:10px">
+        <strong>Date:</strong> 2026-08-01 &nbsp;·&nbsp;
+        <strong>Files:</strong> <code>lib/canvas/canvas_controller.dart</code>,
+        <code>lib/canvas/tools/canvas_geometry.dart</code>,
+        <code>lib/canvas/render/elements_painter.dart</code> &nbsp;·&nbsp;
+        <strong>Target:</strong> Galaxy Tab S9 FE
+      </p>
+    </div>
+
+    <div class="card" style="border-color: rgba(117,223,138,0.4)">
+      <span class="tag fix">IMPLEMENTED 2026-08-01</span>
+      <strong>Shipped on <code>perf/lasso-20x-scale</code>. Measured results:</strong>
+      <table>
+        <tr><th>Case</th><th>Before</th><th>After</th></tr>
+        <tr>
+          <td>Commit, 1,000 strokes (debug VM)</td>
+          <td>78 ms</td>
+          <td>2.7 ms <em>(29x)</em></td>
+        </tr>
+        <tr>
+          <td>Commit, 10,000 strokes x 40 pts, 4,348 selected</td>
+          <td>—</td>
+          <td>22 ms</td>
+        </tr>
+        <tr>
+          <td>Commit, 20,000 strokes x 120 pts, 7,891 selected</td>
+          <td>—</td>
+          <td>33 ms</td>
+        </tr>
+        <tr>
+          <td>Committed layer repaints per drag frame</td>
+          <td>every visible element</td>
+          <td>none</td>
+        </tr>
+      </table>
+      <p>
+        Debug-VM numbers, so pessimistic against an AOT release build on the
+        tablet. 607 tests green, <code>flutter analyze</code> clean.
+        <strong>Step 5 was not needed</strong> — a worst-case commit lands inside
+        two frames without chunking.
+      </p>
+      <p>
+        <strong>Three deviations from the plan below, all deliberate:</strong>
+      </p>
+      <ul>
+        <li>
+          <strong>No halo in the grid (Step 1).</strong> Inflating each element's
+          <em>query</em> rectangle by its own reach is both simpler and tighter
+          than baking one global worst-case halo into the cells, and it makes the
+          rejection provable: a box inflated by <code>r</code> that misses the
+          loop entirely cannot have geometry within <code>r</code> of it, because
+          box inflation covers the Euclidean disc. A summed-area table over the
+          boundary cells makes <code>classifyRect</code> four array reads
+          regardless of element size.
+        </li>
+        <li>
+          <strong>The tile cache was left alone (Step 4).</strong> Reading it
+          closely killed the original plan: <code>_visibleTileCount &gt;
+          maxTiles</code> already disables tiles at overview zoom, which is
+          exactly where a 20x lasso happens — so excluding the selection from
+          tiles would have bought nothing in the case being fixed.
+        </li>
+        <li>
+          <strong>The selection floats in its own layer instead.</strong> Root
+          Cause B's real damage was per-frame repaints, and those are now gone at
+          <em>every</em> zoom: a drag splits the canvas into an unselected layer
+          that holds still and a selected layer moved by a widget transform, on
+          its own notification channel so the committed layer is never even woken.
+        </li>
+      </ul>
+      <p>
+        Two costs not in the original analysis turned up while implementing and
+        were fixed as part of Step 3: <code>viewportElements</code> was rebuilt
+        (spatial query + sort of everything on screen) once per pointer sample,
+        and it deduplicated the selection with <code>List.contains</code> —
+        selected x visible comparisons, tens of millions of them on a big
+        selection.
+      </p>
+    </div>
+
+    <h2>1. Where the Time Goes at 20x</h2>
+
+    <div class="card">
+      <span class="tag root">ROOT CAUSE A</span>
+      <strong>Commit: every candidate still pays O(loop) — and rejected candidates pay O(loop × stroke).</strong>
+      <ul>
+        <li>
+          A loop drawn around a 20x mindmap has a bounding box that covers the whole
+          canvas, so the spatial-index broad phase in <code>endLasso</code>
+          (<code>canvas_controller.dart:3371</code>) returns <em>every element</em> as a
+          candidate. The broad phase is dead weight at this scale.
+        </li>
+        <li>
+          After Round 1's RDP simplify, the loop still keeps <strong>S ≈ 150–500
+          vertices</strong> (a curvy hand-drawn loop at 2 px tolerance). Every
+          <code>polygonContainsPoint</code> call walks all S vertices.
+        </li>
+        <li>
+          Elements <strong>inside</strong> the loop are cheap now: the majority test
+          short-circuits after ~17 of 32 samples → ~17 × S ops each.
+        </li>
+        <li>
+          Elements <strong>inside the bbox but outside the loop</strong> are the killer.
+          The majority test fails (~16 × S ops), then they fall into the boundary-touch
+          fallback <code>polylinesWithinDistance(boundary, centerline, slop)</code>
+          (<code>canvas_geometry.dart:69</code>) — a nested segment-pair loop:
+          <strong>S × strokeSegments ≈ 400 × 200 = 80k+ ops per rejected stroke</strong>,
+          times three passes (two vertex sweeps + the pair loop). Thousands of such
+          elements → hundreds of millions of ops, synchronous at pen-up.
+        </li>
+        <li>
+          Fill strokes outside the loop are worse still:
+          <code>boundary.any(outlinePath.contains)</code> = S native
+          <code>Path.contains</code> calls each.
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <span class="tag root">ROOT CAUSE B</span>
+      <strong>After commit: the tile raster cache turns off while anything is selected.</strong>
+      <p>
+        <code>_canUseTileCache</code> (<code>elements_painter.dart:415</code>) returns
+        <code>false</code> whenever <code>selectedIds.isNotEmpty</code>. The moment a big
+        lasso selection exists, every frame — pan, zoom, selection drag, even idle
+        overlay repaints — re-paints <em>every visible element as vectors</em>. On a 20x
+        canvas that alone is a frame-budget blowout, and it lasts the entire lifetime of
+        the selection. This is why the tablet keeps struggling <em>after</em> the loop
+        closes, not just at pen-up.
+      </p>
+    </div>
+
+    <div class="card">
+      <span class="tag root">ROOT CAUSE C</span>
+      <strong>Per-frame O(N) selection-bounds scan.</strong>
+      <p>
+        The <code>selectionBounds</code> getter (<code>canvas_controller.dart:851</code>)
+        is documented as "read on every overlay repaint" and scans all elements whenever
+        a selection exists. With a selection active on a 20x canvas, every overlay frame
+        (including every frame of a selection drag) walks tens of thousands of elements
+        just to redraw the selection box.
+      </p>
+    </div>
+
+    <h2>2. Fix Steps</h2>
+
+    <div class="card">
+      <span class="step-num">0</span><span class="tag fix">PREREQ</span>
+      <strong>Merge Round 1 into <code>staging</code></strong>
+      <p>
+        <code>fix/lasso-selection-performance</code> (commit <code>0c2d8fe</code>:
+        <code>simplifyPolyline</code>, <code>polygonMajorityInside</code>, 32-sample
+        stride + its 152 lines of geometry tests) is <strong>not on
+        <code>staging</code></strong> — the tested APK came from the branch. Round 2
+        builds directly on those primitives, so merge first and confirm
+        <code>flutter analyze</code> + <code>flutter test</code> stay green.
+      </p>
+    </div>
+
+    <div class="card">
+      <span class="step-num">1</span><span class="tag fix">FIX</span>
+      <strong>Build a one-shot lasso region grid at commit (kills Root Cause A)</strong>
+      <p>
+        Add <code>LassoRegionGrid</code> (new, in
+        <code>lib/canvas/tools/</code>) — built once in <code>endLasso</code> from the
+        simplified loop, then thrown away:
+      </p>
+      <ul>
+        <li>
+          A uniform grid over the loop's bounding box (target ~128 cells on the long
+          axis, hard cap ~32k cells — a few hundred KB of bytes, transient).
+        </li>
+        <li>
+          <strong>Boundary cells:</strong> walk each of the S loop segments (supercover /
+          DDA), marking touched cells plus a halo of
+          <code>ceil((touchSlop + maxStrokeHalfWidth) / cellSize)</code> cells. Each
+          boundary cell keeps the indices of the segments crossing it.
+        </li>
+        <li>
+          <strong>Inside/outside cells:</strong> per grid row, compute the even-odd
+          crossings of the polygon at the row's center-y (O(S) per row) and classify the
+          non-boundary runs. Total build cost ≈ O(rows × S + cells) ≈ 100k ops — trivial,
+          once.
+        </li>
+      </ul>
+      <p>Then reuse it everywhere in the narrow phase:</p>
+      <ul>
+        <li>
+          <code>containsPoint(p)</code>: O(1) for points in decided cells; points in a
+          boundary cell fall back to the exact <code>polygonContainsPoint</code>. Result
+          is bit-identical to today's test.
+        </li>
+        <li>
+          <code>segmentsNear(rect)</code>: union of segment indices from the boundary
+          cells overlapping <code>rect</code> — the loop passes near any single element
+          only once or twice, so this is ~5–20 segments instead of all S.
+        </li>
+        <li>
+          <code>classifyRect(rect)</code>: <code>inside</code> / <code>outside</code> /
+          <code>boundary</code> — inside/outside only when the rect overlaps zero
+          boundary cells (then one corner's containsPoint decides), otherwise
+          <code>boundary</code>.
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <span class="step-num">2</span><span class="tag fix">FIX</span>
+      <strong>Bbox fast paths in <code>endLasso</code> — most elements never reach geometry</strong>
+      <p>For each candidate, classify its <code>worldBounds</code> inflated by
+        <code>touchSlop</code> (+ <code>stroke.width / 2</code> for ink) via
+        <code>classifyRect</code>:</p>
+      <ul>
+        <li>
+          <strong><code>inside</code></strong> → select immediately. (Every coverage
+          sample of an element whose inflated bbox is fully inside the polygon is
+          inside → the majority rule is trivially true. Same answer, zero geometry.)
+        </li>
+        <li>
+          <strong><code>outside</code></strong> → reject immediately. (No sample can be
+          inside, and no rendered geometry can reach within <code>touchSlop</code> of
+          the boundary — the inflation guarantees it. The quadratic fallback and the
+          <code>Path.contains</code> sweep for fills never run.)
+        </li>
+        <li>
+          <strong><code>boundary</code></strong> → run the existing narrow phase, but
+          accelerated:
+          <ul>
+            <li>majority test uses <code>grid.containsPoint</code> per sample;</li>
+            <li><code>polylinesWithinDistance</code> receives only
+              <code>grid.segmentsNear(inflatedBounds)</code> as the lasso side instead
+              of the full boundary (drop-in: build the local polyline list from those
+              segments);</li>
+            <li>fill strokes test only the vertices of those local segments against
+              <code>outlinePath.contains</code>.</li>
+          </ul>
+        </li>
+      </ul>
+      <p>
+        <strong>Expected:</strong> at 20x, the overwhelming majority of candidates are
+        cleanly inside or outside → O(bbox-cells) each. Only elements the loop actually
+        grazes (typically dozens, not thousands) do narrow-phase work, and that work
+        drops ~20–50x from the local-segment prefilter. Commit goes from seconds to a
+        few milliseconds.
+      </p>
+    </div>
+
+    <div class="card">
+      <span class="step-num">3</span><span class="tag fix">FIX</span>
+      <strong>Cache <code>selectionBounds</code> (kills Root Cause C)</strong>
+      <p>
+        Store the computed base rect in a field; invalidate on selection-set change,
+        element store mutation, layer-visibility change, and transform commit — all of
+        which already funnel through a handful of methods
+        (<code>_applySelectionIds</code>, store add/remove/replace, layer setters). The
+        per-frame getter becomes cache-hit + <code>shift(selectionDragDelta)</code>,
+        which is O(1). The existing empty-selection early return stays.
+      </p>
+    </div>
+
+    <div class="card">
+      <span class="step-num">4</span><span class="tag fix">FIX</span>
+      <strong>Keep the tile cache alive while a selection exists (kills Root Cause B)</strong>
+      <p>
+        Tiles already bake elements with <code>_paintUnselectedElement</code> (no halo),
+        so the cache content is selection-agnostic. Change the strategy from
+        "any selection disables tiles" to "selected elements are excluded from tiles and
+        painted on top":
+      </p>
+      <ul>
+        <li>
+          Pass <code>selectedIds</code> into tile picture recording; a tile's picture
+          skips selected elements. Key each tile's picture by whether it contained any
+          selected element, and invalidate exactly those tiles when the selection set
+          changes (bounds are known — reuse the damage path
+          <code>_invalidateBounds</code> per selected element's <code>worldBounds</code>).
+        </li>
+        <li>
+          Per frame: draw tiles (unselected content, cached), then vector-paint only the
+          <em>selected</em> elements on top with their halo — translated by
+          <code>selectionDragDelta</code> or transformed by the preview when dragging.
+        </li>
+        <li>
+          <code>_canUseTileCache</code> drops the <code>selectedIds.isNotEmpty</code>,
+          <code>_dragging</code>, and <code>_transforming</code> disqualifiers; the
+          pending-erase disqualifier stays.
+        </li>
+        <li>
+          On selection clear / commit of a move, re-invalidate the affected tiles once so
+          the elements bake back in.
+        </li>
+      </ul>
+      <p>
+        <strong>Cost model:</strong> selection commit and drag-end each pay a one-time
+        rebake of the tiles the selection touches; every frame in between pays
+        tiles + N<sub>selected</sub> vector paints instead of N<sub>visible</sub>. For
+        "select a region of a 20x canvas and drag it", that is the difference between
+        janking and 60/120 fps.
+      </p>
+      <p>
+        <span class="tag risk">DESIGN NOTE</span> Painting selected elements on top of
+        the tiles hoists them above overlapping unselected content while selected —
+        standard select-and-float behavior in canvas apps (they float during drag
+        anyway), but it is a visible z-order nuance. If it feels wrong in practice, the
+        fallback is per-tile two-layer pictures (below-selection / above-selection),
+        at the cost of tile-cache complexity. Start with float-on-top.
+      </p>
+    </div>
+
+    <div class="card">
+      <span class="step-num">5</span><span class="tag fix">CONTINGENCY</span>
+      <strong>Chunked commit — only if measurement says so</strong>
+      <p>
+        Instrument <code>endLasso</code> with a <code>Stopwatch</code> (debug/profile
+        log). If, after Steps 1–2, a worst-case 20x commit still exceeds ~2 frames
+        (&gt;16 ms), slice the candidate loop into batches processed across frames with
+        the lasso overlay held on screen until the selection lands. Do not build this
+        speculatively — the grid math says it should not be needed.
+      </p>
+    </div>
+
+    <h2>3. Verification</h2>
+
+    <div class="card">
+      <span class="tag verify">EQUIVALENCE</span>
+      <ul>
+        <li>
+          <strong>Grid vs exact:</strong> property-style unit test — random jagged
+          polygons + random points; <code>LassoRegionGrid.containsPoint</code> must
+          equal <code>polygonContainsPoint</code> for every point.
+        </li>
+        <li>
+          <strong>Selection result unchanged:</strong> randomized scenes (ink, fills,
+          shapes, images with rotation) × random loops; the id-set from the new
+          <code>endLasso</code> must equal the pre-change narrow phase run exhaustively.
+          Existing lasso tests keep passing.
+        </li>
+        <li>
+          <strong>Classify-rect safety:</strong> unit tests that rects overlapping any
+          boundary cell are never classified inside/outside (the correctness linchpin of
+          Step 2).
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <span class="tag verify">PERFORMANCE</span>
+      <ul>
+        <li>
+          Synthetic 20x benchmark test: ~10k strokes × 200 points scattered over a huge
+          extent; lasso around 60% of them; assert commit wall-time and log the number
+          (test asserts a generous bound; the log is the real signal).
+        </li>
+        <li>
+          On-device (Tab S9 FE, profile mode): trace the full gesture — draw loop, pen
+          up, pan with selection, drag selection. Pen-up under a frame; pan/drag with
+          selection at steady frame rate (tiles active — verify via timeline that the
+          elements painter is not re-recording everything).
+        </li>
+        <li><code>flutter analyze</code> clean, full <code>flutter test</code> green.</li>
+        <li>Build arm64-v8a release APK (<code>zenno</code> naming) for on-device confirmation.</li>
+      </ul>
+    </div>
+
+    <h2>4. Risks &amp; Constraints</h2>
+
+    <div class="card">
+      <ul>
+        <li>
+          <span class="tag risk">RISK</span> <strong>Boundary-cell halo too small</strong>
+          → an outside-rejected element the loop should have touched. Mitigated by
+          deriving the halo from <code>touchSlop + maxStrokeHalfWidth</code> (computed
+          from the actual candidates, not a constant) and by the classify-rect safety
+          tests.
+        </li>
+        <li>
+          <span class="tag risk">RISK</span> <strong>Tile invalidation bugs</strong>
+          (stale selected element baked in a tile → ghost duplicate while dragging).
+          Mitigated by routing all selection-set changes through one invalidation
+          helper and an on-device visual pass. Rendering-only change — zero risk to note
+          data.
+        </li>
+        <li>
+          <span class="tag risk">RISK</span> <strong>Self-intersecting loops</strong>:
+          even-odd scanline classification must match <code>polygonContainsPoint</code>
+          exactly (both are even-odd — keep it that way; the property test covers
+          self-intersecting inputs).
+        </li>
+        <li>
+          <strong>Constraint:</strong> no behavior change — selection results
+          bit-identical, loop rendering while tracing untouched, no new UI. The only
+          intentionally visible difference is the Step 4 z-order note.
+        </li>
+      </ul>
+    </div>
+
+    <h2>5. Execution Order</h2>
+
+    <div class="card">
+      <ol>
+        <li><strong>Step 0</strong> merge Round 1 → verify: analyze + tests green on <code>staging</code>.</li>
+        <li><strong>Step 1</strong> <code>LassoRegionGrid</code> + equivalence tests → verify: property tests pass.</li>
+        <li><strong>Step 2</strong> fast paths in <code>endLasso</code> → verify: selection-equivalence tests + benchmark log.</li>
+        <li><strong>Step 3</strong> <code>selectionBounds</code> cache → verify: existing selection tests + overlay behaves.</li>
+        <li><strong>Step 4</strong> tiles with selection → verify: on-device pan/drag frame rate + visual pass.</li>
+        <li><strong>Step 5</strong> only if the Step 2 benchmark still exceeds budget.</li>
+        <li>Build <code>zenno</code> arm64-v8a APK; on-device 20x test is the final gate.</li>
+      </ol>
+    </div>
+  </div>
+</body>
+</html>

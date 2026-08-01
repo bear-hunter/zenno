@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -272,4 +273,136 @@ void main() {
 
     expect(newPainter.shouldRepaint(oldPainter), isTrue);
   });
+
+  group('paint scope', () {
+    // A selection being dragged is lifted into its own layer so the canvas
+    // underneath can hold still. That only works if the two layers between them
+    // draw exactly what one full painter would — no element drawn twice, none
+    // dropped.
+    final List<CanvasElement> elements = <CanvasElement>[
+      _ink('loose', const Rect.fromLTWH(20, 20, 40, 40)),
+      _ink('picked', const Rect.fromLTWH(170, 170, 40, 40), zIndex: 1),
+    ];
+    const Offset onLoose = Offset(40, 40);
+    const Offset onPicked = Offset(190, 190);
+
+    test('all draws both the selected and the unselected element', () async {
+      final _Pixels pixels = await _render(
+        elements: elements,
+        selectedIds: <String>{'picked'},
+        scope: ElementsPaintScope.all,
+      );
+      expect(pixels.inkAt(onLoose), isTrue);
+      expect(pixels.inkAt(onPicked), isTrue);
+    });
+
+    test('unselected leaves the selection to the layer above', () async {
+      final _Pixels pixels = await _render(
+        elements: elements,
+        selectedIds: <String>{'picked'},
+        scope: ElementsPaintScope.unselected,
+      );
+      expect(pixels.inkAt(onLoose), isTrue);
+      expect(pixels.inkAt(onPicked), isFalse);
+    });
+
+    test('selected draws the selection alone', () async {
+      final _Pixels pixels = await _render(
+        elements: elements,
+        selectedIds: <String>{'picked'},
+        scope: ElementsPaintScope.selected,
+      );
+      expect(pixels.inkAt(onLoose), isFalse);
+      expect(pixels.inkAt(onPicked), isTrue);
+    });
+
+    test('changing scope repaints', () {
+      final ElementsPainter unselected = ElementsPainter(
+        elements: elements,
+        spatialIndex: _index(elements),
+        viewport: ViewportState.initial,
+        elementsRevision: 1,
+        selectionRevision: 0,
+        scope: ElementsPaintScope.unselected,
+      );
+      final ElementsPainter all = ElementsPainter(
+        elements: elements,
+        spatialIndex: unselected.spatialIndex,
+        viewport: ViewportState.initial,
+        elementsRevision: 1,
+        selectionRevision: 0,
+      );
+
+      expect(all.shouldRepaint(unselected), isTrue);
+      expect(unselected.shouldRepaint(all), isTrue);
+    });
+
+    test('a scoped painter never serves tiles built from every element', () {
+      // A tile picture holds everything in its square, so handing one to a
+      // painter drawing a subset would put the hidden elements back on screen.
+      final cache = ElementsTileCache();
+      addTearDown(cache.dispose);
+      final recorder = ui.PictureRecorder();
+      ElementsPainter(
+        elements: elements,
+        spatialIndex: _index(elements),
+        allElementsById: <String, CanvasElement>{
+          for (final CanvasElement element in elements) element.id: element,
+        },
+        paintOrderById: <String, int>{'loose': 0, 'picked': 1},
+        viewport: ViewportState.initial,
+        tileCache: cache,
+        selectedIds: <String>{'picked'},
+        scope: ElementsPaintScope.unselected,
+      ).paint(Canvas(recorder), const Size(256, 256));
+      recorder.endRecording().dispose();
+
+      expect(cache.tileCount, 0);
+    });
+  });
+}
+
+/// Renders one painter and reads back the pixels it produced.
+Future<_Pixels> _render({
+  required List<CanvasElement> elements,
+  required Set<String> selectedIds,
+  required ElementsPaintScope scope,
+}) async {
+  final recorder = ui.PictureRecorder();
+  ElementsPainter(
+    elements: elements,
+    spatialIndex: _index(elements),
+    allElementsById: <String, CanvasElement>{
+      for (final CanvasElement element in elements) element.id: element,
+    },
+    paintOrderById: <String, int>{
+      for (var index = 0; index < elements.length; index += 1)
+        elements[index].id: index,
+    },
+    viewport: ViewportState.initial,
+    selectedIds: selectedIds,
+    scope: scope,
+  ).paint(Canvas(recorder), const Size(256, 256));
+  final ui.Picture picture = recorder.endRecording();
+  final ui.Image image = await picture.toImage(256, 256);
+  picture.dispose();
+  final ByteData bytes = (await image.toByteData(
+    format: ui.ImageByteFormat.rawRgba,
+  ))!;
+  image.dispose();
+  return _Pixels(bytes, 256);
+}
+
+class _Pixels {
+  const _Pixels(this._bytes, this._width);
+
+  final ByteData _bytes;
+  final int _width;
+
+  /// Whether anything was painted at [point], allowing for antialiasing.
+  bool inkAt(Offset point) {
+    final int x = point.dx.round();
+    final int y = point.dy.round();
+    return _bytes.getUint8((y * _width + x) * 4 + 3) > 8;
+  }
 }

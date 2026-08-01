@@ -24,6 +24,7 @@ import 'package:zenno/canvas/persistence/canvas_repository.dart';
 import 'package:zenno/canvas/raster/image_raster_decoder.dart';
 import 'package:zenno/canvas/tools/arrow_geometry.dart';
 import 'package:zenno/canvas/tools/canvas_geometry.dart';
+import 'package:zenno/canvas/tools/lasso_region_grid.dart';
 import 'package:zenno/core/util/id.dart';
 
 /// The active canvas interaction tool.
@@ -291,6 +292,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   final _CanvasSignal _elementsSignal = _CanvasSignal();
   final _CanvasSignal _liveStrokeSignal = _CanvasSignal();
   final _CanvasSignal _selectionSignal = _CanvasSignal();
+  final _CanvasSignal _selectionPreviewSignal = _CanvasSignal();
   final _CanvasSignal _overlaySignal = _CanvasSignal();
   final _CanvasSignal _hoverSignal = _CanvasSignal();
   final _CanvasSignal _toolStateSignal = _CanvasSignal();
@@ -309,8 +311,17 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// In-progress ink changes only.
   Listenable get liveStrokeListenable => _liveStrokeSignal;
 
-  /// Selection membership and transform-preview changes only.
+  /// Selection membership changes only.
   Listenable get selectionListenable => _selectionSignal;
+
+  /// Live selection move/scale/rotate offsets only.
+  ///
+  /// Deliberately its own channel, for the same reason hover has one: a drag
+  /// fires this per pointer sample, and what it changes — where the selection
+  /// is being previewed — is not something the committed-element layer can see.
+  /// Waking that layer per sample made dragging a large selection re-cull, re-
+  /// sort and re-paint every visible element on the canvas each frame.
+  Listenable get selectionPreviewListenable => _selectionPreviewSignal;
 
   /// Eraser, lasso, and shape-preview changes only.
   Listenable get overlayListenable => _overlaySignal;
@@ -535,11 +546,18 @@ class CanvasController extends ChangeNotifier implements ElementStore {
           if (_isElementVisible(element)) element,
     ];
     if (_selectionDragDelta != null || _selectionTransformOriginals != null) {
+      // A selected element may be previewed outside the culled viewport, so it
+      // is added back unconditionally. Membership is checked by id: the list
+      // scan this replaces cost selected x visible comparisons, which on a big
+      // canvas with a big selection was tens of millions of them.
+      final Set<String> present = <String>{
+        for (final CanvasElement element in visible) element.id,
+      };
       for (final String id in _selectedIds) {
         final CanvasElement? element = _elementsById[id];
         if (element != null &&
             _isElementVisible(element) &&
-            !visible.contains(element)) {
+            !present.contains(id)) {
           visible.add(element);
         }
       }
@@ -839,6 +857,25 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   SelectionTransformPreview? get selectionTransformPreview =>
       _selectionTransformOriginals == null ? null : _selectionTransformPreview;
 
+  /// Whether the selection is being previewed away from its committed place.
+  ///
+  /// While this holds, the render layer draws the selection in its own layer on
+  /// top and moves that, so the canvas underneath is not repainted per sample.
+  bool get isFloatingSelection =>
+      _selectionDragDelta != null || _selectionTransformOriginals != null;
+
+  /// The live drag or transform preview as a world-space matrix.
+  ///
+  /// Identity when nothing is being previewed.
+  Matrix4 get selectionPreviewMatrix {
+    final SelectionTransformPreview? preview = selectionTransformPreview;
+    if (preview != null) {
+      return preview.toMatrix();
+    }
+    final Offset delta = selectionDragDelta;
+    return Matrix4.identity()..translateByDouble(delta.dx, delta.dy, 0, 1);
+  }
+
   /// The committed elements that are currently selected, in paint order.
   List<CanvasElement> get selectedElements => <CanvasElement>[
     for (final CanvasElement e in _elements)
@@ -857,12 +894,26 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     if (_selectedIds.isEmpty) {
       return null;
     }
-    final Rect? bounds = _boundsForSelectedElements(_elements);
+    // And with something selected it scanned them all per frame regardless —
+    // including every frame of a drag, where the answer only slides sideways.
+    // The scan now runs once per real change; the drag is a shift on top.
+    if (!_selectionBoundsCached) {
+      _selectionBoundsCache = _boundsForSelectedElements(_elements);
+      _selectionBoundsCached = true;
+    }
+    final Rect? bounds = _selectionBoundsCache;
     if (bounds == null) {
       return null;
     }
     return bounds.shift(selectionDragDelta);
   }
+
+  /// Cached [_boundsForSelectedElements] over the whole store.
+  ///
+  /// Guarded by [_selectionBoundsCached] rather than a null check, because
+  /// `null` — nothing selected is visible — is a real answer worth caching.
+  Rect? _selectionBoundsCache;
+  bool _selectionBoundsCached = false;
 
   Rect? _boundsForSelectedElements(Iterable<CanvasElement> elements) {
     Rect? bounds;
@@ -964,17 +1015,21 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     _elementsView = null;
     _visibleElementsView = null;
     _viewportElementsView = null;
+    _selectionBoundsCached = false;
   }
 
   void _markSelectionChanged() {
     _selectionRevision += 1;
     _selectedIdsView = null;
     _viewportElementsView = null;
+    _selectionBoundsCached = false;
   }
 
   void _markSelectionPreviewChanged() {
     _selectionPreviewRevision += 1;
-    _viewportElementsView = null;
+    // The culled list deliberately survives: which elements it holds depends on
+    // whether a preview is running, not on how far it has moved, and the
+    // begin/end of a preview both notify through [_notifySelection].
   }
 
   void _markViewportChanged() {
@@ -1016,8 +1071,20 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   void _notifySelection() {
     _viewportElementsView = null;
     _selectionSignal.emit();
+    _selectionPreviewSignal.emit();
     _overlaySignal.emit();
     _toolStateSignal.emit();
+    notifyListeners();
+  }
+
+  /// Announces a new live drag/transform offset for the current selection.
+  ///
+  /// Reaches only the layers that draw the preview. The selection itself has
+  /// not changed, so the culled element list stays valid — recomputing it here
+  /// re-queried and re-sorted the whole viewport once per pointer sample.
+  void _notifySelectionPreview() {
+    _selectionPreviewSignal.emit();
+    _overlaySignal.emit();
     notifyListeners();
   }
 
@@ -3353,6 +3420,12 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// lasso boundary. A loop with too few points (an accidental tap) preserves
   /// the prior selection. Selection is held in the controller, not committed
   /// as a command.
+  ///
+  /// A loop big enough to swallow a whole mindmap makes the spatial-index broad
+  /// phase useless — its bounding box covers everything — so a [LassoRegionGrid]
+  /// over the loop acts as the real broad phase: elements sitting cleanly inside
+  /// or cleanly outside are decided from their bounding box alone, and only the
+  /// ones the loop actually runs through pay for geometry.
   void endLasso() {
     final List<Offset>? path = _lassoPath;
     _lassoPath = null;
@@ -3374,6 +3447,9 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     final Rect area = CanvasGeometry.boundsOfPoints(
       simplified,
     ).inflate(touchSlop);
+    final LassoRegionGrid? grid = debugDisableLassoRegionGrid
+        ? null
+        : LassoRegionGrid.build(simplified);
     final Set<String> candidateIds = _spatialIndex.query(area).toSet();
     for (final CanvasElement element in _elements) {
       if (!_isElementEditable(element)) {
@@ -3382,7 +3458,13 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       if (!candidateIds.contains(element.id)) {
         continue;
       }
-      if (_lassoSelects(element, simplified, boundary, touchSlop)) {
+      if (_lassoSelectsElement(
+        element,
+        simplified,
+        boundary,
+        touchSlop,
+        grid,
+      )) {
         hits.add(element.id);
       }
     }
@@ -3394,6 +3476,16 @@ class CanvasController extends ChangeNotifier implements ElementStore {
 
   /// Maximum screen-space deviation retained when a lasso loop commits.
   static const double _lassoSimplifyToleranceScreen = 2;
+
+  /// Test seam forcing lasso commits down the pre-grid exact path.
+  ///
+  /// The region grid is a pure accelerator: it must never change which elements
+  /// a loop selects. The tests run randomised scenes both ways and compare, so
+  /// a divergence fails the suite rather than silently mis-selecting — and a
+  /// mis-selection is one Delete away from losing notes. Nothing in the app
+  /// flips this.
+  @visibleForTesting
+  static bool debugDisableLassoRegionGrid = false;
 
   /// Cancels an in-progress lasso loop without changing the selection.
   void cancelLasso() {
@@ -3422,6 +3514,57 @@ class CanvasController extends ChangeNotifier implements ElementStore {
     }, SelectionMode.replace);
   }
 
+  /// Whether the committed lasso loop selects [element].
+  ///
+  /// [grid] is the loop's region grid, or `null` for a degenerate loop with no
+  /// area to divide into cells. When it is present, an element's bounding box
+  /// usually settles the question outright: a box lying entirely inside the loop
+  /// has every coverage sample inside it, and a box the loop never comes within
+  /// [touchSlop] of cannot be touched by it either. Both rest on the same
+  /// geometry-fits-in-its-bounds assumption the spatial-index broad phase in
+  /// [endLasso] already makes. Only a box the loop actually runs through reaches
+  /// the exact tests, and then only against the loop segments near it.
+  bool _lassoSelectsElement(
+    CanvasElement element,
+    List<Offset> polygon,
+    List<Offset> boundary,
+    double touchSlop,
+    LassoRegionGrid? grid,
+  ) {
+    if (grid == null) {
+      return _lassoSelects(
+        element,
+        polygon,
+        <List<Offset>>[boundary],
+        touchSlop,
+        null,
+      );
+    }
+    final Rect probe = element.worldBounds.inflate(touchSlop);
+    final LassoRegion region = grid.classifyRect(probe);
+    if (region == LassoRegion.outside) {
+      return false;
+    }
+    if (region == LassoRegion.inside && _hasCoverageSamples(element)) {
+      return true;
+    }
+    return _lassoSelects(
+      element,
+      polygon,
+      grid.segmentRunsNear(probe),
+      touchSlop,
+      grid,
+    );
+  }
+
+  /// Whether [element] has any geometry for the majority-inside rule to sample.
+  ///
+  /// An ink element with no points has none, and an empty sample set is never a
+  /// majority — so the enclosed-bounds shortcut must not claim it.
+  static bool _hasCoverageSamples(CanvasElement element) {
+    return element is! InkElement || element.stroke.points.isNotEmpty;
+  }
+
   /// Whether the closed lasso substantially encloses or touches [element].
   ///
   /// The majority-inside rule remains for ordinary loops. A second
@@ -3429,55 +3572,84 @@ class CanvasController extends ChangeNotifier implements ElementStore {
   /// grazing the rendered edge selects the element without requiring its
   /// remaining geometry to be enclosed.
   ///
-  /// [boundary] is explicitly closed and [touchSlop] is expressed in world
-  /// units, derived from a constant screen-space tolerance at the current zoom.
+  /// [boundaryRuns] are the stretches of the closed loop that pass near the
+  /// element, each an open polyline — never joined end to end, which would
+  /// invent an edge the user never drew. A loop segment far enough away to be
+  /// left out cannot satisfy any of these tests, so the answer matches testing
+  /// the whole loop. [touchSlop] is expressed in world units, derived from a
+  /// constant screen-space tolerance at the current zoom.
   bool _lassoSelects(
     CanvasElement element,
     List<Offset> polygon,
-    List<Offset> boundary,
+    List<List<Offset>> boundaryRuns,
     double touchSlop,
+    LassoRegionGrid? grid,
   ) {
-    if (_lassoSubstantiallyContains(element, polygon)) {
+    if (_lassoSubstantiallyContains(element, polygon, grid)) {
       return true;
     }
 
     switch (element) {
       case InkElement():
         if (element.stroke.tool == StrokeToolKind.fill) {
-          return boundary.any(element.outlinePath.contains) ||
-              CanvasGeometry.polylinesWithinDistance(
-                boundary,
-                _closedFillBoundary(element),
-                touchSlop,
-              );
+          final List<Offset> fillBoundary = _closedFillBoundary(element);
+          for (final List<Offset> run in boundaryRuns) {
+            if (run.any(element.outlinePath.contains) ||
+                CanvasGeometry.polylinesWithinDistance(
+                  run,
+                  fillBoundary,
+                  touchSlop,
+                )) {
+              return true;
+            }
+          }
+          return false;
         }
         final List<Offset> centerline = <Offset>[
           for (final StrokePoint point in element.stroke.points) point.offset,
         ];
-        return CanvasGeometry.polylinesWithinDistance(
-          boundary,
-          centerline,
-          touchSlop + element.stroke.width / 2,
-        );
+        final double reach = touchSlop + element.stroke.width / 2;
+        for (final List<Offset> run in boundaryRuns) {
+          if (CanvasGeometry.polylinesWithinDistance(run, centerline, reach)) {
+            return true;
+          }
+        }
+        return false;
       case ImageElement():
       case PdfElement():
       case LinkElement():
       case TextElement():
-        return _pathReachesRotatedRect(
-          boundary,
-          _placementBoundsOf(element)!,
-          element.rotation,
-          touchSlop,
-        );
+        final Rect placement = _placementBoundsOf(element)!;
+        for (final List<Offset> run in boundaryRuns) {
+          if (_pathReachesRotatedRect(
+            run,
+            placement,
+            element.rotation,
+            touchSlop,
+          )) {
+            return true;
+          }
+        }
+        return false;
       case ShapeElement():
-        return _pathReachesShape(boundary, element, touchSlop);
+        for (final List<Offset> run in boundaryRuns) {
+          if (_pathReachesShape(run, element, touchSlop)) {
+            return true;
+          }
+        }
+        return false;
     }
   }
 
   bool _lassoSubstantiallyContains(
     CanvasElement element,
     List<Offset> polygon,
+    LassoRegionGrid? grid,
   ) {
+    final bool Function(Offset point) isInside =
+        grid != null
+        ? grid.containsPoint
+        : (Offset point) => CanvasGeometry.polygonContainsPoint(polygon, point);
     switch (element) {
       case InkElement():
         final List<Offset> centerline = <Offset>[
@@ -3488,19 +3660,19 @@ class CanvasController extends ChangeNotifier implements ElementStore {
         final List<Offset> coverageSamples = <Offset>[
           for (var i = 0; i < centerline.length; i += stride) centerline[i],
         ];
-        return CanvasGeometry.polygonMajorityInside(polygon, coverageSamples);
+        return CanvasGeometry.majorityInside(coverageSamples, isInside);
       case ImageElement():
       case PdfElement():
       case LinkElement():
       case TextElement():
-        return CanvasGeometry.polygonMajorityInside(
-          polygon,
+        return CanvasGeometry.majorityInside(
           _rotatedRectSamples(_placementBoundsOf(element)!, element.rotation),
+          isInside,
         );
       case ShapeElement():
-        return CanvasGeometry.polygonMajorityInside(
-          polygon,
+        return CanvasGeometry.majorityInside(
           _shapeCoverageSamples(element),
+          isInside,
         );
     }
   }
@@ -3904,7 +4076,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       return;
     }
     _selectionDragDelta = current + worldDelta;
-    _notifySelection();
+    _notifySelectionPreview();
   }
 
   /// Finishes the selection drag, committing the move as one undoable command.
@@ -3982,7 +4154,7 @@ class CanvasController extends ChangeNotifier implements ElementStore {
       rotation: rotation,
     );
     _markSelectionPreviewChanged();
-    _notifySelection();
+    _notifySelectionPreview();
   }
 
   /// Commits the live selection transform as one undoable command.
